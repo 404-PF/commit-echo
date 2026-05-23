@@ -1,10 +1,4 @@
-import { simpleGit, type SimpleGit } from "simple-git";
-
-let git: SimpleGit | null = null;
-function getGit(): SimpleGit {
-  if (!git) git = simpleGit();
-  return git;
-}
+import { getGit } from "./client.js";
 
 export interface CommitEntry {
   hash: string;

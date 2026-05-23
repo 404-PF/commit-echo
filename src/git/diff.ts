@@ -1,11 +1,5 @@
-import { simpleGit, type SimpleGit } from "simple-git";
 import { NoStagedChangesError } from "../utils/errors.js";
-
-let git: SimpleGit | null = null;
-function getGit(): SimpleGit {
-  if (!git) git = simpleGit();
-  return git;
-}
+import { getGit } from "./client.js";
 
 export interface DiffContext {
   diff: string;

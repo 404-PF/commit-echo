@@ -1,7 +1,7 @@
 import * as p from "@clack/prompts";
-import { simpleGit } from "simple-git";
 import { runGenerate } from "./generate.js";
 import { success, error, info } from "../utils/logger.js";
+import { getGit } from "../git/client.js";
 
 interface CommitOptions {
   provider?: string;
@@ -24,8 +24,9 @@ export async function runCommit(opts: CommitOptions = {}): Promise<void> {
   }
 
   try {
-    const git = simpleGit();
-    const result = await git.commit(message);
+    const git = getGit();
+    const status = await git.status();
+    const result = await git.commit(message, status.staged);
     success(`Committed successfully: ${result.commit}`);
   } catch (err) {
     error(`Commit failed: ${err instanceof Error ? err.message : String(err)}`);

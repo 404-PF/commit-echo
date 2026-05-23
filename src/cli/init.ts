@@ -53,22 +53,25 @@ export async function runInit(): Promise<void> {
 
   let apiKey = "";
   if (selectedProvider.requiresApiKey) {
-    apiKey = (await p.text({
+    const apiKeyInput = await p.text({
       message: `Enter API key (or set ${envVarName} or ${standardEnvVar} env var):`,
       initialValue: envValue,
       validate: (val) => {
         if (!val && !envValue) return "API key is required";
         return;
       },
-    })) as string;
-    if (p.isCancel(apiKey)) process.exit(0);
+    });
+    if (p.isCancel(apiKeyInput)) process.exit(0);
+    apiKey = apiKeyInput as string;
     if (!apiKey && envValue) apiKey = envValue;
   }
 
-  const baseUrl = ((await p.text({
+  const baseUrlInput = await p.text({
     message: "Base URL (optional, leave blank for default):",
     initialValue: selectedProvider.name === "ollama" ? "http://localhost:11434" : "",
-  })) as string);
+  });
+  if (p.isCancel(baseUrlInput)) process.exit(0);
+  const baseUrl = baseUrlInput as string;
 
   const useConventional = await p.confirm({
     message: "Use conventional commits format? (feat:, fix:, chore:, etc.)",
