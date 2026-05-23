@@ -3,6 +3,14 @@ import type { Config, ProviderConfig, StyleProfile } from "./types.js";
 import { configSchema } from "./schema.js";
 import { ConfigError } from "../utils/errors.js";
 
+function validateBaseUrl(name: string, url: string): void {
+  try {
+    new URL(url);
+  } catch {
+    throw new ConfigError(`Invalid baseUrl for ${name}: "${url}" is not a valid URL`);
+  }
+}
+
 const defaults: Config = {
   initialized: false,
   provider: "openai",
@@ -32,6 +40,11 @@ export function getConfig(): Config {
 export function updateConfig(partial: Partial<Config>): void {
   for (const [key, value] of Object.entries(partial)) {
     if (value !== undefined) {
+      if (key === "providers") {
+        for (const [name, pc] of Object.entries(value as Record<string, ProviderConfig>)) {
+          if (pc.baseUrl) validateBaseUrl(name, pc.baseUrl);
+        }
+      }
       store.set(key as string, value as unknown);
     }
   }
@@ -42,6 +55,7 @@ export function getProviderConfig(name: string): ProviderConfig {
 }
 
 export function setProviderConfig(name: string, pc: ProviderConfig): void {
+  if (pc.baseUrl) validateBaseUrl(name, pc.baseUrl);
   const providers = (store.get("providers") as Record<string, ProviderConfig>) ?? {};
   providers[name] = { ...providers[name], ...pc };
   store.set("providers", providers as unknown);

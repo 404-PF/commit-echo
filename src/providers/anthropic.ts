@@ -35,6 +35,7 @@ export class AnthropicProvider implements LLMProvider {
         .map((b) => b.text)
         .join("");
 
+      if (!content) throw new Error("Empty response from Anthropic");
       return content.trim();
     } catch (cause) {
       throw new ProviderError(this.displayName, cause);

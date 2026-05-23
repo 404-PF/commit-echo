@@ -3,7 +3,7 @@ import { z } from "zod";
 const providerConfigSchema = z.object({
   apiKey: z.string().optional(),
   model: z.string().optional(),
-  baseUrl: z.string().url().optional().or(z.literal("")),
+  baseUrl: z.string().url().optional().catch(undefined),
 });
 
 const styleProfileSchema = z.object({

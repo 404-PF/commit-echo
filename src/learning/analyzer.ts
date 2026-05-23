@@ -18,7 +18,8 @@ function detectPrefix(subject: string): string | null {
 }
 
 function hasScope(subject: string): boolean {
-  return CONVENTIONAL_PREFIX_RE.test(subject) && subject.includes("(");
+  const match = subject.match(CONVENTIONAL_PREFIX_RE);
+  return !!match?.[2];
 }
 
 function isProbablyImperative(subject: string): boolean {

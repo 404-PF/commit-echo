@@ -4,7 +4,7 @@ import { getStagedDiff } from "../git/diff.js";
 import { getConfig } from "../config/manager.js";
 import { getProvider } from "../providers/registry.js";
 import { getCurrentProfile, learnStyle } from "../learning/profile.js";
-import type { GenerateContext, LLMProvider, ProviderConfigInput } from "../providers/types.js";
+import type { GenerateContext, LLMProvider } from "../providers/types.js";
 import { getApiKey, getProviderConfig } from "../config/manager.js";
 import { ApiKeyMissingError, NoStagedChangesError } from "../utils/errors.js";
 import { error, info } from "../utils/logger.js";
