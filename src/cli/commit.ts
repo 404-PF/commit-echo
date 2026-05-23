@@ -30,6 +30,6 @@ export async function runCommit(opts: CommitOptions = {}): Promise<void> {
     success(`Committed successfully: ${result.commit}`);
   } catch (err) {
     error(`Commit failed: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

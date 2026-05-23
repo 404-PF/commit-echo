@@ -86,7 +86,7 @@ export function analyzeCommits(entries: CommitEntry[]): StyleProfile {
 
   return {
     dominantPrefix,
-    prefixPct: Math.round((commitsWithPrefix / analyzed.length) * 100),
+    prefixPct: commitsWithPrefix > 0 ? Math.round((maxCount / commitsWithPrefix) * 100) : 0,
     usesScope: commitsWithScope > 0,
     scopePct: Math.round((commitsWithScope / analyzed.length) * 100),
     avgSubjectLength: avgLength,

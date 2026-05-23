@@ -33,9 +33,13 @@ export class MistralProvider implements LLMProvider {
         maxTokens: 500,
       });
 
-      const content = response.choices?.[0]?.message?.content;
+      const raw = response.choices?.[0]?.message?.content;
+      if (!raw) throw new Error("Empty response from Mistral");
+      const content = Array.isArray(raw)
+        ? raw.filter(c => c.type === "text").map(c => c.text).join("")
+        : raw;
       if (!content) throw new Error("Empty response from Mistral");
-      return String(content).trim();
+      return content.trim();
     } catch (cause) {
       throw new ProviderError(this.displayName, cause);
     }

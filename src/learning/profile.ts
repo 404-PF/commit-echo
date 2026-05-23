@@ -9,7 +9,7 @@ export async function learnStyle(): Promise<StyleProfile> {
   const entries = await getRecentCommits(50);
   if (entries.length === 0) {
     info("No commits found yet. Using default style profile.");
-    return getConfig().styleProfile ?? {
+    const defaultProfile: StyleProfile = {
       dominantPrefix: "",
       prefixPct: 0,
       usesScope: false,
@@ -22,6 +22,8 @@ export async function learnStyle(): Promise<StyleProfile> {
       analyzedAt: new Date().toISOString(),
       totalCommits: 0,
     };
+    setStyleProfile(defaultProfile);
+    return defaultProfile;
   }
 
   const profile = analyzeCommits(entries);
