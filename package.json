@@ -1,0 +1,49 @@
+{
+  "name": "commit-echo",
+  "version": "0.1.0",
+  "description": "LLM-powered CLI that learns your commit style & auto-suggests personalized Git messages",
+  "type": "module",
+  "bin": {
+    "commit-echo": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "git",
+    "commit",
+    "cli",
+    "llm",
+    "ai"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@clack/prompts": "^0.10.0",
+    "@google/genai": "^1.2.0",
+    "@mistralai/mistralai": "^1.6.0",
+    "cohere-ai": "^7.16.0",
+    "commander": "^13.1.0",
+    "conf": "^13.1.0",
+    "ollama": "^0.5.14",
+    "openai": "^4.86.0",
+    "picocolors": "^1.1.1",
+    "simple-git": "^3.27.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}
