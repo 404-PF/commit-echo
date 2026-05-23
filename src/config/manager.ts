@@ -34,18 +34,23 @@ export function getConfig(): Config {
       `Invalid config: ${result.error.issues.map((i) => i.message).join("; ")}`
     );
   }
-  return result.data as Config;
+  return result.data;
 }
 
 export function updateConfig(partial: Partial<Config>): void {
   for (const [key, value] of Object.entries(partial)) {
     if (value !== undefined) {
       if (key === "providers") {
-        for (const [name, pc] of Object.entries(value as Record<string, ProviderConfig>)) {
+        const incoming = value as Record<string, ProviderConfig>;
+        for (const [name, pc] of Object.entries(incoming)) {
           if (pc.baseUrl) validateBaseUrl(name, pc.baseUrl);
         }
         const existing = (store.get("providers") as Record<string, ProviderConfig>) ?? {};
-        store.set("providers", { ...existing, ...(value as Record<string, ProviderConfig>) } as unknown);
+        const merged: Record<string, ProviderConfig> = { ...existing };
+        for (const [name, pc] of Object.entries(incoming)) {
+          merged[name] = { ...existing[name], ...pc };
+        }
+        store.set("providers", merged as unknown);
         continue;
       }
       store.set(key as string, value as unknown);

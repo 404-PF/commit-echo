@@ -9,10 +9,10 @@ interface CommitOptions {
 }
 
 export async function runCommit(opts: CommitOptions = {}): Promise<void> {
-  const message = await runGenerate(opts);
-  if (!message) return;
+  const genResult = await runGenerate(opts);
+  if (!genResult) return;
 
-  const subjectLine = message.split("\n")[0];
+  const subjectLine = genResult.message.split("\n")[0];
   const confirm = await p.confirm({
     message: `Commit: ${subjectLine}`,
     initialValue: true,
@@ -26,7 +26,7 @@ export async function runCommit(opts: CommitOptions = {}): Promise<void> {
   try {
     const git = getGit();
     const status = await git.status();
-    const result = await git.commit(message, status.staged);
+    const result = await git.commit(genResult.message, status.staged);
     success(`Committed successfully: ${result.commit}`);
   } catch (err) {
     error(`Commit failed: ${err instanceof Error ? err.message : String(err)}`);

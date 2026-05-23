@@ -14,6 +14,10 @@ interface GenerateOptions {
   model?: string;
 }
 
+export interface GenerateResult {
+  message: string;
+}
+
 async function resolveProvider(opts: GenerateOptions): Promise<LLMProvider> {
   const cfg = getConfig();
   const providerName = (opts.provider ?? cfg.provider).toLowerCase();
@@ -42,7 +46,7 @@ function printMessage(msg: string): void {
   console.log(`${line}\n`);
 }
 
-export async function runGenerate(opts: GenerateOptions = {}): Promise<string | null> {
+export async function runGenerate(opts: GenerateOptions = {}): Promise<GenerateResult | null> {
   try {
     const diffContext = await getStagedDiff();
     const cfg = getConfig();
@@ -99,10 +103,10 @@ export async function runGenerate(opts: GenerateOptions = {}): Promise<string | 
           info("Cancelled.");
           return null;
         }
-        return edited as string;
+        return { message: edited as string };
       }
 
-      return message;
+      return { message };
     }
   } catch (err) {
     if (err instanceof NoStagedChangesError) {
