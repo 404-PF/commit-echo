@@ -22,7 +22,7 @@ export function buildSystemPrompt(context: GenerateContext): string {
   if (styleProfile && styleProfile.totalCommits > 0) {
     lines.push("", "The user's personal commit style (learned from their git history):");
     if (styleProfile.dominantPrefix) {
-      lines.push(`- Preferred prefix: ${styleProfile.dominantPrefix} (used ${styleProfile.prefixPct}% of prefixed commits)`);
+      lines.push(`- Preferred prefix: ${styleProfile.dominantPrefix} (used ${styleProfile.prefixPct}% of commits)`);
     }
     if (styleProfile.usesScope) {
       lines.push(`- Uses scopes (${styleProfile.scopePct}% of commits)`);

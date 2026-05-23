@@ -13,7 +13,14 @@ import { success, info } from "../utils/logger.js";
 export async function runInit(): Promise<void> {
   console.log(pc.bold(pc.cyan("\n  commit-echo setup\n")));
 
-  const existing = getConfig();
+  let existing;
+  try {
+    existing = getConfig();
+  } catch {
+    info("Config is corrupted or missing. Starting fresh.");
+    clearConfig();
+    existing = { initialized: false };
+  }
   if (existing.initialized) {
     const shouldReset = await p.confirm({
       message: "Configuration already exists. Reset and re-run setup?",

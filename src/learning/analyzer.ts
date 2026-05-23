@@ -64,7 +64,6 @@ export function analyzeCommits(entries: CommitEntry[]): StyleProfile {
     }
   }
 
-  const commitsWithPrefix = analyzed.filter((a) => a.prefix).length;
   const commitsWithScope = analyzed.filter((a) => a.hasScope).length;
   const commitsWithBody = analyzed.filter((a) => a.body.length > 0).length;
   const imperativeCount = analyzed.filter((a) => a.isImperative).length;
@@ -86,7 +85,7 @@ export function analyzeCommits(entries: CommitEntry[]): StyleProfile {
 
   return {
     dominantPrefix,
-    prefixPct: commitsWithPrefix > 0 ? Math.round((maxCount / commitsWithPrefix) * 100) : 0,
+    prefixPct: Math.round((maxCount / analyzed.length) * 100),
     usesScope: commitsWithScope > 0,
     scopePct: Math.round((commitsWithScope / analyzed.length) * 100),
     avgSubjectLength: avgLength,
