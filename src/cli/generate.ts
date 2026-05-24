@@ -23,7 +23,7 @@ async function resolveProvider(opts: GenerateOptions): Promise<LLMProvider> {
   const providerName = (opts.provider ?? cfg.provider).toLowerCase();
   const provider = getProvider(providerName);
   const providerCfg = getProviderConfig(providerName);
-  const model = opts.model ?? providerCfg.model ?? (opts.provider ? provider.models[0] : cfg.model);
+  const model = opts.model ?? providerCfg.model ?? (providerName === cfg.provider ? cfg.model : provider.models[0]);
   const apiKey = getApiKey(providerName);
 
   if (!apiKey && provider.requiresApiKey) {
