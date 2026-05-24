@@ -10,6 +10,18 @@ import { listProviders } from "../providers/registry.js";
 import { learnStyle } from "../learning/profile.js";
 import { success, info, error } from "../utils/logger.js";
 
+function validateUrlOrEmpty(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return;
+
+  try {
+    new URL(trimmed);
+    return;
+  } catch {
+    return "Enter a valid URL or leave blank";
+  }
+}
+
 export async function runInit(): Promise<void> {
   console.log(pc.bold(pc.cyan("\n  commit-echo setup\n")));
 
@@ -80,9 +92,10 @@ export async function runInit(): Promise<void> {
   const baseUrlInput = await p.text({
     message: "Base URL (optional, leave blank for default):",
     initialValue: selectedProvider.name === "ollama" ? "http://localhost:11434" : "",
+    validate: validateUrlOrEmpty,
   });
   if (p.isCancel(baseUrlInput)) process.exit(0);
-  const baseUrl = baseUrlInput as string;
+  const baseUrl = (baseUrlInput as string).trim();
 
   const useConventional = await p.confirm({
     message: "Use conventional commits format? (feat:, fix:, chore:, etc.)",
@@ -90,21 +103,21 @@ export async function runInit(): Promise<void> {
   });
   if (p.isCancel(useConventional)) process.exit(0);
 
+  info("Analyzing your recent commit history...");
+  await learnStyle();
+
+  setProviderConfig(selectedProvider.name, {
+    apiKey: apiKey || undefined,
+    model: modelChoice as string,
+    baseUrl: baseUrl || undefined,
+  });
+
   updateConfig({
     provider: selectedProvider.name,
     model: modelChoice as string,
     conventionalCommits: useConventional as boolean,
+    initialized: true,
   });
-
-  setProviderConfig(selectedProvider.name, {
-    apiKey: apiKey || undefined,
-    baseUrl: baseUrl || undefined,
-  });
-
-  info("Analyzing your recent commit history...");
-  await learnStyle();
-
-  updateConfig({ initialized: true });
 
   success("Setup complete!");
   info(`Run \`${pc.cyan("commit-echo")}\` to generate a commit message for staged changes.`);
