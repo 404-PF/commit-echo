@@ -15,5 +15,3 @@ export function warn(msg: string): void {
 export function error(msg: string): void {
   console.error(pc.red(`✖ ${msg}`));
 }
-
-

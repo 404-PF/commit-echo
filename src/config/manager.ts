@@ -64,9 +64,9 @@ export function getProviderConfig(name: string): ProviderConfig {
 
 export function setProviderConfig(name: string, pc: ProviderConfig): void {
   if (pc.baseUrl) validateBaseUrl(name, pc.baseUrl);
-  const providers = (store.get("providers") as Record<string, ProviderConfig>) ?? {};
-  providers[name] = { ...providers[name], ...pc };
-  store.set("providers", providers as unknown);
+  const existing = (store.get("providers") as Record<string, ProviderConfig>) ?? {};
+  const merged = { ...existing, [name]: { ...existing[name], ...pc } };
+  store.set("providers", merged as unknown);
 }
 
 export function setStyleProfile(profile: StyleProfile): void {

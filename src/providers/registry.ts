@@ -36,6 +36,3 @@ export function listProviders(): LLMProvider[] {
   return [...registry.values()];
 }
 
-export function listProviderNames(): string[] {
-  return [...registry.keys()];
-}

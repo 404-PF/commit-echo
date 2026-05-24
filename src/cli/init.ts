@@ -8,7 +8,7 @@ import {
 } from "../config/manager.js";
 import { listProviders } from "../providers/registry.js";
 import { learnStyle } from "../learning/profile.js";
-import { success, info } from "../utils/logger.js";
+import { success, info, error } from "../utils/logger.js";
 
 export async function runInit(): Promise<void> {
   console.log(pc.bold(pc.cyan("\n  commit-echo setup\n")));
@@ -46,7 +46,11 @@ export async function runInit(): Promise<void> {
   });
   if (p.isCancel(providerChoice)) process.exit(0);
 
-  const selectedProvider = providers.find((pr) => pr.name === providerChoice)!;
+  const selectedProvider = providers.find((pr) => pr.name === providerChoice);
+  if (!selectedProvider) {
+    error("Invalid provider selected.");
+    process.exit(1);
+  }
 
   const modelChoice = await p.select({
     message: "Select model:",
