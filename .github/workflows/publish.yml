@@ -24,6 +24,8 @@ jobs:
       - run: npm run build
       - run: npm publish --provenance --access public
         if: github.event_name == 'release'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-github:
     name: Publish to GitHub Packages
