@@ -20,7 +20,7 @@ Use this skill when the user asks to cut a release.
 
 ## CI/CD Pipeline
 
-Pushing the tag triggers `.github/workflows/publish.yml` which automatically:
+Pushing the tag triggers `.github/workflows/publish.yml`; the tag push builds binaries, and creating a GitHub Release publishes the package and attaches the binaries:
 - Publishes the package to **npmjs.com** (requires `NPM_TOKEN` secret)
 - Publishes the package to **GitHub Packages** (uses `GITHUB_TOKEN`)
 - Builds **standalone binaries** for linux-x64, macos-x64, macos-arm64, and win-x64

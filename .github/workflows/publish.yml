@@ -11,6 +11,7 @@ jobs:
   publish-npm:
     name: Publish to npmjs.com
     runs-on: ubuntu-latest
+    if: github.event_name == 'release'
     permissions:
       contents: read
       id-token: write
@@ -29,6 +30,7 @@ jobs:
   publish-github:
     name: Publish to GitHub Packages
     runs-on: ubuntu-latest
+    if: github.event_name == 'release'
     permissions:
       contents: read
       packages: write
