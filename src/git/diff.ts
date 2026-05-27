@@ -33,16 +33,6 @@ export function getUnstagedDiff(): DiffResult {
   };
 }
 
-export function getCombinedDiff(): DiffResult {
-  const staged = getStagedDiff();
-  const unstaged = getUnstagedDiff();
-  const combined = [staged.diff, unstaged.diff].filter(Boolean).join('\n');
-  return {
-    diff: combined.trim(),
-    hasChanges: combined.trim().length > 0,
-    staged: staged.hasChanges,
-  };
-}
 
 export function commit(message: string, body?: string): string {
   const fullMessage = body ? `${message}\n\n${body}` : message;
