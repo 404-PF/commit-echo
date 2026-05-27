@@ -16,8 +16,10 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
 export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean } = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
-  if (!checkGitRepo()) {
-    outro(pc.red('Not a git repository.'));
+  try {
+    checkGitRepo();
+  } catch (err) {
+    outro(pc.red(err instanceof Error ? err.message : 'Not a git repository.'));
     return;
   }
 
