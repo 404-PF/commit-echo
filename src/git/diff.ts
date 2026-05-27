@@ -6,12 +6,12 @@ export interface DiffResult {
   staged: boolean;
 }
 
-export function checkGitRepo(): boolean {
+export function checkGitRepo(): void {
   try {
-    execSync('git rev-parse --git-dir', { encoding: 'utf-8', stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
+    execSync('git rev-parse --git-dir', { encoding: 'utf-8', stdio: 'pipe' });
+  } catch (err) {
+    const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr?.trim();
+    throw new Error(stderr || 'Not a git repository');
   }
 }
 
