@@ -1,4 +1,5 @@
 import type { ChatParams, ChatResult, Provider } from '../types.js';
+import { fetchWithTimeout } from './request.js';
 
 export class CohereProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
@@ -28,14 +29,14 @@ export class CohereProvider implements Provider {
       body['preamble'] = systemMessages.map((m) => m.content).join('\n');
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
-    });
+    }, 'Cohere API request');
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
@@ -62,11 +63,11 @@ export class CohereProvider implements Provider {
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
     const url = `${baseUrl.replace(/\/+$/, '')}/models`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
-    });
+    }, 'Cohere model request');
 
     if (!response.ok) {
       return [

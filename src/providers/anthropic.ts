@@ -1,4 +1,5 @@
 import type { ChatParams, ChatResult, Provider } from '../types.js';
+import { fetchWithTimeout } from './request.js';
 
 export class AnthropicProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
@@ -23,7 +24,7 @@ export class AnthropicProvider implements Provider {
       body['system'] = systemMessages.map((m) => m.content).join('\n');
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -31,7 +32,7 @@ export class AnthropicProvider implements Provider {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
-    });
+    }, 'Anthropic API request');
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
