@@ -6,6 +6,13 @@ import type { Config } from '../types.js';
 
 const CUSTOM_KEY = '__custom__';
 
+export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
+  return {
+    message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
+    placeholder: existingKey ? '•••••••• (already configured)' : '',
+  };
+}
+
 export async function initCommand(): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo init')));
 
@@ -78,11 +85,7 @@ export async function initCommand(): Promise<void> {
 
   if (needsApiKey) {
     const existingKey = existingConfig?.apiKey ?? process.env[apiKeyEnv] ?? '';
-    const keyResult = await text({
-      message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
-      placeholder: existingKey ? '•••••••• (already configured)' : '',
-      initialValue: existingKey,
-    });
+    const keyResult = await text(buildApiKeyPrompt(existingKey, apiKeyEnv));
     if (isCancel(keyResult)) { outro('Setup cancelled.'); return; }
 
     if (keyResult) {
