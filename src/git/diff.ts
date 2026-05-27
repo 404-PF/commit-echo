@@ -52,7 +52,8 @@ export function commit(message: string, body?: string): string {
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    throw new Error(result.stderr || `git commit exited with code ${result.status}`);
+    const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
+    throw new Error(detail || `git commit exited with code ${result.status}`);
   }
   return result.stdout;
 }
