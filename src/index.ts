@@ -18,6 +18,7 @@ try {
 }
 
 const program = new Command();
+program.option('--yes', 'Automatically accept the first suggestion and commit without prompts');
 
 program
   .name('commit-echo')
@@ -28,7 +29,10 @@ program
     `
 ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo')}           Suggest and commit staged changes
+  ${pc.cyan('commit-echo --yes')}       Auto-select and commit first suggestion
   ${pc.cyan('commit-echo init')}      Run interactive setup wizard
+  ${pc.cyan('commit-echo suggest')}    Generate commit suggestions without committing
+  ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
 `
   );
@@ -41,9 +45,10 @@ program
 program
   .command('suggest')
   .description('Generate commit suggestions without committing')
-  .option('--no-commit', 'Skip the commit step, only show suggestions')
+  .option('--commit', 'Commit the selected suggestion', false)
+  .option('--yes', 'Automatically select the first suggestion and skip prompts')
   .action(async (options) => {
-    await suggestCommand({ commit: options.commit, autoCommit: false });
+    await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes) });
   });
 
 program
@@ -52,7 +57,8 @@ program
   .action(historyCommand);
 
 program.action(async () => {
-  await suggestCommand({ commit: true, autoCommit: false });
+  const opts = program.opts();
+  await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes) });
 });
 
 program.parse(process.argv);
