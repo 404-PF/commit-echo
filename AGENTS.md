@@ -32,3 +32,14 @@ node dist/index.js   # Smoke test the CLI
 - `commit-echo init` — Interactive setup wizard
 - `commit-echo suggest` — Generate suggestions without committing
 - `commit-echo history` — View learned style profile
+
+## Skills
+
+The project includes reusable agent skills in `.agents/skills/` for common GitHub workflows:
+
+| Skill | Description |
+|---|---|
+| [create-issue](.agents/skills/create-issue/SKILL.md) | Create GitHub issues with templates, duplicate detection, project/milestone assignment |
+| [create-pr](.agents/skills/create-pr/SKILL.md) | Create pull requests with templates, commit log summaries, reviewer/issue linking |
+| [prepare-release](.agents/skills/prepare-release/SKILL.md) | Cut releases with conventional commit analysis, changelog generation, GitHub releases |
+| [review-pr](.agents/skills/review-pr/SKILL.md) | Review pull requests with comprehensive criteria (correctness, security, testing, performance, file-type specific checks) |
