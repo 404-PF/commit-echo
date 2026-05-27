@@ -51,7 +51,7 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   genSpinner.start('Generating commit suggestions...');
 
   try {
-    const { suggestions } = await generateSuggestions(config, diffResult.diff);
+    const { suggestions } = await generateSuggestions(config, diffResult.diff, profile);
     genSpinner.stop(pc.green('Suggestions generated:'));
 
     await displaySuggestions(suggestions);
