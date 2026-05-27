@@ -1,4 +1,5 @@
 import type { ChatParams, ChatResult, Provider } from '../types.js';
+import { fetchWithTimeout } from './request.js';
 
 export class OpenAICompatibleProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
@@ -6,7 +7,7 @@ export class OpenAICompatibleProvider implements Provider {
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -18,7 +19,7 @@ export class OpenAICompatibleProvider implements Provider {
         temperature,
         max_tokens: maxTokens,
       }),
-    });
+    }, 'OpenAI-compatible API request');
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
@@ -53,7 +54,7 @@ export class OpenAICompatibleProvider implements Provider {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const response = await fetch(url, { headers });
+    const response = await fetchWithTimeout(url, { headers }, 'OpenAI-compatible model request');
 
     if (!response.ok) {
       throw new Error(`Failed to fetch models (${response.status}): ${response.statusText}`);
