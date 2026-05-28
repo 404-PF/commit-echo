@@ -1,4 +1,7 @@
 import { execSync, spawnSync } from 'node:child_process';
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 export interface DiffResult {
   diff: string;
@@ -36,16 +39,22 @@ export function getUnstagedDiff(): DiffResult {
 
 export function commit(message: string, body?: string): string {
   const fullMessage = body ? `${message}\n\n${body}` : message;
-  const result = spawnSync('git', ['commit', '-m', fullMessage], {
-    encoding: 'utf-8',
-    shell: false,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
-    throw new Error(detail || `git commit exited with code ${result.status}`);
+  const tmpFile = join(tmpdir(), `commit-echo-msg-${process.pid}-${Date.now()}.txt`);
+  try {
+    writeFileSync(tmpFile, fullMessage, 'utf-8');
+    const result = spawnSync('git', ['commit', '-F', tmpFile], {
+      encoding: 'utf-8',
+      shell: false,
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
+      throw new Error(detail || `git commit exited with code ${result.status}`);
+    }
+    return result.stdout;
+  } finally {
+    try { unlinkSync(tmpFile); } catch {}
   }
-  return result.stdout;
 }
 
 export function getRepoRoot(): string {

@@ -57,7 +57,19 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
     await displaySuggestions(suggestions);
 
     if (options.autoCommit && suggestions.length > 0) {
-      await acceptAndCommit(suggestions[0]!, config, diffResult.diff);
+      const first = suggestions[0]!;
+      if (options.commit !== false) {
+        if (!diffResult.staged) {
+          outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
+          process.exit(1);
+        }
+        await acceptAndCommit(first, config, diffResult.diff, true);
+      } else {
+        console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
+        if (first.body) {
+          console.log(`  ${pc.dim(first.body)}`);
+        }
+      }
       return;
     }
 
@@ -111,10 +123,37 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   }
 }
 
-async function acceptAndCommit(selected: Suggestion, config: Config, diff: string): Promise<void> {
+async function acceptAndCommit(selected: Suggestion, config: Config, diff: string, auto = false): Promise<void> {
   console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
   if (selected.body) {
     console.log(`  ${pc.dim(selected.body)}`);
+  }
+
+  if (auto) {
+    try {
+      const result = commit(selected.message, selected.body);
+      console.log(pc.green(result.trim()));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      outro(pc.red(`Commit failed: ${msg}`));
+      process.exit(1);
+    }
+
+    try {
+      await appendEntry({
+        timestamp: new Date().toISOString(),
+        message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
+        diff,
+        model: config.model,
+        provider: config.provider,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      outro(pc.yellow(`Warning: failed to write history entry: ${msg}`));
+    }
+
+    outro(pc.green('✓ Commit created.'));
+    return;
   }
 
   const edit = await confirm({

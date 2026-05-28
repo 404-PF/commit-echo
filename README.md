@@ -21,15 +21,23 @@ npm install -g @404-pf/commit-echo
 # Full flow: diff, suggest, pick, commit
 commit-echo
 
+# Auto-accept and commit first suggestion
+commit-echo --yes
+
 # Interactive setup wizard
 commit-echo init
 
 # Generate suggestions without committing
 commit-echo suggest
 
+# Auto-select first suggestion (no commit)
+commit-echo suggest --yes
+
 # View learned style profile
 commit-echo history
 ```
+
+Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged changes (run `git add`). If no staged changes are found when auto-committing is requested, the command will print an error and exit with a non-zero status.
 
 ## Requirements
 
