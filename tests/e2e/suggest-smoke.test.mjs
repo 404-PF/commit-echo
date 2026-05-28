@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import os, { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -35,7 +35,11 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
   await writeFile(join(repo, 'README.md'), '# fixture\n\nupdated\n', 'utf8');
   execFileSync('git', ['add', 'README.md'], { cwd: repo });
 
-  const configDir = join(home, 'Library', 'Application Support', 'commit-echo');
+  const configDir = os.platform() === 'darwin'
+    ? join(home, 'Library', 'Application Support', 'commit-echo')
+    : os.platform() === 'win32'
+      ? join(home, 'AppData', 'Roaming', 'commit-echo')
+      : join(home, '.config', 'commit-echo');
   await mkdir(configDir, { recursive: true });
 
   const server = createServer(async (req, res) => {
@@ -52,7 +56,10 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
     res.end(JSON.stringify({ error: 'not found' }));
   });
   const port = await listen(server);
-  t.after(() => server.close());
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
 
   await writeFile(
     join(configDir, 'config.json'),
