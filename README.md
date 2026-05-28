@@ -53,6 +53,18 @@ export OPENAI_API_KEY=sk-example
 export ANTHROPIC_API_KEY=sk-ant-example
 ```
 
+```powershell
+$env:OPENAI_API_KEY = "sk-example"
+# or
+$env:ANTHROPIC_API_KEY = "sk-ant-example"
+```
+
+```cmd
+set OPENAI_API_KEY=sk-example
+REM or
+set ANTHROPIC_API_KEY=sk-ant-example
+```
+
 ### Full flow: review staged changes and commit
 
 ```bash
