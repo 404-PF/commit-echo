@@ -133,7 +133,13 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     try {
       const result = commit(selected.message, selected.body);
       console.log(pc.green(result.trim()));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      outro(pc.red(`Commit failed: ${msg}`));
+      process.exit(1);
+    }
 
+    try {
       await appendEntry({
         timestamp: new Date().toISOString(),
         message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
@@ -141,13 +147,12 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
         model: config.model,
         provider: config.provider,
       });
-
-      outro(pc.green('✓ Commit created.'));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      outro(pc.red(`Commit failed: ${msg}`));
-      process.exit(1);
+      const msg = err instanceof Error ? err.message : String(err);
+      outro(pc.yellow(`Warning: failed to write history entry: ${msg}`));
     }
+
+    outro(pc.green('✓ Commit created.'));
     return;
   }
 
