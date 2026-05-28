@@ -16,7 +16,8 @@
     "build": "tsc",
     "test": "npm run build && node --test tests/*.test.mjs tests/e2e/*.test.mjs",
     "prepublishOnly": "npm run build",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "node --test tests/**/*.test.mjs"
   },
   "files": [
     "dist"
