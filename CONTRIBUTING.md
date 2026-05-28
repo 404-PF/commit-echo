@@ -50,6 +50,14 @@ src/
 3. Keep PRs focused – one feature or fix per PR.
 4. Write a clear, concise PR description explaining what and why.
 
+## Issue Templates
+
+When opening an issue, use the closest template from `.github/ISSUE_TEMPLATE/`:
+
+- **Bug report** for reproducible defects
+- **Feature request** for product or workflow improvements
+- **Good first issue** for small, newcomer-friendly tasks with clear acceptance criteria
+
 ## Adding a New LLM Provider
 
 1. Create a file in `src/providers/` implementing the provider interface from `src/types.ts`.
