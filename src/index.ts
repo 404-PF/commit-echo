@@ -18,7 +18,9 @@ try {
 }
 
 const program = new Command();
-program.option('--yes', 'Automatically accept the first suggestion and commit without prompts');
+program
+  .option('-y, --yes', 'Automatically accept the first suggestion and commit without prompts')
+  .option('--auto', 'Alias for --yes');
 
 program
   .name('commit-echo')
@@ -46,9 +48,10 @@ program
   .command('suggest')
   .description('Generate commit suggestions without committing')
   .option('--commit', 'Commit the selected suggestion', false)
-  .option('--yes', 'Automatically select the first suggestion and skip prompts')
+  .option('-y, --yes', 'Automatically select the first suggestion and skip prompts')
+  .option('--auto', 'Alias for --yes')
   .action(async (options) => {
-    await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes) });
+    await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes || options.auto) });
   });
 
 program
@@ -58,7 +61,7 @@ program
 
 program.action(async () => {
   const opts = program.opts();
-  await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes) });
+  await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto) });
 });
 
 program.parse(process.argv);

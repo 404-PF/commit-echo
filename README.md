@@ -37,6 +37,8 @@ commit-echo suggest --yes
 commit-echo history
 ```
 
+Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged changes (run `git add`). If no staged changes are found when auto-committing is requested, the command will print an error and exit with a non-zero status.
+
 ## Requirements
 
 - Node.js >= 24.0.0

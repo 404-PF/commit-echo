@@ -59,6 +59,10 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
     if (options.autoCommit && suggestions.length > 0) {
       const first = suggestions[0]!;
       if (options.commit !== false) {
+        if (!diffResult.staged) {
+          outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
+          process.exit(1);
+        }
         await acceptAndCommit(first, config, diffResult.diff, true);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
@@ -140,7 +144,9 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
 
       outro(pc.green('✓ Commit created.'));
     } catch (err) {
-      outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      outro(pc.red(`Commit failed: ${msg}`));
+      process.exit(1);
     }
     return;
   }
