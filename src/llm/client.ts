@@ -12,8 +12,8 @@ function resolveApiKey(config: Config): string {
   return '';
 }
 
-export async function generateSuggestions(config: Config, diff: string): Promise<{ suggestions: Suggestion[]; profile: StyleProfile }> {
-  const profile = await buildProfile(config.historySize);
+export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile }> {
+  const profile = profileParam ?? await buildProfile(config.historySize);
   const systemPrompt = buildSystemPrompt(profile);
   const userPrompt = buildUserPrompt(diff);
 
