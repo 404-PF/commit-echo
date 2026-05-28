@@ -49,6 +49,94 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 
 Run `commit-echo init` to configure your provider and model. Configuration is stored in `~/.config/commit-echo/config.json`.
 
+## Quickstart
+
+### Environment
+
+Set the API key for the provider you plan to use before running the setup wizard or generating suggestions:
+
+```bash
+export OPENAI_API_KEY=sk-example
+# or
+export ANTHROPIC_API_KEY=sk-ant-example
+```
+
+```powershell
+$env:OPENAI_API_KEY = "sk-example"
+# or
+$env:ANTHROPIC_API_KEY = "sk-ant-example"
+```
+
+```cmd
+set OPENAI_API_KEY=sk-example
+REM or
+set ANTHROPIC_API_KEY=sk-ant-example
+```
+
+### Full flow: review staged changes and commit
+
+```bash
+git add .
+commit-echo
+```
+
+Sample output:
+
+```text
+commit-echo
+  1. feat: add release summary command
+  2. fix: guard empty commit history
+  3. docs: clarify init workflow
+```
+
+### Interactive setup
+
+```bash
+commit-echo init
+```
+
+What it does:
+- lets you pick a provider
+- helps you choose a model
+- saves the config to `~/.config/commit-echo/config.json`
+
+### Generate suggestions without committing
+
+```bash
+commit-echo suggest --no-commit
+```
+
+Sample output:
+
+```text
+Suggestions generated:
+  1. fix: handle empty staged diff
+  2. test: cover custom provider validation
+  3. chore: refresh package metadata
+```
+
+### View learned style history
+
+```bash
+commit-echo history
+```
+
+Sample output:
+
+```text
+Recent commit style
+- prefix frequency: fix, feat, docs
+- average subject length: 42
+- recent bodies: 6
+```
+
+## Troubleshooting
+
+- **`No configuration found`** — run `commit-echo init` first.
+- **`No changes detected`** — stage files with `git add` or make an unstaged edit before running `commit-echo suggest`.
+- **Provider auth errors** — confirm the matching environment variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or your custom provider key) is set in the same shell session.
+- **Wrong repository context** — run the command inside a Git repository so `commit-echo` can read the diff and history.
+
 ## License
 
 MIT
