@@ -15,6 +15,18 @@ LLM-powered CLI that learns your Git commit style and auto-suggests personalized
 npm install -g @404-pf/commit-echo
 ```
 
+## Development
+
+To build and run the CLI locally without a global install:
+
+```bash
+npm install
+npm run build
+node dist/index.js suggest
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full setup and contribution workflow.
+
 ## Usage
 
 ```bash
