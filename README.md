@@ -51,6 +51,24 @@ commit-echo history
 
 Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged changes (run `git add`). If no staged changes are found when auto-committing is requested, the command will print an error and exit with a non-zero status.
 
+## Example
+
+Set your OpenAI API key before asking `commit-echo` to suggest commit messages.
+
+POSIX (bash/zsh):
+
+```bash
+export OPENAI_API_KEY="your_api_key_here"
+commit-echo suggest
+```
+
+PowerShell (Windows):
+
+```powershell
+$env:OPENAI_API_KEY = 'your_api_key_here'
+commit-echo suggest
+```
+
 ## Requirements
 
 - Node.js >= 24.0.0
