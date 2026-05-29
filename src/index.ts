@@ -33,7 +33,7 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo')}           Suggest and commit staged changes
   ${pc.cyan('commit-echo --yes')}       Auto-select and commit first suggestion
   ${pc.cyan('commit-echo init')}      Run interactive setup wizard
-  ${pc.cyan('commit-echo suggest')}    Generate commit suggestions without committing
+  ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
 `
@@ -46,7 +46,7 @@ program
 
 program
   .command('suggest')
-  .description('Generate commit suggestions without committing')
+  .description('Generate commit suggestions (use --commit to create a commit)')
   .option('--commit', 'Commit the selected suggestion', false)
   .option('-y, --yes', 'Automatically select the first suggestion and skip prompts')
   .option('--auto', 'Alias for --yes')
