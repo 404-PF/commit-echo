@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseSuggestions } from '../dist/llm/prompt.js';
 
@@ -123,6 +123,21 @@ test('handles leading/trailing whitespace on bullet lines', () => {
   assert.equal(result.length, 2);
   assert.equal(result[0].message, 'feat: spaced out suggestion');
   assert.equal(result[1].message, 'fix: another spaced suggestion');
+});
+
+test('treats indented numbered sub-items as body text, not new suggestions', () => {
+  // LLMs sometimes put a numbered sub-list inside a suggestion body.
+  // Those lines must not be parsed as top-level suggestions.
+  const input = `1. feat: export profile
+   1. gather commits
+   2. write JSON
+2. fix: handle empty history`;
+
+  const result = parseSuggestions(input);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].message, 'feat: export profile');
+  assert.match(result[0].body ?? '', /gather commits/);
+  assert.equal(result[1].message, 'fix: handle empty history');
 });
 
 test('returns fewer than count if fewer items present', () => {

@@ -14,10 +14,9 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test tests/*.test.mjs tests/e2e/*.test.mjs",
+    "test": "npm run build && node --test tests/**/*.test.mjs",
     "prepublishOnly": "npm run build",
-    "start": "node dist/index.js",
-    "test": "node --test tests/**/*.test.mjs"
+    "start": "node dist/index.js"
   },
   "files": [
     "dist"

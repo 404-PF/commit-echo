@@ -67,7 +67,7 @@ export function parseSuggestions(content: string, count: number = 3): { message:
   let current: { message: string; bodyLines: string[] } | null = null;
 
   for (const line of lines) {
-    const listItemMatch = line.match(/^\s*(?:(?:\d+)[.)]|[-*])\s+(.*)/);
+    const listItemMatch = line.match(/^(?:\d+[.)]|\s*[-*])\s+(.*\S.*)/);
     if (listItemMatch) {
       if (current) {
         suggestions.push({
