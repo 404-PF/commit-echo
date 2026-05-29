@@ -22,7 +22,7 @@ if (process.platform === 'win32') {
       gitPath,
       '#!/usr/bin/env node\n' +
         'const fs = require("fs");\n' +
-        'const p = process.argv[3];\n' +
+        'const p = process.argv.at(-1);\n' +
         'const c = fs.readFileSync(p, "utf8");\n' +
         'console.log(c);\n',
       'utf-8'
@@ -46,7 +46,7 @@ if (process.platform === 'win32') {
       title
     )}, ${JSON.stringify(body)}); console.log(out); process.exit(0);}catch(e){ console.error(e instanceof Error?e.message:String(e)); process.exit(2);} })();`;
     writeFileSync(runnerPath, runnerSrc, 'utf-8');
-    const res = spawnSync(process.execPath, [runnerPath], { env: { ...process.env, PATH: tmpRoot }, encoding: 'utf-8' });
+    const res = spawnSync(process.execPath, [runnerPath], { env: { ...process.env, PATH: process.env.PATH }, encoding: 'utf-8' });
     if (res.error) throw res.error;
     assert.strictEqual(res.status, 0, `child exited non-zero: ${res.stderr || res.stdout}`);
     assert.ok(res.stdout.includes(title), 'stdout should include title');
@@ -85,7 +85,7 @@ test('commit throws when git exits non-zero', () => {
     const diffUrl = pathToFileURL(diffAbs).href;
     const runnerSrc = `(async ()=>{ const { commit } = await import('${diffUrl}'); try{ commit('msg','body'); console.log('OK'); process.exit(0);}catch(e){ console.error(e instanceof Error?e.message:String(e)); process.exit(2);} })();`;
     writeFileSync(runnerPath, runnerSrc, 'utf-8');
-    const res = spawnSync(process.execPath, [runnerPath], { env: { ...process.env, PATH: tmpRoot }, encoding: 'utf-8' });
+    const res = spawnSync(process.execPath, [runnerPath], { env: { ...process.env, PATH: process.env.PATH }, encoding: 'utf-8' });
     // child should exit non-zero
     assert.notStrictEqual(res.status, 0, 'child should exit with non-zero status');
   } finally {
