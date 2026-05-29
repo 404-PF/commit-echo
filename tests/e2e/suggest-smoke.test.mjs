@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import os, { tmpdir } from 'node:os';
+import { platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -35,9 +35,9 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
   await writeFile(join(repo, 'README.md'), '# fixture\n\nupdated\n', 'utf8');
   execFileSync('git', ['add', 'README.md'], { cwd: repo });
 
-  const configDir = os.platform() === 'darwin'
+  const configDir = platform() === 'darwin'
     ? join(home, 'Library', 'Application Support', 'commit-echo')
-    : os.platform() === 'win32'
+    : platform() === 'win32'
       ? join(home, 'AppData', 'Roaming', 'commit-echo')
       : join(home, '.config', 'commit-echo');
   await mkdir(configDir, { recursive: true });
@@ -73,12 +73,13 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
     'utf8'
   );
 
-  const child = spawn('node', ['dist/index.js', 'suggest', '--no-commit'], {
-    cwd: process.cwd(),
+  const child = spawn('node', [join(process.cwd(), 'dist/index.js'), 'suggest', '--no-commit'], {
+    cwd: repo,
     env: {
       ...process.env,
       HOME: home,
       XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
       FORCE_COLOR: '0',
     },
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -86,11 +87,12 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
 
   let stdout = '';
   let stderr = '';
+  let interrupted = false;
   child.stdout.on('data', (chunk) => {
     stdout += chunk.toString();
-    if (stdout.includes('Suggestions generated:')) {
-      child.stdin.write('\u0003');
-      child.stdin.end();
+    if (!interrupted && stdout.includes('feat: add smoke test coverage')) {
+      interrupted = true;
+      child.kill('SIGINT');
     }
   });
   child.stderr.on('data', (chunk) => {
