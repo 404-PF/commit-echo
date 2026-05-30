@@ -17,6 +17,16 @@ function showTruncationWarning(info: TruncationInfo): void {
   );
 }
 
+function showVerboseDiagnostics(profileStr: string, model: string, truncation?: TruncationInfo): void {
+  console.log(pc.dim(`\nDiagnostic info:`));
+  console.log(pc.dim(`  Style profile: ${profileStr}`));
+  console.log(pc.dim(`  Model: ${model}`));
+  if (truncation) {
+    const pct = ((truncation.truncatedSize / truncation.originalSize) * 100).toFixed(1);
+    console.log(pc.dim(`  Diff truncation: ${truncation.originalSize} → ${truncation.truncatedSize} chars (${pct}%), ${truncation.filesTruncated} file(s)`));
+  }
+}
+
 async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   for (const s of suggestions) {
     const full = s.body ? `${s.message}\n  ${pc.dim(s.body)}` : s.message;
@@ -24,7 +34,7 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
-export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean } = {}): Promise<void> {
+export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean; verbose?: boolean } = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
   try {
@@ -62,11 +72,15 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   genSpinner.start('Generating commit suggestions...');
 
   try {
-    const { suggestions, truncation } = await generateSuggestions(config, diffResult.diff, profile);
+    const { suggestions, truncation, model } = await generateSuggestions(config, diffResult.diff, profile);
     genSpinner.stop(pc.green('Suggestions generated:'));
 
     if (truncation) {
       showTruncationWarning(truncation);
+    }
+
+    if (options.verbose) {
+      showVerboseDiagnostics(profileStr, model, truncation);
     }
 
     await displaySuggestions(suggestions);
