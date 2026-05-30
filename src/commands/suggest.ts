@@ -42,8 +42,9 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
     return;
   }
 
+  let apiKey: string;
   try {
-    assertApiKeyAvailable(config);
+    apiKey = assertApiKeyAvailable(config);
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Missing API key'));
     return;
@@ -69,7 +70,7 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   genSpinner.start('Generating commit suggestions...');
 
   try {
-    const { suggestions, truncation } = await generateSuggestions(config, diffResult.diff, profile);
+    const { suggestions, truncation } = await generateSuggestions(config, diffResult.diff, profile, apiKey);
     genSpinner.stop(pc.green('Suggestions generated:'));
 
     if (truncation) {

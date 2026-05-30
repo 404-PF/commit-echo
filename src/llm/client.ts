@@ -12,7 +12,6 @@ export function resolveApiKey(config: Config): string {
   return '';
 }
 
-
 export function assertApiKeyAvailable(config: Config): string {
   const apiKey = resolveApiKey(config);
   const info = getProviderInfo(config.provider);
@@ -25,7 +24,7 @@ export function assertApiKeyAvailable(config: Config): string {
   return apiKey;
 }
 
-export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
+export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile, apiKeyParam?: string): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
   const profile = profileParam ?? await buildProfile(config.historySize);
 
   // Truncate diff if it exceeds the configured limit
@@ -34,7 +33,7 @@ export async function generateSuggestions(config: Config, diff: string, profileP
   const systemPrompt = buildSystemPrompt(profile);
   const userPrompt = buildUserPrompt(truncatedDiff);
 
-  const apiKey = assertApiKeyAvailable(config);
+  const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 
   const result = await complete(config.provider, config.baseUrl, {
     model: config.model,
