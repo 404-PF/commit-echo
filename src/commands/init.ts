@@ -3,6 +3,7 @@ import pc from 'picocolors';
 import { BUILTIN_PROVIDERS, getProviderInfo, fetchModels } from '../providers/index.js';
 import { saveConfig, configExists, loadConfig } from '../config/store.js';
 import type { Config } from '../types.js';
+import { getAvailableTemplateVars } from '../llm/prompt.js';
 
 const CUSTOM_KEY = '__custom__';
 
@@ -152,14 +153,10 @@ export async function initCommand(): Promise<void> {
   let userPromptTemplate: string | undefined;
 
   if (useCustomPrompts) {
-    const templateHint =
-      `\nAvailable variables:\n` +
-      `  {{diff}}     - The git diff text\n` +
-      `  {{profile}}  - The learned style profile summary\n` +
-      `  {{branch}}   - Current git branch name\n` +
-      `Leave empty to use the built-in prompt.\n`;
-
-    note(templateHint);
+    note(
+      `\nAvailable variables:\n${getAvailableTemplateVars()}\n` +
+      `Leave empty to use the built-in prompt.\n`
+    );
 
     const sysResult = await text({
       message: 'Custom system prompt template (optional):',

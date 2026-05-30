@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { initCommand } from './commands/init.js';
 import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
+import { getAvailableTemplateVars } from './llm/prompt.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkg: { version?: string; description?: string };
@@ -38,10 +39,7 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo history')}   View learned style profile and history
 
 ${pc.dim('Custom prompt template variables:')}
-  ${pc.dim('{{diff}}     - The git diff text')}
-  ${pc.dim('{{profile}}  - The learned style profile summary')}
-  ${pc.dim('{{branch}}   - Current git branch name')}
-  ${pc.dim('{{message}}  - (reserved) Previous commit message context')}
+  ${getAvailableTemplateVars().split('\n').map(l => `  ${pc.dim(l)}`).join('\n')}
   ${pc.dim('Set systemPromptTemplate / userPromptTemplate in config.json')}
 `
   );

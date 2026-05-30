@@ -111,6 +111,24 @@ test('resolveUserPrompt uses custom template when configured', () => {
   assert.ok(!prompt.includes('Generate 3 commit message suggestions'));
 });
 
+test('resolveSystemPrompt falls back to built-in when systemPromptTemplate is empty string', () => {
+  const prompt = resolveSystemPrompt(EMPTY_PROFILE, {
+    diff: '',
+    profile: '',
+    branch: 'main',
+  }, {
+    provider: '',
+    model: '',
+    historySize: 0,
+    maxDiffSize: 0,
+    systemPromptTemplate: '',
+  });
+
+  assert.ok(prompt.includes('expert Git commit message assistant'));
+  assert.ok(prompt.includes('No previous commit history available'));
+  assert.ok(!prompt.includes('Branch:'));
+});
+
 test('getAvailableTemplateVars returns variable descriptions', () => {
   const vars = getAvailableTemplateVars();
 
