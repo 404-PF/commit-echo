@@ -1,7 +1,7 @@
-import type { Config, Suggestion, StyleProfile } from '../types.js';
+import type { Config, Suggestion, StyleProfile, TruncationInfo } from '../types.js';
 import { getProviderInfo } from '../providers/index.js';
 import { complete } from '../providers/index.js';
-import { buildSystemPrompt, buildUserPrompt, parseSuggestions } from './prompt.js';
+import { buildSystemPrompt, buildUserPrompt, parseSuggestions, truncateDiff } from './prompt.js';
 import { buildProfile } from '../history/store.js';
 
 function resolveApiKey(config: Config): string {
@@ -12,10 +12,14 @@ function resolveApiKey(config: Config): string {
   return '';
 }
 
-export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile }> {
+export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
   const profile = profileParam ?? await buildProfile(config.historySize);
+
+  // Truncate diff if it exceeds the configured limit
+  const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
+
   const systemPrompt = buildSystemPrompt(profile);
-  const userPrompt = buildUserPrompt(diff);
+  const userPrompt = buildUserPrompt(truncatedDiff);
 
   const apiKey = resolveApiKey(config);
 
@@ -42,7 +46,11 @@ export async function generateSuggestions(config: Config, diff: string, profileP
     throw new Error('Could not parse any suggestions from LLM response. The model may need a different prompt format.');
   }
 
-  return { suggestions, profile };
+  return {
+    suggestions,
+    profile,
+    truncation: truncation.wasTruncated ? truncation : undefined,
+  };
 }
 
 export async function testConnection(config: Config): Promise<string> {

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { Config } from '../types.js';
 
 const DEFAULT_HISTORY_SIZE = 50;
+const DEFAULT_MAX_DIFF_SIZE = 4000;
 
 export function getConfigDir(): string {
   const home = homedir();
@@ -42,6 +43,7 @@ export async function loadConfig(): Promise<Config> {
     baseUrl: parsed.baseUrl,
     apiKey: parsed.apiKey,
     historySize: parsed.historySize ?? DEFAULT_HISTORY_SIZE,
+    maxDiffSize: parsed.maxDiffSize ?? DEFAULT_MAX_DIFF_SIZE,
   };
 }
 

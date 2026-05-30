@@ -4,6 +4,14 @@ export interface Config {
   baseUrl?: string;
   apiKey?: string;
   historySize: number;
+  maxDiffSize: number;
+}
+
+export interface TruncationInfo {
+  wasTruncated: boolean;
+  originalSize: number;
+  truncatedSize: number;
+  filesTruncated: number;
 }
 
 export interface CommitEntry {

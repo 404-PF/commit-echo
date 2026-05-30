@@ -1,10 +1,21 @@
 import { intro, outro, select, text, confirm, spinner, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
-import type { Config, Suggestion } from '../types.js';
+import type { Config, Suggestion, TruncationInfo } from '../types.js';
 import { loadOrPromptConfig } from '../config/store.js';
 import { checkGitRepo, getStagedDiff, getUnstagedDiff, commit } from '../git/diff.js';
 import { generateSuggestions } from '../llm/client.js';
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
+
+function showTruncationWarning(info: TruncationInfo): void {
+  const pct = ((info.truncatedSize / info.originalSize) * 100).toFixed(1);
+  console.warn(
+    pc.yellow(
+      `\n⚠  Diff truncated: ${info.originalSize} → ${info.truncatedSize} chars (${pct}%) ` +
+        `— ${info.filesTruncated} file(s) affected. ` +
+        `Adjust maxDiffSize in config to increase the limit.`
+    )
+  );
+}
 
 async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   for (const s of suggestions) {
@@ -51,8 +62,12 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   genSpinner.start('Generating commit suggestions...');
 
   try {
-    const { suggestions } = await generateSuggestions(config, diffResult.diff, profile);
+    const { suggestions, truncation } = await generateSuggestions(config, diffResult.diff, profile);
     genSpinner.stop(pc.green('Suggestions generated:'));
+
+    if (truncation) {
+      showTruncationWarning(truncation);
+    }
 
     await displaySuggestions(suggestions);
 
