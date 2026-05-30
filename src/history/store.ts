@@ -83,7 +83,9 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
       bodyCount++;
     }
 
-    const verbMatch = firstLine.match(/^(?:feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(?:\([^)]+\))?:\s*(\w+)/);
+    const verbMatch = firstLine.match(
+      /^(?:feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(?:\([^)]+\))?:\s*(\w+)/,
+    );
     if (verbMatch) {
       const verb = verbMatch[1]!;
       if (!verb.endsWith('ed') && !verb.endsWith('ing')) {

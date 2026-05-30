@@ -12,8 +12,12 @@ function resolveApiKey(config: Config): string {
   return '';
 }
 
-export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
-  const profile = profileParam ?? await buildProfile(config.historySize);
+export async function generateSuggestions(
+  config: Config,
+  diff: string,
+  profileParam?: StyleProfile,
+): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
+  const profile = profileParam ?? (await buildProfile(config.historySize));
 
   // Truncate diff if it exceeds the configured limit
   const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
@@ -58,9 +62,7 @@ export async function testConnection(config: Config): Promise<string> {
 
   const result = await complete(config.provider, config.baseUrl, {
     model: config.model,
-    messages: [
-      { role: 'user', content: 'Reply with exactly the word "ok".' },
-    ],
+    messages: [{ role: 'user', content: 'Reply with exactly the word "ok".' }],
     temperature: 0,
     maxTokens: 10,
     apiKey,

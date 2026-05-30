@@ -36,13 +36,10 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
-`
+`,
   );
 
-program
-  .command('init')
-  .description('Run interactive setup wizard to configure provider and model')
-  .action(initCommand);
+program.command('init').description('Run interactive setup wizard to configure provider and model').action(initCommand);
 
 program
   .command('suggest')
@@ -54,10 +51,7 @@ program
     await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes || options.auto) });
   });
 
-program
-  .command('history')
-  .description('View learned style profile and recent commit history')
-  .action(historyCommand);
+program.command('history').description('View learned style profile and recent commit history').action(historyCommand);
 
 program.action(async () => {
   const opts = program.opts();

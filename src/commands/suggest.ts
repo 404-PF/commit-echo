@@ -12,8 +12,8 @@ function showTruncationWarning(info: TruncationInfo): void {
     pc.yellow(
       `\n⚠  Diff truncated: ${info.originalSize} → ${info.truncatedSize} chars (${pct}%) ` +
         `— ${info.filesTruncated} file(s) affected. ` +
-        `Adjust maxDiffSize in config to increase the limit.`
-    )
+        `Adjust maxDiffSize in config to increase the limit.`,
+    ),
   );
 }
 
@@ -175,7 +175,10 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     message: 'Edit message before committing?',
     initialValue: false,
   });
-  if (isCancel(edit)) { outro('Cancelled.'); return; }
+  if (isCancel(edit)) {
+    outro('Cancelled.');
+    return;
+  }
 
   let finalMessage = selected.message;
   let finalBody = selected.body;
@@ -185,14 +188,20 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       message: 'Edit commit message:',
       initialValue: selected.message,
     });
-    if (isCancel(editedMessage)) { outro('Cancelled.'); return; }
+    if (isCancel(editedMessage)) {
+      outro('Cancelled.');
+      return;
+    }
     finalMessage = editedMessage;
 
     const editedBody = await text({
       message: 'Edit body (optional):',
       initialValue: selected.body ?? '',
     });
-    if (isCancel(editedBody)) { outro('Cancelled.'); return; }
+    if (isCancel(editedBody)) {
+      outro('Cancelled.');
+      return;
+    }
     finalBody = editedBody || undefined;
   }
 

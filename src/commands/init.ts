@@ -65,10 +65,17 @@ export async function initCommand(): Promise<void> {
       initialValue: existingConfig?.baseUrl,
       validate: (value) => {
         if (!value) return 'Base URL is required';
-        try { new URL(value); } catch { return 'Invalid URL format'; }
+        try {
+          new URL(value);
+        } catch {
+          return 'Invalid URL format';
+        }
       },
     });
-    if (isCancel(urlResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(urlResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
     baseUrl = urlResult;
     apiKeyEnv = 'CUSTOM_API_KEY';
     needsApiKey = true;
@@ -86,7 +93,10 @@ export async function initCommand(): Promise<void> {
   if (needsApiKey) {
     const existingKey = existingConfig?.apiKey ?? process.env[apiKeyEnv] ?? '';
     const keyResult = await text(buildApiKeyPrompt(existingKey, apiKeyEnv));
-    if (isCancel(keyResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(keyResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
 
     if (keyResult) {
       apiKey = keyResult;
@@ -102,20 +112,21 @@ export async function initCommand(): Promise<void> {
 
   let models: string[];
   try {
-    models = await fetchModels(
-      providerKey as string,
-      providerKey === CUSTOM_KEY ? baseUrl : undefined,
-      apiKey ?? ''
-    );
+    models = await fetchModels(providerKey as string, providerKey === CUSTOM_KEY ? baseUrl : undefined, apiKey ?? '');
     modelSpinner.stop('Models fetched successfully.');
   } catch (err) {
     modelSpinner.stop(pc.yellow('Could not fetch models automatically.'));
     const manualResult = await text({
       message: 'Enter model name manually:',
       placeholder: existingConfig?.model ?? 'gpt-4o',
-      validate: (value) => { if (!value) return 'Model name is required'; },
+      validate: (value) => {
+        if (!value) return 'Model name is required';
+      },
     });
-    if (isCancel(manualResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(manualResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
     models = [manualResult];
   }
 
@@ -140,7 +151,10 @@ export async function initCommand(): Promise<void> {
       if (!Number.isInteger(n) || n < 1) return 'Enter a positive integer';
     },
   });
-  if (isCancel(historyResult)) { outro('Setup cancelled.'); return; }
+  if (isCancel(historyResult)) {
+    outro('Setup cancelled.');
+    return;
+  }
 
   const config: Config = {
     provider: providerKey as string,
@@ -154,7 +168,9 @@ export async function initCommand(): Promise<void> {
   await saveConfig(config);
 
   if (needsApiKey && !config.apiKey && !process.env[apiKeyEnv]) {
-    const warn = pc.yellow(`\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${apiKeyEnv}`)} before running suggestions.`);
+    const warn = pc.yellow(
+      `\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${apiKeyEnv}`)} before running suggestions.`,
+    );
     outro(warn);
     return;
   }
@@ -184,16 +200,14 @@ export async function initCommand(): Promise<void> {
   }
 
   const displayKey = config.apiKey ? 'stored in config' : `\$${apiKeyEnv}`;
-  const displayUrl = providerKey === CUSTOM_KEY
-    ? baseUrl
-    : getProviderInfo(providerKey as string)?.baseUrl;
+  const displayUrl = providerKey === CUSTOM_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
 
   outro(
     `${pc.green('✓')} Configuration saved.\n` +
-    `  Provider: ${pc.cyan(providerKey as string)}\n` +
-    `  Model: ${pc.cyan(config.model)}\n` +
-    `  Endpoint: ${pc.dim(displayUrl ?? '')}\n` +
-    `  API key: ${pc.dim(displayKey)}\n\n` +
-    `Run ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`
+      `  Provider: ${pc.cyan(providerKey as string)}\n` +
+      `  Model: ${pc.cyan(config.model)}\n` +
+      `  Endpoint: ${pc.dim(displayUrl ?? '')}\n` +
+      `  API key: ${pc.dim(displayKey)}\n\n` +
+      `Run ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`,
   );
 }

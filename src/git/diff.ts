@@ -36,7 +36,6 @@ export function getUnstagedDiff(): DiffResult {
   };
 }
 
-
 export function commit(message: string, body?: string): string {
   const fullMessage = body ? `${message}\n\n${body}` : message;
   const tmpFile = join(tmpdir(), `commit-echo-msg-${process.pid}-${Date.now()}.txt`);
@@ -53,7 +52,9 @@ export function commit(message: string, body?: string): string {
     }
     return result.stdout;
   } finally {
-    try { unlinkSync(tmpFile); } catch {}
+    try {
+      unlinkSync(tmpFile);
+    } catch {}
   }
 }
 

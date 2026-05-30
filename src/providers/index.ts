@@ -39,13 +39,21 @@ export function createProvider(configProvider: string): Provider {
   return new OpenAICompatibleProvider();
 }
 
-export async function complete(configProvider: string, baseUrlOverride: string | undefined, params: Omit<ChatParams, 'baseUrl'>): Promise<ChatResult> {
+export async function complete(
+  configProvider: string,
+  baseUrlOverride: string | undefined,
+  params: Omit<ChatParams, 'baseUrl'>,
+): Promise<ChatResult> {
   const provider = createProvider(configProvider);
   const baseUrl = getBaseUrl(configProvider, baseUrlOverride);
   return provider.complete({ ...params, baseUrl });
 }
 
-export async function fetchModels(configProvider: string, baseUrlOverride: string | undefined, apiKey: string): Promise<string[]> {
+export async function fetchModels(
+  configProvider: string,
+  baseUrlOverride: string | undefined,
+  apiKey: string,
+): Promise<string[]> {
   const provider = createProvider(configProvider);
   const baseUrl = getBaseUrl(configProvider, baseUrlOverride);
 
