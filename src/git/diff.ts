@@ -37,7 +37,13 @@ export function getUnstagedDiff(): DiffResult {
 }
 
 
-export function commit(message: string, body?: string): string {
+export interface CommitResult {
+  raw: string;
+  hash?: string;
+  summary?: string;
+}
+
+export function commit(message: string, body?: string): CommitResult {
   const fullMessage = body ? `${message}\n\n${body}` : message;
   const tmpFile = join(tmpdir(), `commit-echo-msg-${process.pid}-${Date.now()}.txt`);
   try {
@@ -51,7 +57,14 @@ export function commit(message: string, body?: string): string {
       const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
       throw new Error(detail || `git commit exited with code ${result.status}`);
     }
-    return result.stdout;
+    const raw = result.stdout;
+    // Parse "[branch hash] summary" pattern
+    const match = raw.match(/\[\S+\s+([a-f0-9]+)\]\s+(.+)/);
+    return {
+      raw,
+      hash: match?.[1],
+      summary: match?.[2],
+    };
   } finally {
     try { unlinkSync(tmpFile); } catch {}
   }
