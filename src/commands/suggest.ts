@@ -1,6 +1,6 @@
 import { intro, outro, select, text, confirm, spinner, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
-import type { Config, Suggestion, TruncationInfo } from '../types.js';
+import type { Config, StyleProfile, Suggestion, TruncationInfo } from '../types.js';
 import { loadOrPromptConfig } from '../config/store.js';
 import { checkGitRepo, getStagedDiff, getUnstagedDiff, commit } from '../git/diff.js';
 import { generateSuggestions } from '../llm/client.js';
@@ -17,6 +17,25 @@ function showTruncationWarning(info: TruncationInfo): void {
   );
 }
 
+function showVerboseInfo(model: string, profile: StyleProfile, truncation?: TruncationInfo): void {
+  const commonPrefixes = profile.commonPrefixes.length > 0 ? profile.commonPrefixes.join(', ') : 'none';
+
+  console.log(pc.dim(`Model: ${model}`));
+  console.log(
+    pc.dim(
+      `Style profile: ${profile.totalCommits} commit(s), avg length ${profile.avgLength.toFixed(1)}, ` +
+        `imperative rate ${(profile.imperativeRate * 100).toFixed(1)}%, common prefixes: ${commonPrefixes}`
+    )
+  );
+  console.log(
+    pc.dim(
+      truncation
+        ? `Truncation: ${truncation.originalSize} -> ${truncation.truncatedSize} chars, ${truncation.filesTruncated} file(s) affected`
+        : 'Truncation: not applied'
+    )
+  );
+}
+
 async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   for (const s of suggestions) {
     const full = s.body ? `${s.message}\n  ${pc.dim(s.body)}` : s.message;
@@ -24,7 +43,7 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
-export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean } = {}): Promise<void> {
+export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean; verbose?: boolean } = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
   try {
@@ -62,8 +81,12 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   genSpinner.start('Generating commit suggestions...');
 
   try {
-    const { suggestions, truncation } = await generateSuggestions(config, diffResult.diff, profile);
+    const { suggestions, truncation, model } = await generateSuggestions(config, diffResult.diff, profile);
     genSpinner.stop(pc.green('Suggestions generated:'));
+
+    if (options.verbose) {
+      showVerboseInfo(model, profile, truncation);
+    }
 
     if (truncation) {
       showTruncationWarning(truncation);
