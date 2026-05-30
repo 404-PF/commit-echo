@@ -3,7 +3,7 @@ import pc from 'picocolors';
 import type { Config, Suggestion, TruncationInfo } from '../types.js';
 import { loadOrPromptConfig } from '../config/store.js';
 import { checkGitRepo, getStagedDiff, getUnstagedDiff, commit } from '../git/diff.js';
-import { generateSuggestions } from '../llm/client.js';
+import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
 
 function showTruncationWarning(info: TruncationInfo): void {
@@ -39,6 +39,13 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
     config = await loadOrPromptConfig();
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Configuration error'));
+    return;
+  }
+
+  try {
+    assertApiKeyAvailable(config);
+  } catch (err) {
+    outro(pc.red(err instanceof Error ? err.message : 'Missing API key'));
     return;
   }
 

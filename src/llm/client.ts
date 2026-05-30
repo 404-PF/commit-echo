@@ -4,12 +4,25 @@ import { complete } from '../providers/index.js';
 import { buildSystemPrompt, buildUserPrompt, parseSuggestions, truncateDiff } from './prompt.js';
 import { buildProfile } from '../history/store.js';
 
-function resolveApiKey(config: Config): string {
+export function resolveApiKey(config: Config): string {
   if (config.apiKey) return config.apiKey;
   const info = getProviderInfo(config.provider);
   const envVar = info?.apiKeyEnv;
   if (envVar && process.env[envVar]) return process.env[envVar]!;
   return '';
+}
+
+
+export function assertApiKeyAvailable(config: Config): string {
+  const apiKey = resolveApiKey(config);
+  const info = getProviderInfo(config.provider);
+
+  if (!apiKey && info?.needsApiKey) {
+    const envVar = info.apiKeyEnv || 'YOUR_PROVIDER_API_KEY';
+    throw new Error(`No API key found. Run commit-echo init to set one, or export ${envVar}.`);
+  }
+
+  return apiKey;
 }
 
 export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
@@ -21,7 +34,7 @@ export async function generateSuggestions(config: Config, diff: string, profileP
   const systemPrompt = buildSystemPrompt(profile);
   const userPrompt = buildUserPrompt(truncatedDiff);
 
-  const apiKey = resolveApiKey(config);
+  const apiKey = assertApiKeyAvailable(config);
 
   const result = await complete(config.provider, config.baseUrl, {
     model: config.model,
