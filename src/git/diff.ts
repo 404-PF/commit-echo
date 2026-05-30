@@ -58,8 +58,8 @@ export function commit(message: string, body?: string): CommitResult {
       throw new Error(detail || `git commit exited with code ${result.status}`);
     }
     const raw = result.stdout;
-    // Parse "[branch hash] summary" pattern
-    const match = raw.match(/\[\S+\s+([a-f0-9]+)\]\s+(.+)/);
+    // Parse "[branch hash] summary" or "[branch (extra) hash] summary" pattern
+    const match = raw.match(/\[\S+(?:\s+\([^)]+\))?\s+([a-f0-9]+)\]\s+(.+)/);
     return {
       raw,
       hash: match?.[1],
