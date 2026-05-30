@@ -1,4 +1,5 @@
-import type { StyleProfile, ChatMessage } from '../types.js';
+import pc from 'picocolors';
+import type { StyleProfile, ChatMessage, TruncationInfo } from '../types.js';
 
 function buildStyleGuidance(profile: StyleProfile): string {
   if (profile.totalCommits === 0) {
@@ -59,6 +60,94 @@ Format your response as a numbered list (1., 2., 3.) with each commit message on
 
 export function buildUserPrompt(diff: string): string {
   return `Generate 3 commit message suggestions for the following diff:\n\`\`\`diff\n${diff}\n\`\`\`\n\nReturn exactly 3 options as a numbered list.`;
+}
+
+/**
+ * Truncate a diff string to fit within `maxSize` characters.
+ *
+ * Preserves full file sections (diff --git headers + hunks) until the limit is
+ * reached. For the first file that overflows, keeps its header lines (diff --git,
+ * index, ---, +++) and first @@ hunk header if space allows. All subsequent
+ * files are dropped and a `[...truncated N file(s)...]` marker is appended.
+ * Logs a warning via `console.warn` when truncation occurs.
+ */
+export function truncateDiff(diff: string, maxSize: number): { diff: string; info: TruncationInfo } {
+  if (diff.length <= maxSize) {
+    return {
+      diff,
+      info: { wasTruncated: false, originalSize: diff.length, truncatedSize: diff.length, filesTruncated: 0 },
+    };
+  }
+
+  // Split into per-file sections on "diff --git" boundaries
+  const sections = diff.split(/(?=\ndiff --git|^diff --git)/).filter((s) => s.trim().length > 0);
+  const totalFiles = sections.length;
+
+  const kept: string[] = [];
+  let remaining = maxSize;
+  let fullyKept = 0;
+  let partialFile: string | null = null;
+
+  for (const section of sections) {
+    if (partialFile) break; // already past the limit
+
+    if (section.length <= remaining) {
+      kept.push(section);
+      remaining -= section.length;
+      fullyKept++;
+    } else {
+      // Partial: keep header lines of this file
+      const lines = section.split('\n');
+      const headerLines: string[] = [];
+
+      for (const line of lines) {
+        const isMeta =
+          line.startsWith('diff --git') ||
+          line.startsWith('index ') ||
+          line.startsWith('--- ') ||
+          line.startsWith('+++ ');
+
+        const lineCost = line.length + 1; // +1 for trailing newline
+
+        if (isMeta && lineCost <= remaining - 20) {
+          headerLines.push(line);
+          remaining -= lineCost;
+        } else if (line.startsWith('@@') && lineCost <= remaining - 20) {
+          headerLines.push(line);
+          remaining -= lineCost;
+          break; // stop after @@ hunk header
+        } else {
+          break;
+        }
+      }
+
+      if (headerLines.length > 0) {
+        partialFile = headerLines.join('\n');
+        kept.push(partialFile);
+      }
+    }
+  }
+
+  const filesTruncated = totalFiles - fullyKept;
+  const marker =
+    filesTruncated > 1
+      ? `\n[...truncated ${filesTruncated} file(s)...]`
+      : '\n[...truncated...]';
+  kept.push(marker);
+
+  const result = kept.join('\n');
+
+  console.warn(
+    pc.yellow(
+      `⚠ Diff truncated from ${diff.length} to ${result.length} characters ` +
+        `(maxDiffSize: ${maxSize}). ${filesTruncated} file(s) truncated.`
+    )
+  );
+
+  return {
+    diff: result,
+    info: { wasTruncated: true, originalSize: diff.length, truncatedSize: result.length, filesTruncated },
+  };
 }
 
 export function parseSuggestions(content: string, count: number = 3): { message: string; body?: string }[] {
