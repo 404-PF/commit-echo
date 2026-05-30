@@ -29,7 +29,7 @@ export async function generateSuggestions(config: Config, diff: string, profileP
   };
 
   const systemPrompt = resolveSystemPrompt(profile, vars, config);
-  const userPrompt = resolveUserPrompt(truncatedDiff, vars, config);
+  const userPrompt = resolveUserPrompt(vars, config);
 
   const apiKey = resolveApiKey(config);
 

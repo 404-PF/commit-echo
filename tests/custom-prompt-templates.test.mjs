@@ -84,8 +84,8 @@ test('resolveSystemPrompt uses custom template when configured', () => {
 });
 
 test('resolveUserPrompt falls back to built-in when no config template', () => {
-  const prompt = resolveUserPrompt('test diff', {
-    diff: '',
+  const prompt = resolveUserPrompt({
+    diff: 'test diff',
     profile: '',
     branch: '',
   });
@@ -95,7 +95,7 @@ test('resolveUserPrompt falls back to built-in when no config template', () => {
 });
 
 test('resolveUserPrompt uses custom template when configured', () => {
-  const prompt = resolveUserPrompt('some diff', {
+  const prompt = resolveUserPrompt({
     diff: 'some diff',
     profile: '',
     branch: 'main',

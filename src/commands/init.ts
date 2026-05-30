@@ -153,11 +153,13 @@ export async function initCommand(): Promise<void> {
 
   if (useCustomPrompts) {
     const templateHint =
-      `Available variables:\n` +
+      `\nAvailable variables:\n` +
       `  {{diff}}     - The git diff text\n` +
       `  {{profile}}  - The learned style profile summary\n` +
       `  {{branch}}   - Current git branch name\n` +
       `Leave empty to use the built-in prompt.\n`;
+
+    console.log(pc.dim(templateHint));
 
     const sysResult = await text({
       message: 'Custom system prompt template (optional):',
@@ -167,7 +169,6 @@ export async function initCommand(): Promise<void> {
     if (isCancel(sysResult)) { outro('Setup cancelled.'); return; }
     if (sysResult) {
       systemPromptTemplate = sysResult;
-      console.log(pc.dim(templateHint));
     }
 
     const userResult = await text({

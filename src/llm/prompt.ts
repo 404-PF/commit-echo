@@ -105,14 +105,13 @@ export function resolveSystemPrompt(
  * variables substituted. Otherwise the built-in prompt is returned.
  */
 export function resolveUserPrompt(
-  diff: string,
   vars: TemplateVars,
   config?: Config
 ): string {
   if (config?.userPromptTemplate) {
     return substituteTemplateVars(config.userPromptTemplate, vars);
   }
-  return buildUserPrompt(diff);
+  return buildUserPrompt(vars.diff);
 }
 
 /**
