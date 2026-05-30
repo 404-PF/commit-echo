@@ -147,7 +147,11 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
   if (auto) {
     try {
       const result = commit(selected.message, selected.body);
-      console.log(pc.green(result.trim()));
+      if (result.hash) {
+        console.log(`  ${pc.green('✓')} ${pc.bold(pc.green(result.hash))} ${pc.dim(result.summary ?? '')}`);
+      } else {
+        console.log(pc.green(result.raw.trim()));
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       outro(pc.red(`Commit failed: ${msg}`));
@@ -208,7 +212,11 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
 
   try {
     const result = commit(finalMessage, finalBody);
-    console.log(pc.green(result.trim()));
+    if (result.hash) {
+      console.log(`  ${pc.green('✓')} ${pc.bold(pc.green(result.hash))} ${pc.dim(result.summary ?? '')}`);
+    } else {
+      console.log(pc.green(result.raw.trim()));
+    }
 
     await appendEntry({
       timestamp: new Date().toISOString(),
