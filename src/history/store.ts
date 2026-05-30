@@ -59,6 +59,7 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
   const totalLengths: number[] = [];
   const prefixCounts: Record<string, number> = {};
   let imperativeCount = 0;
+  let imperativeSampleCount = 0;
   let sentenceCaseCount = 0;
   let scopeCount = 0;
   let bodyCount = 0;
@@ -82,19 +83,18 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
       bodyCount++;
     }
 
-    const body = entry.message.replace(firstLine, '').trim();
     const verbMatch = firstLine.match(/^(?:feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(?:\([^)]+\))?:\s*(\w+)/);
     if (verbMatch) {
       const verb = verbMatch[1]!;
-      if (verb.endsWith('ed') || verb.endsWith('ing')) {
-        // past tense or gerund
-      } else {
+      if (!verb.endsWith('ed') && !verb.endsWith('ing')) {
         imperativeCount++;
+        imperativeSampleCount++;
       }
     } else {
       const firstWord = firstLine.match(/^\w+/);
       if (firstWord && !firstWord[0]!.endsWith('ed') && !firstWord[0]!.endsWith('ing')) {
         imperativeCount++;
+        imperativeSampleCount++;
       }
     }
 
@@ -115,7 +115,7 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
     avgLength,
     commonPrefixes: sortedPrefixes.map(([p]) => p),
     prefixRates: Object.fromEntries(sortedPrefixes.map(([p, c]) => [p, c / total])),
-    imperativeRate: imperativeCount / total,
+    imperativeRate: imperativeSampleCount > 0 ? imperativeCount / imperativeSampleCount : 0,
     sentenceCaseRate: sentenceCaseCount / total,
     usesScopeRate: scopeCount / total,
     usesBodyRate: bodyCount / total,
