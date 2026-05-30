@@ -142,6 +142,45 @@ export async function initCommand(): Promise<void> {
   });
   if (isCancel(historyResult)) { outro('Setup cancelled.'); return; }
 
+  const useCustomPrompts = await confirm({
+    message: 'Set custom prompt templates? (Advanced)',
+    initialValue: false,
+  });
+  if (isCancel(useCustomPrompts)) { outro('Setup cancelled.'); return; }
+
+  let systemPromptTemplate: string | undefined;
+  let userPromptTemplate: string | undefined;
+
+  if (useCustomPrompts) {
+    const templateHint =
+      `Available variables:\n` +
+      `  {{diff}}     - The git diff text\n` +
+      `  {{profile}}  - The learned style profile summary\n` +
+      `  {{branch}}   - Current git branch name\n` +
+      `Leave empty to use the built-in prompt.\n`;
+
+    const sysResult = await text({
+      message: 'Custom system prompt template (optional):',
+      placeholder: 'You are a commit assistant...',
+      initialValue: existingConfig?.systemPromptTemplate,
+    });
+    if (isCancel(sysResult)) { outro('Setup cancelled.'); return; }
+    if (sysResult) {
+      systemPromptTemplate = sysResult;
+      console.log(pc.dim(templateHint));
+    }
+
+    const userResult = await text({
+      message: 'Custom user prompt template (optional):',
+      placeholder: 'Generate commit messages for:\n{{diff}}',
+      initialValue: existingConfig?.userPromptTemplate,
+    });
+    if (isCancel(userResult)) { outro('Setup cancelled.'); return; }
+    if (userResult) {
+      userPromptTemplate = userResult;
+    }
+  }
+
   const config: Config = {
     provider: providerKey as string,
     model: selectedModel as string,
@@ -149,6 +188,8 @@ export async function initCommand(): Promise<void> {
     apiKey: apiKey ?? undefined,
     historySize: Number(historyResult),
     maxDiffSize: 4000,
+    systemPromptTemplate,
+    userPromptTemplate,
   };
 
   await saveConfig(config);
@@ -188,12 +229,17 @@ export async function initCommand(): Promise<void> {
     ? baseUrl
     : getProviderInfo(providerKey as string)?.baseUrl;
 
+  const templateInfo = config.systemPromptTemplate || config.userPromptTemplate
+    ? `\n  Custom prompts: ${pc.dim(config.systemPromptTemplate ? 'system ✓' : '')}${config.systemPromptTemplate && config.userPromptTemplate ? ', ' : ''}${pc.dim(config.userPromptTemplate ? 'user ✓' : '')}`
+    : '';
+
   outro(
     `${pc.green('✓')} Configuration saved.\n` +
     `  Provider: ${pc.cyan(providerKey as string)}\n` +
     `  Model: ${pc.cyan(config.model)}\n` +
     `  Endpoint: ${pc.dim(displayUrl ?? '')}\n` +
-    `  API key: ${pc.dim(displayKey)}\n\n` +
-    `Run ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`
+    `  API key: ${pc.dim(displayKey)}` +
+    templateInfo +
+    `\n\nRun ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`
   );
 }

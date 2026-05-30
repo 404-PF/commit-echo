@@ -36,6 +36,13 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
+
+${pc.dim('Custom prompt template variables:')}
+  ${pc.dim('{{diff}}     - The git diff text')}
+  ${pc.dim('{{profile}}  - The learned style profile summary')}
+  ${pc.dim('{{branch}}   - Current git branch name')}
+  ${pc.dim('{{message}}  - (reserved) Previous commit message context')}
+  ${pc.dim('Set systemPromptTemplate / userPromptTemplate in config.json')}
 `
   );
 

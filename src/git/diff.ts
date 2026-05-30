@@ -60,3 +60,11 @@ export function commit(message: string, body?: string): string {
 export function getRepoRoot(): string {
   return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
 }
+
+export function getBranchName(): string {
+  try {
+    return execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+  } catch {
+    return 'unknown';
+  }
+}

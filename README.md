@@ -70,6 +70,30 @@ Run `commit-echo init` to configure your provider and model. Configuration is st
 | `historySize` | `50` | Number of recent commits to learn style from |
 | `maxDiffSize` | `4000` | Maximum diff size (in characters) sent to the LLM. Diffs exceeding this limit are intelligently truncated — file headers are preserved while line-level content is dropped from overflow files. Adjust upward for large refactors or generated-file changes. |
 
+### Custom Prompt Templates
+
+You can override the built-in system and user prompts by setting `systemPromptTemplate` and/or `userPromptTemplate` in `config.json`. This is useful for enforcing project-specific commit conventions (e.g., Jira ticket prefixes, Gerrit Change-Id footers, Signed-off-by lines).
+
+Run `commit-echo init` and answer "Yes" when asked about custom prompt templates, or edit `config.json` directly:
+
+```json
+{
+  "systemPromptTemplate": "You are a commit assistant for the Acme project.\nAlways include a Jira ticket reference.\n\n{{profile}}",
+  "userPromptTemplate": "Generate 3 conventional commits for this diff on branch {{branch}}:\n\n{{diff}}"
+}
+```
+
+#### Template Variables
+
+| Variable | Description |
+|----------|-------------|
+| `{{diff}}` | The git diff text |
+| `{{profile}}` | The learned style profile summary |
+| `{{branch}}` | Current git branch name |
+| `{{message}}` | *(reserved)* Previous commit message context |
+
+If a custom template is not set, the built-in prompt is used as a fallback.
+
 ## Quickstart
 
 ### Environment
