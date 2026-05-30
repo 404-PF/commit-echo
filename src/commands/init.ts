@@ -1,4 +1,4 @@
-import { intro, outro, select, text, confirm, spinner, isCancel } from '@clack/prompts';
+import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
 import pc from 'picocolors';
 import { BUILTIN_PROVIDERS, getProviderInfo, fetchModels } from '../providers/index.js';
 import { saveConfig, configExists, loadConfig } from '../config/store.js';
@@ -159,7 +159,7 @@ export async function initCommand(): Promise<void> {
       `  {{branch}}   - Current git branch name\n` +
       `Leave empty to use the built-in prompt.\n`;
 
-    console.log(pc.dim(templateHint));
+    note(templateHint);
 
     const sysResult = await text({
       message: 'Custom system prompt template (optional):',
