@@ -148,6 +148,7 @@ export async function initCommand(): Promise<void> {
     baseUrl: providerKey === CUSTOM_KEY ? baseUrl : undefined,
     apiKey: apiKey ?? undefined,
     historySize: Number(historyResult),
+    maxDiffSize: 4000,
   };
 
   await saveConfig(config);
