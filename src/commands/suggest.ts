@@ -3,7 +3,7 @@ import pc from 'picocolors';
 import type { Config, Suggestion, TruncationInfo } from '../types.js';
 import { loadOrPromptConfig } from '../config/store.js';
 import { checkGitRepo, getStagedDiff, getUnstagedDiff, commit } from '../git/diff.js';
-import { generateSuggestions } from '../llm/client.js';
+import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
 
 function showTruncationWarning(info: TruncationInfo): void {
@@ -42,6 +42,14 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
     return;
   }
 
+  let apiKey: string;
+  try {
+    apiKey = assertApiKeyAvailable(config);
+  } catch (err) {
+    outro(pc.red(err instanceof Error ? err.message : 'Missing API key'));
+    return;
+  }
+
   let diffResult = getStagedDiff();
 
   if (!diffResult.hasChanges) {
@@ -62,7 +70,7 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   genSpinner.start('Generating commit suggestions...');
 
   try {
-    const { suggestions, truncation } = await generateSuggestions(config, diffResult.diff, profile);
+    const { suggestions, truncation } = await generateSuggestions(config, diffResult.diff, profile, apiKey);
     genSpinner.stop(pc.green('Suggestions generated:'));
 
     if (truncation) {
