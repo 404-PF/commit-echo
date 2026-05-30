@@ -143,9 +143,11 @@ test("commit commits staged changes and returns output with the commit hash", ()
     git(["add", "file.txt"], repoDir);
 
     withCwd(repoDir, () => {
-      const output = commit("test: add file");
+      const result = commit("test: add file");
 
-      assert.match(output, /\[[^\]]*[a-f0-9]{7,}\] test: add file/);
+      assert.match(result.hash, /^[a-f0-9]{7,}$/);
+      assert.equal(result.summary, "test: add file");
+      assert.match(result.output, /\[[^\]]*[a-f0-9]{7,}\] test: add file/);
     });
 
     const hash = git(["rev-parse", "HEAD"], repoDir).trim();

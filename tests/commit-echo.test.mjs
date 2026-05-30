@@ -51,6 +51,7 @@ if (process.platform === 'win32') {
     assert.strictEqual(res.status, 0, `child exited non-zero: ${res.stderr || res.stdout}`);
     assert.ok(res.stdout.includes(title), 'stdout should include title');
     assert.ok(res.stdout.includes('line-one'), 'stdout should include body content');
+    assert.ok(res.stdout.includes('hash'), 'stdout should include parsed hash field');
   } finally {
     process.env.PATH = origPath;
     rmSync(tmpRoot, { recursive: true, force: true });
