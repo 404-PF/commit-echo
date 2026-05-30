@@ -50,8 +50,9 @@ program
   .option('--commit', 'Commit the selected suggestion', false)
   .option('-y, --yes', 'Automatically select the first suggestion and skip prompts')
   .option('--auto', 'Alias for --yes')
+  .option('-v, --verbose', 'Show extra diagnostic output')
   .action(async (options) => {
-    await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes || options.auto) });
+    await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes || options.auto), verbose: Boolean(options.verbose) });
   });
 
 program
@@ -61,7 +62,7 @@ program
 
 program.action(async () => {
   const opts = program.opts();
-  await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto) });
+  await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto), verbose: Boolean(opts.verbose) });
 });
 
 program.parse(process.argv);

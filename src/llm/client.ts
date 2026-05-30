@@ -12,7 +12,7 @@ function resolveApiKey(config: Config): string {
   return '';
 }
 
-export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
+export async function generateSuggestions(config: Config, diff: string, profileParam?: StyleProfile): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo; model: string }> {
   const profile = profileParam ?? await buildProfile(config.historySize);
 
   // Truncate diff if it exceeds the configured limit
@@ -50,6 +50,7 @@ export async function generateSuggestions(config: Config, diff: string, profileP
     suggestions,
     profile,
     truncation: truncation.wasTruncated ? truncation : undefined,
+    model: result.model,
   };
 }
 
