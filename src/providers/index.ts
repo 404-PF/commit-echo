@@ -32,13 +32,6 @@ function getBaseUrl(configProvider: string, baseUrlOverride?: string): string {
   const info = getProviderInfo(configProvider);
   return info!.baseUrl;
 }
-
-function resolveApiKey(configApiKey?: string): string {
-  if (configApiKey) return configApiKey;
-  const info = getProviderInfo(CUSTOM_PROVIDER_KEY);
-  return '';
-}
-
 export function createProvider(configProvider: string): Provider {
   assertKnownProvider(configProvider);
   if (configProvider === 'anthropic') return new AnthropicProvider();
