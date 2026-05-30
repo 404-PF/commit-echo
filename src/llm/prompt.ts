@@ -1,4 +1,3 @@
-import pc from 'picocolors';
 import type { StyleProfile, ChatMessage, TruncationInfo } from '../types.js';
 
 function buildStyleGuidance(profile: StyleProfile): string {
@@ -69,7 +68,6 @@ export function buildUserPrompt(diff: string): string {
  * reached. For the first file that overflows, keeps its header lines (diff --git,
  * index, ---, +++) and first @@ hunk header if space allows. All subsequent
  * files are dropped and a `[...truncated N file(s)...]` marker is appended.
- * Logs a warning via `console.warn` when truncation occurs.
  */
 export function truncateDiff(diff: string, maxSize: number): { diff: string; info: TruncationInfo } {
   if (diff.length <= maxSize) {
@@ -80,7 +78,7 @@ export function truncateDiff(diff: string, maxSize: number): { diff: string; inf
   }
 
   // Split into per-file sections on "diff --git" boundaries
-  const sections = diff.split(/(?=\ndiff --git|^diff --git)/).filter((s) => s.trim().length > 0);
+  const sections = diff.split(/\n(?=diff --git)/).filter((s) => s.trim().length > 0);
   const totalFiles = sections.length;
 
   const kept: string[] = [];
@@ -129,20 +127,11 @@ export function truncateDiff(diff: string, maxSize: number): { diff: string; inf
   }
 
   const filesTruncated = totalFiles - fullyKept;
-  const marker =
-    filesTruncated > 1
-      ? `\n[...truncated ${filesTruncated} file(s)...]`
-      : '\n[...truncated...]';
+  const fileWord = filesTruncated === 1 ? 'file' : 'files';
+  const marker = `\n[...truncated ${filesTruncated} ${fileWord}...]`;
   kept.push(marker);
 
   const result = kept.join('\n');
-
-  console.warn(
-    pc.yellow(
-      `⚠ Diff truncated from ${diff.length} to ${result.length} characters ` +
-        `(maxDiffSize: ${maxSize}). ${filesTruncated} file(s) truncated.`
-    )
-  );
 
   return {
     diff: result,

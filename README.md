@@ -61,6 +61,15 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 
 Run `commit-echo init` to configure your provider and model. Configuration is stored in `~/.config/commit-echo/config.json`.
 
+### Options
+
+| Option | Default | Description |
+|---|---|---|
+| `provider` | — | LLM provider key (e.g., `openai`, `anthropic`, `ollama`) |
+| `model` | — | Model name to use for generation |
+| `historySize` | `50` | Number of recent commits to learn style from |
+| `maxDiffSize` | `4000` | Maximum diff size (in characters) sent to the LLM. Diffs exceeding this limit are intelligently truncated — file headers are preserved while line-level content is dropped from overflow files. Adjust upward for large refactors or generated-file changes. |
+
 ## Quickstart
 
 ### Environment
