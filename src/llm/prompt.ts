@@ -67,15 +67,15 @@ export function parseSuggestions(content: string, count: number = 3): { message:
   let current: { message: string; bodyLines: string[] } | null = null;
 
   for (const line of lines) {
-    const numberedMatch = line.match(/^(?:\d+)[.)]\s+(.*\S.*)$/);
-    if (numberedMatch) {
+    const listItemMatch = line.match(/^(?:\d+[.)]|\s*[-*])\s+(.*\S.*)/);
+    if (listItemMatch) {
       if (current) {
         suggestions.push({
           message: current.message,
           body: current.bodyLines.length > 0 ? current.bodyLines.join('\n').trim() : undefined,
         });
       }
-      current = { message: numberedMatch[1]!.trim(), bodyLines: [] };
+      current = { message: listItemMatch[1]!.trim(), bodyLines: [] };
     } else if (current) {
       const trimmed = line.trim();
       if (trimmed) {
