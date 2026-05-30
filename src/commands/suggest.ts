@@ -24,7 +24,7 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
-export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean } = {}): Promise<void> {
+export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean; verbose?: boolean } = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
   try {
@@ -40,6 +40,11 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Configuration error'));
     return;
+  }
+
+  if (options.verbose) {
+    console.log(pc.dim(`  Model: ${config.model}`));
+    console.log(pc.dim(`  Provider: ${config.provider}`));
   }
 
   let diffResult = getStagedDiff();
@@ -58,6 +63,14 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
     console.log(pc.dim(profileStr) + '\n');
   }
 
+  if (options.verbose && profile.totalCommits > 0) {
+    console.log(pc.dim(`  Style profile: ${profile.totalCommits} commits analyzed`));
+    console.log(pc.dim(`  Avg length: ${profile.avgLength} chars`));
+    if (profile.imperativeRate !== undefined) {
+      console.log(pc.dim(`  Imperative mood rate: ${(profile.imperativeRate * 100).toFixed(0)}%`));
+    }
+  }
+
   const genSpinner = spinner();
   genSpinner.start('Generating commit suggestions...');
 
@@ -67,6 +80,8 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
 
     if (truncation) {
       showTruncationWarning(truncation);
+    } else if (options.verbose) {
+      console.log(pc.dim(`  Diff size: ${diffResult.diff.length} chars (no truncation needed)`));
     }
 
     await displaySuggestions(suggestions);
