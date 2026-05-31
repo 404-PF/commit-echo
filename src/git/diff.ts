@@ -9,6 +9,12 @@ export interface DiffResult {
   staged: boolean;
 }
 
+export interface CommitResult {
+  hash: string;
+  summary: string;
+  output: string;
+}
+
 export function checkGitRepo(): void {
   try {
     execSync('git rev-parse --git-dir', { encoding: 'utf-8', stdio: 'pipe' });
@@ -36,8 +42,18 @@ export function getUnstagedDiff(): DiffResult {
   };
 }
 
+function parseCommitOutput(output: string): CommitResult {
+  const summary = output.trim().split('\n').find(Boolean) ?? '';
+  const match = summary.match(/^\[(?:.+\s)?([a-f0-9]{7,})\]\s+(.+)$/i);
 
-export function commit(message: string, body?: string): string {
+  return {
+    hash: match?.[1] ?? '',
+    summary: match?.[2] ?? summary,
+    output,
+  };
+}
+
+export function commit(message: string, body?: string): CommitResult {
   const fullMessage = body ? `${message}\n\n${body}` : message;
   const tmpFile = join(tmpdir(), `commit-echo-msg-${process.pid}-${Date.now()}.txt`);
   try {
@@ -51,7 +67,7 @@ export function commit(message: string, body?: string): string {
       const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
       throw new Error(detail || `git commit exited with code ${result.status}`);
     }
-    return result.stdout;
+    return parseCommitOutput(result.stdout);
   } finally {
     try { unlinkSync(tmpFile); } catch {}
   }
