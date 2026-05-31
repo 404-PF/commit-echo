@@ -42,3 +42,30 @@ test('assertApiKeyAvailable returns the environment key when present', () => {
     }
   }
 });
+
+test('assertApiKeyAvailable returns the config key when present', () => {
+  const original = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = 'sk-env';
+
+  try {
+    assert.equal(assertApiKeyAvailable({ ...openAIConfig, apiKey: 'sk-configured' }), 'sk-configured');
+  } finally {
+    if (original === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = original;
+    }
+  }
+});
+
+test('assertApiKeyAvailable does not throw for providers that do not need an API key', () => {
+  const config = {
+    provider: 'ollama',
+    model: 'llama3',
+    historySize: 50,
+    maxDiffSize: 4000,
+  };
+
+  assert.doesNotThrow(() => assertApiKeyAvailable(config));
+  assert.equal(assertApiKeyAvailable(config), '');
+});
