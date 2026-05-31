@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { initCommand } from './commands/init.js';
 import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
+import { getAvailableTemplateVars } from './llm/prompt.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkg: { version?: string; description?: string };
@@ -36,6 +37,13 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
+
+${pc.dim('Custom prompt template variables:')}
+  ${getAvailableTemplateVars()
+    .split('\n')
+    .map((l) => `  ${pc.dim(l)}`)
+    .join('\n')}
+  ${pc.dim('Set systemPromptTemplate / userPromptTemplate in config.json')}
 `,
   );
 
@@ -46,9 +54,14 @@ program
   .description('Generate commit suggestions (use --commit to create a commit)')
   .option('--commit', 'Commit the selected suggestion', false)
   .option('-y, --yes', 'Automatically select the first suggestion and skip prompts')
+  .option('-v, --verbose', 'Print diagnostic information about the suggestion request')
   .option('--auto', 'Alias for --yes')
   .action(async (options) => {
-    await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes || options.auto) });
+    await suggestCommand({
+      commit: options.commit,
+      autoCommit: Boolean(options.yes || options.auto),
+      verbose: Boolean(options.verbose),
+    });
   });
 
 program.command('history').description('View learned style profile and recent commit history').action(historyCommand);

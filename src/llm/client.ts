@@ -1,8 +1,9 @@
 import type { Config, Suggestion, StyleProfile, TruncationInfo } from '../types.js';
 import { getProviderInfo } from '../providers/index.js';
 import { complete } from '../providers/index.js';
-import { buildSystemPrompt, buildUserPrompt, parseSuggestions, truncateDiff } from './prompt.js';
-import { buildProfile } from '../history/store.js';
+import { resolveSystemPrompt, resolveUserPrompt, parseSuggestions, truncateDiff } from './prompt.js';
+import { buildProfile, formatProfile } from '../history/store.js';
+import { getBranchName } from '../git/diff.js';
 
 function resolveApiKey(config: Config): string {
   if (config.apiKey) return config.apiKey;
@@ -16,14 +17,23 @@ export async function generateSuggestions(
   config: Config,
   diff: string,
   profileParam?: StyleProfile,
-): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; truncation?: TruncationInfo }> {
+): Promise<{ suggestions: Suggestion[]; profile: StyleProfile; model: string; truncation?: TruncationInfo }> {
   const profile = profileParam ?? (await buildProfile(config.historySize));
 
   // Truncate diff if it exceeds the configured limit
   const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
 
-  const systemPrompt = buildSystemPrompt(profile);
-  const userPrompt = buildUserPrompt(truncatedDiff);
+  const branch = getBranchName();
+  const profileStr = formatProfile(profile);
+
+  const vars = {
+    diff: truncatedDiff,
+    profile: profileStr,
+    branch,
+  };
+
+  const systemPrompt = resolveSystemPrompt(profile, vars, config);
+  const userPrompt = resolveUserPrompt(vars, config);
 
   const apiKey = resolveApiKey(config);
 
@@ -53,6 +63,7 @@ export async function generateSuggestions(
   return {
     suggestions,
     profile,
+    model: result.model,
     truncation: truncation.wasTruncated ? truncation : undefined,
   };
 }

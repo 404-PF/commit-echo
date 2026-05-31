@@ -44,6 +44,8 @@ export async function loadConfig(): Promise<Config> {
     apiKey: parsed.apiKey,
     historySize: parsed.historySize ?? DEFAULT_HISTORY_SIZE,
     maxDiffSize: parsed.maxDiffSize ?? DEFAULT_MAX_DIFF_SIZE,
+    systemPromptTemplate: parsed.systemPromptTemplate,
+    userPromptTemplate: parsed.userPromptTemplate,
   };
 }
 
