@@ -73,7 +73,13 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
     'utf8'
   );
 
-  const child = spawn('node', [join(process.cwd(), 'dist/index.js'), 'suggest', '--no-commit'], {
+  await writeFile(
+    join(configDir, 'history.jsonl'),
+    JSON.stringify({ timestamp: new Date().toISOString(), message: 'feat: add fixture history', diff: '', model: 'fixture-model', provider: '__custom__' }) + '\n',
+    'utf8'
+  );
+
+  const child = spawn('node', [join(process.cwd(), 'dist/index.js'), 'suggest'], {
     cwd: repo,
     env: {
       ...process.env,
@@ -103,6 +109,8 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
 
   assert.match(stdout, /Suggestions generated:/);
   assert.match(stdout, /feat: add smoke test coverage/);
+  assert.doesNotMatch(stdout, /Style profile:/);
+  assert.doesNotMatch(stdout, /Analyzed 1 commit/);
   assert.equal(stderr, '');
   assert.ok(result.code === 0 || result.signal === 'SIGINT');
 });
