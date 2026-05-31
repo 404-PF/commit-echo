@@ -42,8 +42,9 @@ program
   .command('suggest')
   .description('Generate commit suggestions without committing')
   .option('--no-commit', 'Skip the commit step, only show suggestions')
+  .option('-n, --dry-run', 'Show the LLM input without generating suggestions')
   .action(async (options) => {
-    await suggestCommand({ commit: options.commit, autoCommit: false });
+    await suggestCommand({ commit: options.commit, autoCommit: false, dryRun: options.dryRun });
   });
 
 program

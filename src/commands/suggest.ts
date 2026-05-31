@@ -4,7 +4,14 @@ import type { Config, Suggestion } from '../types.js';
 import { loadOrPromptConfig } from '../config/store.js';
 import { checkGitRepo, getStagedDiff, getUnstagedDiff, commit } from '../git/diff.js';
 import { generateSuggestions } from '../llm/client.js';
+import { buildSystemPrompt, buildUserPrompt } from '../llm/prompt.js';
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
+
+interface SuggestOptions {
+  commit?: boolean;
+  autoCommit?: boolean;
+  dryRun?: boolean;
+}
 
 async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   for (const s of suggestions) {
@@ -13,7 +20,28 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
-export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean } = {}): Promise<void> {
+export function formatDryRunOutput(diff: string, profileSummary: string, systemPrompt: string, userPrompt: string): string {
+  return [
+    pc.yellow('Dry run: no LLM API call will be made.'),
+    '',
+    pc.bold('Diff:'),
+    pc.dim(diff),
+    '',
+    pc.bold('Style profile:'),
+    pc.dim(profileSummary),
+    '',
+    pc.bold('System prompt:'),
+    pc.dim(systemPrompt),
+    '',
+    pc.bold('User prompt:'),
+    pc.dim(userPrompt),
+    '',
+    pc.bold('Truncation:'),
+    pc.dim('None. The diff above will be sent in full.'),
+  ].join('\n');
+}
+
+export async function suggestCommand(options: SuggestOptions = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
   try {
@@ -45,6 +73,17 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   const profileStr = formatProfile(profile);
   if (profile.totalCommits > 0) {
     console.log(pc.dim(profileStr) + '\n');
+  }
+
+  if (options.dryRun) {
+    console.log(formatDryRunOutput(
+      diffResult.diff,
+      profileStr,
+      buildSystemPrompt(profile),
+      buildUserPrompt(diffResult.diff)
+    ));
+    outro(pc.green('Dry run complete.'));
+    return;
   }
 
   const genSpinner = spinner();
