@@ -12,8 +12,8 @@ function showTruncationWarning(info: TruncationInfo): void {
     pc.yellow(
       `\n⚠  Diff truncated: ${info.originalSize} → ${info.truncatedSize} chars (${pct}%) ` +
         `— ${info.filesTruncated} file(s) affected. ` +
-        `Adjust maxDiffSize in config to increase the limit.`
-    )
+        `Adjust maxDiffSize in config to increase the limit.`,
+    ),
   );
 }
 
@@ -24,15 +24,15 @@ function showVerboseInfo(model: string, profile: StyleProfile, truncation?: Trun
   console.log(
     pc.dim(
       `Style profile: ${profile.totalCommits} commit(s), avg length ${profile.avgLength.toFixed(1)}, ` +
-        `imperative rate ${(profile.imperativeRate * 100).toFixed(1)}%, common prefixes: ${commonPrefixes}`
-    )
+        `imperative rate ${(profile.imperativeRate * 100).toFixed(1)}%, common prefixes: ${commonPrefixes}`,
+    ),
   );
   console.log(
     pc.dim(
       truncation
         ? `Truncation: ${truncation.originalSize} -> ${truncation.truncatedSize} chars, ${truncation.filesTruncated} file(s) affected`
-        : 'Truncation: not applied'
-    )
+        : 'Truncation: not applied',
+    ),
   );
 }
 
@@ -43,7 +43,9 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
-export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean; verbose?: boolean } = {}): Promise<void> {
+export async function suggestCommand(
+  options: { commit?: boolean; autoCommit?: boolean; verbose?: boolean } = {},
+): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
   try {
@@ -194,7 +196,10 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     message: 'Edit message before committing?',
     initialValue: false,
   });
-  if (isCancel(edit)) { outro('Cancelled.'); return; }
+  if (isCancel(edit)) {
+    outro('Cancelled.');
+    return;
+  }
 
   let finalMessage = selected.message;
   let finalBody = selected.body;
@@ -204,14 +209,20 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       message: 'Edit commit message:',
       initialValue: selected.message,
     });
-    if (isCancel(editedMessage)) { outro('Cancelled.'); return; }
+    if (isCancel(editedMessage)) {
+      outro('Cancelled.');
+      return;
+    }
     finalMessage = editedMessage;
 
     const editedBody = await text({
       message: 'Edit body (optional):',
       initialValue: selected.body ?? '',
     });
-    if (isCancel(editedBody)) { outro('Cancelled.'); return; }
+    if (isCancel(editedBody)) {
+      outro('Cancelled.');
+      return;
+    }
     finalBody = editedBody || undefined;
   }
 

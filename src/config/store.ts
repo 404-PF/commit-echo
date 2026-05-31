@@ -63,9 +63,7 @@ export function configExists(): boolean {
 
 export async function loadOrPromptConfig(): Promise<Config> {
   if (!configExists()) {
-    throw new Error(
-      'No configuration found. Run `commit-echo init` to set up your provider and model.'
-    );
+    throw new Error('No configuration found. Run `commit-echo init` to set up your provider and model.');
   }
   return loadConfig();
 }

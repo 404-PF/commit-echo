@@ -39,15 +39,15 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo history')}   View learned style profile and history
 
 ${pc.dim('Custom prompt template variables:')}
-  ${getAvailableTemplateVars().split('\n').map(l => `  ${pc.dim(l)}`).join('\n')}
+  ${getAvailableTemplateVars()
+    .split('\n')
+    .map((l) => `  ${pc.dim(l)}`)
+    .join('\n')}
   ${pc.dim('Set systemPromptTemplate / userPromptTemplate in config.json')}
-`
+`,
   );
 
-program
-  .command('init')
-  .description('Run interactive setup wizard to configure provider and model')
-  .action(initCommand);
+program.command('init').description('Run interactive setup wizard to configure provider and model').action(initCommand);
 
 program
   .command('suggest')
@@ -64,10 +64,7 @@ program
     });
   });
 
-program
-  .command('history')
-  .description('View learned style profile and recent commit history')
-  .action(historyCommand);
+program.command('history').description('View learned style profile and recent commit history').action(historyCommand);
 
 program.action(async () => {
   const opts = program.opts();

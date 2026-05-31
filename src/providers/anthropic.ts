@@ -24,21 +24,23 @@ export class AnthropicProvider implements Provider {
       body['system'] = systemMessages.map((m) => m.content).join('\n');
     }
 
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    }, 'Anthropic API request');
+      'Anthropic API request',
+    );
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
-      throw new Error(
-        `Anthropic API error (${response.status}): ${errorBody || response.statusText}`
-      );
+      throw new Error(`Anthropic API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
     const data = (await response.json()) as {

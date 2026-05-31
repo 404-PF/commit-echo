@@ -4,7 +4,7 @@ export async function fetchWithTimeout(
   url: string,
   init: RequestInit,
   label: string,
-  timeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS
+  timeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);

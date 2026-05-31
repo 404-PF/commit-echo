@@ -29,20 +29,22 @@ export class CohereProvider implements Provider {
       body['preamble'] = systemMessages.map((m) => m.content).join('\n');
     }
 
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    }, 'Cohere API request');
+      'Cohere API request',
+    );
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
-      throw new Error(
-        `Cohere API error (${response.status}): ${errorBody || response.statusText}`
-      );
+      throw new Error(`Cohere API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
     const data = (await response.json()) as {
@@ -63,19 +65,18 @@ export class CohereProvider implements Provider {
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
     const url = `${baseUrl.replace(/\/+$/, '')}/models`;
 
-    const response = await fetchWithTimeout(url, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
+    const response = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
       },
-    }, 'Cohere model request');
+      'Cohere model request',
+    );
 
     if (!response.ok) {
-      return [
-        'command-r-plus',
-        'command-r',
-        'command-xlarge',
-        'command-large',
-      ];
+      return ['command-r-plus', 'command-r', 'command-xlarge', 'command-large'];
     }
 
     const data = (await response.json()) as {
@@ -83,14 +84,12 @@ export class CohereProvider implements Provider {
     };
 
     if (data.models && Array.isArray(data.models)) {
-      return data.models.map((m) => m.name ?? m.id ?? '').filter(Boolean).sort();
+      return data.models
+        .map((m) => m.name ?? m.id ?? '')
+        .filter(Boolean)
+        .sort();
     }
 
-    return [
-      'command-r-plus',
-      'command-r',
-      'command-xlarge',
-      'command-large',
-    ];
+    return ['command-r-plus', 'command-r', 'command-xlarge', 'command-large'];
   }
 }
