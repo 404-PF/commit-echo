@@ -44,7 +44,7 @@ export function getUnstagedDiff(): DiffResult {
 
 function parseCommitOutput(output: string): CommitResult {
   const summary = output.trim().split('\n').find(Boolean) ?? '';
-  const match = summary.match(/^\[[^\]]+ ([a-f0-9]{7,})\] (.+)$/i);
+  const match = summary.match(/^\[(?:.+\s)?([a-f0-9]{7,})\]\s+(.+)$/i);
 
   return {
     hash: match?.[1] ?? '',

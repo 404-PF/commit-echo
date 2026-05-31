@@ -160,6 +160,30 @@ test("commit commits staged changes and returns output with the commit hash", ()
   }
 });
 
+test("commit parses detached HEAD commit output", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "file.txt"), "hello\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+    git(["commit", "-m", "initial commit"], repoDir);
+    git(["checkout", "--detach"], repoDir);
+
+    writeFileSync(join(repoDir, "file.txt"), "hello\ndetached\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+
+    withCwd(repoDir, () => {
+      const result = commit("test: detached commit");
+
+      assert.match(result.hash, /^[a-f0-9]{7,}$/);
+      assert.equal(result.summary, "test: detached commit");
+      assert.match(result.output, /\[(?:detached HEAD|\(HEAD detached at [^)]+\)) [a-f0-9]{7,}\] test: detached commit/);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getRepoRoot returns the absolute path of the repository root", () => {
   const repoDir = initRepo();
   const nestedDir = join(repoDir, "src", "nested");

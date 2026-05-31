@@ -24,7 +24,8 @@ if (process.platform === 'win32') {
         'const fs = require("fs");\n' +
         'const p = process.argv.at(-1);\n' +
         'const c = fs.readFileSync(p, "utf8");\n' +
-        'console.log(c);\n',
+        'if (!c.includes("feat: add temp-file test") || !c.includes("line-one\\nline-two")) process.exit(3);\n' +
+        'console.log("[main abc1234] feat: add temp-file test");\n',
       'utf-8'
     );
     chmodSync(gitPath, 0o755);
@@ -44,14 +45,15 @@ if (process.platform === 'win32') {
     const diffUrl = pathToFileURL(diffAbs).href;
     const runnerSrc = `(async ()=>{ const { commit } = await import('${diffUrl}'); try{ const out = commit(${JSON.stringify(
       title
-    )}, ${JSON.stringify(body)}); console.log(out); process.exit(0);}catch(e){ console.error(e instanceof Error?e.message:String(e)); process.exit(2);} })();`;
+    )}, ${JSON.stringify(body)}); console.log(JSON.stringify(out)); process.exit(0);}catch(e){ console.error(e instanceof Error?e.message:String(e)); process.exit(2);} })();`;
     writeFileSync(runnerPath, runnerSrc, 'utf-8');
     const res = spawnSync(process.execPath, [runnerPath], { env: { ...process.env, PATH: process.env.PATH }, encoding: 'utf-8' });
     if (res.error) throw res.error;
     assert.strictEqual(res.status, 0, `child exited non-zero: ${res.stderr || res.stdout}`);
-    assert.ok(res.stdout.includes(title), 'stdout should include title');
-    assert.ok(res.stdout.includes('line-one'), 'stdout should include body content');
-    assert.ok(res.stdout.includes('hash'), 'stdout should include parsed hash field');
+    const parsed = JSON.parse(res.stdout);
+    assert.equal(parsed.hash, 'abc1234');
+    assert.equal(parsed.summary, title);
+    assert.equal(parsed.output.trim(), `[main abc1234] ${title}`);
   } finally {
     process.env.PATH = origPath;
     rmSync(tmpRoot, { recursive: true, force: true });
