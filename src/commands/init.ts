@@ -1,8 +1,9 @@
-import { intro, outro, select, text, confirm, spinner, isCancel } from '@clack/prompts';
+import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
 import pc from 'picocolors';
 import { BUILTIN_PROVIDERS, getProviderInfo, fetchModels } from '../providers/index.js';
 import { saveConfig, configExists, loadConfig } from '../config/store.js';
 import type { Config } from '../types.js';
+import { getAvailableTemplateVars } from '../llm/prompt.js';
 
 const CUSTOM_KEY = '__custom__';
 
@@ -142,6 +143,42 @@ export async function initCommand(): Promise<void> {
   });
   if (isCancel(historyResult)) { outro('Setup cancelled.'); return; }
 
+  const useCustomPrompts = await confirm({
+    message: 'Set custom prompt templates? (Advanced)',
+    initialValue: false,
+  });
+  if (isCancel(useCustomPrompts)) { outro('Setup cancelled.'); return; }
+
+  let systemPromptTemplate: string | undefined;
+  let userPromptTemplate: string | undefined;
+
+  if (useCustomPrompts) {
+    note(
+      `\nAvailable variables:\n${getAvailableTemplateVars()}\n` +
+      `Leave empty to use the built-in prompt.\n`
+    );
+
+    const sysResult = await text({
+      message: 'Custom system prompt template (optional):',
+      placeholder: 'You are a commit assistant...',
+      initialValue: existingConfig?.systemPromptTemplate,
+    });
+    if (isCancel(sysResult)) { outro('Setup cancelled.'); return; }
+    if (sysResult) {
+      systemPromptTemplate = sysResult;
+    }
+
+    const userResult = await text({
+      message: 'Custom user prompt template (optional):',
+      placeholder: 'Generate commit messages for:\n{{diff}}',
+      initialValue: existingConfig?.userPromptTemplate,
+    });
+    if (isCancel(userResult)) { outro('Setup cancelled.'); return; }
+    if (userResult) {
+      userPromptTemplate = userResult;
+    }
+  }
+
   const config: Config = {
     provider: providerKey as string,
     model: selectedModel as string,
@@ -149,6 +186,8 @@ export async function initCommand(): Promise<void> {
     apiKey: apiKey ?? undefined,
     historySize: Number(historyResult),
     maxDiffSize: 4000,
+    systemPromptTemplate,
+    userPromptTemplate,
   };
 
   await saveConfig(config);
@@ -188,12 +227,17 @@ export async function initCommand(): Promise<void> {
     ? baseUrl
     : getProviderInfo(providerKey as string)?.baseUrl;
 
+  const templateInfo = config.systemPromptTemplate || config.userPromptTemplate
+    ? `\n  Custom prompts: ${pc.dim(config.systemPromptTemplate ? 'system ✓' : '')}${config.systemPromptTemplate && config.userPromptTemplate ? ', ' : ''}${pc.dim(config.userPromptTemplate ? 'user ✓' : '')}`
+    : '';
+
   outro(
     `${pc.green('✓')} Configuration saved.\n` +
     `  Provider: ${pc.cyan(providerKey as string)}\n` +
     `  Model: ${pc.cyan(config.model)}\n` +
     `  Endpoint: ${pc.dim(displayUrl ?? '')}\n` +
-    `  API key: ${pc.dim(displayKey)}\n\n` +
-    `Run ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`
+    `  API key: ${pc.dim(displayKey)}` +
+    templateInfo +
+    `\n\nRun ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`
   );
 }

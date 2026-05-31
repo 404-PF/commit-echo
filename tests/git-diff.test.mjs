@@ -143,9 +143,11 @@ test("commit commits staged changes and returns output with the commit hash", ()
     git(["add", "file.txt"], repoDir);
 
     withCwd(repoDir, () => {
-      const output = commit("test: add file");
+      const result = commit("test: add file");
 
-      assert.match(output, /\[[^\]]*[a-f0-9]{7,}\] test: add file/);
+      assert.match(result.hash, /^[a-f0-9]{7,}$/);
+      assert.equal(result.summary, "test: add file");
+      assert.match(result.output, /\[[^\]]*[a-f0-9]{7,}\] test: add file/);
     });
 
     const hash = git(["rev-parse", "HEAD"], repoDir).trim();
@@ -153,6 +155,30 @@ test("commit commits staged changes and returns output with the commit hash", ()
 
     assert.match(hash, /^[a-f0-9]{40}$/);
     assert.ok(log.includes("test: add file"));
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("commit parses detached HEAD commit output", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "file.txt"), "hello\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+    git(["commit", "-m", "initial commit"], repoDir);
+    git(["checkout", "--detach"], repoDir);
+
+    writeFileSync(join(repoDir, "file.txt"), "hello\ndetached\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+
+    withCwd(repoDir, () => {
+      const result = commit("test: detached commit");
+
+      assert.match(result.hash, /^[a-f0-9]{7,}$/);
+      assert.equal(result.summary, "test: detached commit");
+      assert.match(result.output, /\[(?:detached HEAD|\(HEAD detached at [^)]+\)) [a-f0-9]{7,}\] test: detached commit/);
+    });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
   }

@@ -1,69 +1,101 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
-import pc from 'picocolors';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { initCommand } from './commands/init.js';
-import { suggestCommand } from './commands/suggest.js';
-import { historyCommand } from './commands/history.js';
+import { Command } from "commander";
+import pc from "picocolors";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { initCommand } from "./commands/init.js";
+import { suggestCommand } from "./commands/suggest.js";
+import { historyCommand } from "./commands/history.js";
+import { getAvailableTemplateVars } from "./llm/prompt.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkg: { version?: string; description?: string };
 try {
-  pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8'));
+  pkg = JSON.parse(
+    readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
+  );
 } catch {
-  pkg = { version: '0.1.0', description: '' };
+  pkg = { version: "0.1.0", description: "" };
 }
 
 const program = new Command();
 program
-  .option('-y, --yes', 'Automatically accept the first suggestion and commit without prompts')
-  .option('--auto', 'Alias for --yes')
-  .option('-v, --verbose', 'Show extra diagnostic output');
+  .option(
+    "-y, --yes",
+    "Automatically accept the first suggestion and commit without prompts",
+  )
+  .option("--auto", "Alias for --yes")
+  .option("-v, --verbose", "Show extra diagnostic output");
 
 program
-  .name('commit-echo')
-  .version(pkg.version ?? '0.1.0')
-  .description(pkg.description ?? 'LLM-powered Git commit message assistant')
+  .name("commit-echo")
+  .version(pkg.version ?? "0.1.0")
+  .description(pkg.description ?? "LLM-powered Git commit message assistant")
   .addHelpText(
-    'after',
+    "after",
     `
-${pc.dim('Examples:')}
-  ${pc.cyan('commit-echo')}           Suggest and commit staged changes
-  ${pc.cyan('commit-echo --yes')}       Auto-select and commit first suggestion
-  ${pc.cyan('commit-echo init')}      Run interactive setup wizard
-  ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
-  ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
-  ${pc.cyan('commit-echo history')}   View learned style profile and history
-`
+${pc.dim("Examples:")}
+  ${pc.cyan("commit-echo")}           Suggest and commit staged changes
+  ${pc.cyan("commit-echo --yes")}       Auto-select and commit first suggestion
+  ${pc.cyan("commit-echo init")}      Run interactive setup wizard
+  ${pc.cyan("commit-echo suggest")}    Generate suggestions without committing
+  ${pc.cyan("commit-echo suggest --yes")} Auto-select first suggestion (no commit)
+  ${pc.cyan("commit-echo history")}   View learned style profile and history
+
+${pc.dim("Custom prompt template variables:")}
+  ${getAvailableTemplateVars()
+    .split("\n")
+    .map((l) => `  ${pc.dim(l)}`)
+    .join("\n")}
+  ${pc.dim("Set systemPromptTemplate / userPromptTemplate in config.json")}
+`,
   );
 
 program
-  .command('init')
-  .description('Run interactive setup wizard to configure provider and model')
+  .command("init")
+  .description("Run interactive setup wizard to configure provider and model")
   .action(initCommand);
 
 program
-  .command('suggest')
-  .description('Generate commit suggestions (use --commit to create a commit)')
-  .option('--commit', 'Commit the selected suggestion', false)
-  .option('-y, --yes', 'Automatically select the first suggestion and skip prompts')
-  .option('--auto', 'Alias for --yes')
-  .option('-v, --verbose', 'Show extra diagnostic output')
+  .command("suggest")
+  .description("Generate commit suggestions (use --commit to create a commit)")
+  .option("--commit", "Commit the selected suggestion", false)
+  .option(
+    "-y, --yes",
+    "Automatically select the first suggestion and skip prompts",
+  )
+  .option(
+    "-v, --verbose",
+    "Print diagnostic information about the suggestion request",
+  )
+  .option(
+    "-m, --model <model>",
+    "Override the configured LLM model for this invocation",
+  )
+  .option("--auto", "Alias for --yes")
   .action(async (options) => {
-    await suggestCommand({ commit: options.commit, autoCommit: Boolean(options.yes || options.auto), verbose: Boolean(options.verbose) });
+    await suggestCommand({
+      commit: options.commit,
+      autoCommit: Boolean(options.yes || options.auto),
+      verbose: Boolean(options.verbose || program.opts().verbose),
+      model: options.model,
+    });
   });
 
 program
-  .command('history')
-  .description('View learned style profile and recent commit history')
+  .command("history")
+  .description("View learned style profile and recent commit history")
   .action(historyCommand);
 
 program.action(async () => {
   const opts = program.opts();
-  await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto), verbose: Boolean(opts.verbose) });
+  await suggestCommand({
+    commit: true,
+    autoCommit: Boolean(opts.yes || opts.auto),
+    verbose: Boolean(opts.verbose),
+  });
 });
 
 program.parse(process.argv);
