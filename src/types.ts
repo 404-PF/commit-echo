@@ -5,6 +5,8 @@ export interface Config {
   apiKey?: string;
   historySize: number;
   maxDiffSize: number;
+  systemPromptTemplate?: string;
+  userPromptTemplate?: string;
 }
 
 export interface TruncationInfo {

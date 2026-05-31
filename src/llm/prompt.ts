@@ -1,4 +1,4 @@
-import type { StyleProfile, ChatMessage, TruncationInfo } from '../types.js';
+import type { StyleProfile, ChatMessage, TruncationInfo, Config } from '../types.js';
 
 function buildStyleGuidance(profile: StyleProfile): string {
   if (profile.totalCommits === 0) {
@@ -59,6 +59,71 @@ Format your response as a numbered list (1., 2., 3.) with each commit message on
 
 export function buildUserPrompt(diff: string): string {
   return `Generate 3 commit message suggestions for the following diff:\n\`\`\`diff\n${diff}\n\`\`\`\n\nReturn exactly 3 options as a numbered list.`;
+}
+
+/**
+ * Variables available for substitution in custom prompt templates.
+ */
+export interface TemplateVars {
+  diff: string;
+  profile: string;
+  branch: string;
+}
+
+/**
+ * Substitute {{variables}} in a template string with the provided values.
+ * Unknown variables are left as-is.
+ */
+export function substituteTemplateVars(template: string, vars: TemplateVars): string {
+  return template
+    .replace(/\{\{diff\}\}/g, vars.diff)
+    .replace(/\{\{profile\}\}/g, vars.profile)
+    .replace(/\{\{branch\}\}/g, vars.branch);
+}
+
+/**
+ * Resolve the system prompt to use.
+ *
+ * If config provides a `systemPromptTemplate`, it is used with template
+ * variables substituted. Otherwise the built-in prompt is returned.
+ */
+export function resolveSystemPrompt(
+  profile: StyleProfile,
+  vars: TemplateVars,
+  config?: Config
+): string {
+  if (config?.systemPromptTemplate) {
+    return substituteTemplateVars(config.systemPromptTemplate, vars);
+  }
+  return buildSystemPrompt(profile);
+}
+
+/**
+ * Resolve the user prompt to use.
+ *
+ * If config provides a `userPromptTemplate`, it is used with template
+ * variables substituted. Otherwise the built-in prompt is returned.
+ */
+export function resolveUserPrompt(
+  vars: TemplateVars,
+  config?: Config
+): string {
+  if (config?.userPromptTemplate) {
+    return substituteTemplateVars(config.userPromptTemplate, vars);
+  }
+  return buildUserPrompt(vars.diff);
+}
+
+/**
+ * Return a description of available template variables for documentation.
+ */
+export function getAvailableTemplateVars(): string {
+  return [
+    '{{diff}}     - The git diff text',
+    '{{profile}}  - The learned style profile summary',
+    '{{branch}}   - Current git branch name',
+    '{{message}}  - (reserved) Previous commit message context',
+  ].join('\n');
 }
 
 /**
