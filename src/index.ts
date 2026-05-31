@@ -20,7 +20,8 @@ try {
 const program = new Command();
 program
   .option('-y, --yes', 'Automatically accept the first suggestion and commit without prompts')
-  .option('--auto', 'Alias for --yes');
+  .option('--auto', 'Alias for --yes')
+  .option('-v, --verbose', 'Show extra diagnostic output');
 
 program
   .name('commit-echo')
