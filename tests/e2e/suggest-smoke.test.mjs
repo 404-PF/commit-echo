@@ -19,8 +19,50 @@ function onceExit(child) {
   });
 }
 
-test('suggest smoke test boots the CLI, loads config, and prints suggestions', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-'));
+function runSuggestUntil(args, { cwd, env, text }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
+      cwd,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      child.kill('SIGINT');
+      reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
+    }, 5000);
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+      if (stdout.includes(text)) {
+        clearTimeout(timeout);
+        child.kill('SIGINT');
+        resolve({ stdout, stderr });
+      }
+    });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+    child.on('exit', (code, signal) => {
+      if (!stdout.includes(text)) {
+        clearTimeout(timeout);
+        reject(new Error(`Exited before ${text}. code: ${code} signal: ${signal} stdout: ${stdout} stderr: ${stderr}`));
+      }
+    });
+  });
+}
+
+function configDirFor(home) {
+  return platform() === 'darwin'
+    ? join(home, 'Library', 'Application Support', 'commit-echo')
+    : platform() === 'win32'
+      ? join(home, 'AppData', 'Roaming', 'commit-echo')
+      : join(home, '.config', 'commit-echo');
+}
+
+async function setupRepo(root) {
   const home = join(root, 'home');
   const repo = join(root, 'repo');
   await mkdir(home, { recursive: true });
@@ -35,18 +77,27 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
   await writeFile(join(repo, 'README.md'), '# fixture\n\nupdated\n', 'utf8');
   execFileSync('git', ['add', 'README.md'], { cwd: repo });
 
-  const configDir = platform() === 'darwin'
-    ? join(home, 'Library', 'Application Support', 'commit-echo')
-    : platform() === 'win32'
-      ? join(home, 'AppData', 'Roaming', 'commit-echo')
-      : join(home, '.config', 'commit-echo');
+  const configDir = configDirFor(home);
   await mkdir(configDir, { recursive: true });
 
+  return { home, repo, configDir };
+}
+
+test('suggest smoke test boots the CLI, loads config, and prints suggestions', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
   const server = createServer(async (req, res) => {
     if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        model: 'fixture-model',
+        model: parsed.model,
         choices: [{ message: { content: '1. feat: add smoke test coverage\n2. docs: refresh quickstart examples' } }],
       }));
       return;
@@ -109,8 +160,66 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
 
   assert.match(stdout, /Suggestions generated:/);
   assert.match(stdout, /feat: add smoke test coverage/);
+  assert.equal(requests.at(-1).model, 'fixture-model');
   assert.doesNotMatch(stdout, /Style profile:/);
   assert.doesNotMatch(stdout, /Analyzed 1 commit/);
   assert.equal(stderr, '');
   assert.ok(result.code === 0 || result.signal === 'SIGINT');
+});
+
+test('suggest --model overrides configured model for one invocation and -m is an alias', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-model-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        model: parsed.model,
+        choices: [{ message: { content: '1. feat: add override flag\n2. test: cover model alias' } }],
+      }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: '__custom__',
+      model: 'configured-model',
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8'
+  );
+
+  const env = {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    FORCE_COLOR: '0',
+  };
+
+  const longFlag = await runSuggestUntil(['suggest', '--yes', '--verbose', '--model', 'gpt-4o'], { cwd: repo, env, text: 'Model: gpt-4o' });
+  assert.equal(requests.at(-1).model, 'gpt-4o');
+  assert.match(longFlag.stdout, /Model: gpt-4o/);
+
+  await runSuggestUntil(['suggest', '-m', 'claude-3-5-sonnet'], { cwd: repo, env, text: 'Suggestions generated:' });
+  assert.equal(requests.at(-1).model, 'claude-3-5-sonnet');
 });
