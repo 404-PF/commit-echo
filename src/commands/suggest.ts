@@ -166,7 +166,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
   if (auto) {
     try {
       const result = commit(selected.message, selected.body);
-      console.log(pc.green(result.trim()));
+      console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       outro(pc.red(`Commit failed: ${msg}`));
@@ -186,7 +186,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       outro(pc.yellow(`Warning: failed to write history entry: ${msg}`));
     }
 
-    outro(pc.green('✓ Commit created.'));
+    outro(pc.green('Commit completed.'));
     return;
   }
 
@@ -227,7 +227,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
 
   try {
     const result = commit(finalMessage, finalBody);
-    console.log(pc.green(result.trim()));
+    console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
 
     await appendEntry({
       timestamp: new Date().toISOString(),
@@ -237,7 +237,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       provider: config.provider,
     });
 
-    outro(pc.green('✓ Commit created.'));
+    outro(pc.green('Commit completed.'));
   } catch (err) {
     outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
   }
