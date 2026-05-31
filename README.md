@@ -1,5 +1,9 @@
 # commit-echo
 
+[![npm version](https://img.shields.io/npm/v/@404-pf/commit-echo)](https://www.npmjs.com/package/@404-pf/commit-echo)
+[![License](https://img.shields.io/npm/l/@404-pf/commit-echo)](LICENSE)
+[![Node.js version](https://img.shields.io/node/v/@404-pf/commit-echo)](https://www.npmjs.com/package/@404-pf/commit-echo)
+
 LLM-powered CLI that learns your Git commit style and auto-suggests personalized commit messages.
 
 ## Features
