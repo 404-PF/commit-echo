@@ -43,7 +43,7 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
-export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean; verbose?: boolean } = {}): Promise<void> {
+export async function suggestCommand(options: { commit?: boolean; autoCommit?: boolean; verbose?: boolean; model?: string } = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
   try {
@@ -59,6 +59,10 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Configuration error'));
     return;
+  }
+
+  if (options.model) {
+    config.model = options.model;
   }
 
   let diffResult = getStagedDiff();
