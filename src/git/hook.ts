@@ -1,20 +1,33 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, chmod, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
 import { loadConfig } from '../config/store.js';
 import { buildProfile } from '../history/store.js';
+import { getHistoryPath } from '../config/store.js';
 import { generateSuggestions } from '../llm/client.js';
 
-const HOOK_MARKER = '# commit-echo managed prepare-commit-msg hook';
+const MANAGED_HOOK_MARKER = '# commit-echo managed hook';
+const PREPARE_COMMIT_MSG_HOOK_NAME = 'prepare-commit-msg';
+const POST_COMMIT_HOOK_NAME = 'post-commit';
+const PENDING_HOOK_ENTRY_FILE = 'commit-echo-pending-entry.json';
 
 export interface PrepareCommitMsgHookArgs {
   messageFile: string;
   source?: string;
   sha?: string;
+}
+
+export interface PostCommitHookDeps {
+  checkGitRepo: () => void;
+  readLatestCommitMessage: () => string;
+  readPendingEntryFile: () => Promise<string>;
+  appendHistoryEntry: (entry: string) => Promise<void>;
+  removePendingEntryFile: () => Promise<void>;
+  warn: (message: string) => void;
 }
 
 export interface PrepareCommitMsgHookDeps {
@@ -25,11 +38,24 @@ export interface PrepareCommitMsgHookDeps {
   generateSuggestions: typeof generateSuggestions;
   readMessageFile: (messageFile: string) => Promise<string>;
   writeMessageFile: (messageFile: string, content: string) => Promise<void>;
+  writePendingEntryFile: (content: string) => Promise<void>;
   warn: (message: string) => void;
 }
 
-function resolvePrepareCommitMsgHookPath(): string {
-  return execSync('git rev-parse --git-path hooks/prepare-commit-msg', { encoding: 'utf-8' }).trim();
+function resolveGitPath(path: string): string {
+  return execSync(`git rev-parse --git-path ${path}`, { encoding: 'utf-8' }).trim();
+}
+
+function resolveHookPath(hookName: string): string {
+  return resolveGitPath(`hooks/${hookName}`);
+}
+
+function resolvePendingEntryPath(): string {
+  return resolveGitPath(PENDING_HOOK_ENTRY_FILE);
+}
+
+function buildManagedHookMarker(hookName: string): string {
+  return `${MANAGED_HOOK_MARKER} ${hookName}`;
 }
 
 function toShellPath(value: string): string {
@@ -56,44 +82,67 @@ export function buildHookCommitMessage(selected: Suggestion, existingContent = '
   return `${message}\n\n${preservedTemplate}`;
 }
 
-export function buildPrepareCommitMsgHookScript(cliPath: string, backupPath?: string): string {
+function buildHookScript(hookName: string, cliPath: string, backupPath?: string): string {
   const quotedCliPath = shellQuote(cliPath);
   const quotedBackupPath = backupPath ? shellQuote(backupPath) : '';
+  const quotedHookName = shellQuote(hookName);
 
   return [
     '#!/bin/sh',
-    HOOK_MARKER,
+    buildManagedHookMarker(hookName),
     quotedBackupPath
       ? `if [ -f ${quotedBackupPath} ]; then if [ -x ${quotedBackupPath} ]; then ${quotedBackupPath} "$@" || exit $?; else sh ${quotedBackupPath} "$@" || exit $?; fi; fi`
       : '',
-    `if [ -f ${quotedCliPath} ]; then node ${quotedCliPath} hook "$@"; elif command -v commit-echo >/dev/null 2>&1; then commit-echo hook "$@"; fi`,
+    `if [ -f ${quotedCliPath} ]; then node ${quotedCliPath} hook ${quotedHookName} "$@"; elif command -v commit-echo >/dev/null 2>&1; then commit-echo hook ${quotedHookName} "$@"; fi`,
     '',
   ]
     .filter((line) => line.length > 0)
     .join('\n');
 }
 
-export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
-  checkGitRepo();
+export function buildPrepareCommitMsgHookScript(cliPath: string, backupPath?: string): string {
+  return buildHookScript(PREPARE_COMMIT_MSG_HOOK_NAME, cliPath, backupPath);
+}
 
-  const hookPath = resolvePrepareCommitMsgHookPath();
+export function buildPostCommitHookScript(cliPath: string, backupPath?: string): string {
+  return buildHookScript(POST_COMMIT_HOOK_NAME, cliPath, backupPath);
+}
+
+async function installManagedHook(hookName: string, cliPath: string): Promise<string> {
+  const hookPath = resolveHookPath(hookName);
   const hookDir = dirname(hookPath);
   const backupPath = `${hookPath}.commit-echo.bak`;
+  const marker = buildManagedHookMarker(hookName);
 
   await mkdir(hookDir, { recursive: true });
 
   if (existsSync(hookPath)) {
     const existingHook = await readFile(hookPath, 'utf-8').catch(() => '');
-    if (!existingHook.includes(HOOK_MARKER) && !existsSync(backupPath)) {
+    if (!existingHook.includes(marker) && !existsSync(backupPath)) {
       await copyFile(hookPath, backupPath);
     }
   }
 
-  const script = buildPrepareCommitMsgHookScript(cliPath, existsSync(backupPath) ? backupPath : undefined);
+  const script = buildHookScript(hookName, cliPath, existsSync(backupPath) ? backupPath : undefined);
   await writeFile(hookPath, `${script}\n`, 'utf-8');
   await chmod(hookPath, 0o755);
 
   return hookPath;
+}
+
+export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
+  checkGitRepo();
+  await installManagedHook(POST_COMMIT_HOOK_NAME, cliPath);
+  return installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, cliPath);
+}
+
+function buildPendingHookEntry(config: Config, diff: string): string {
+  return JSON.stringify({
+    timestamp: new Date().toISOString(),
+    diff,
+    model: config.model,
+    provider: config.provider,
+  });
 }
 
 export async function runPrepareCommitMsgHook(
@@ -106,6 +155,7 @@ export async function runPrepareCommitMsgHook(
     generateSuggestions,
     readMessageFile: async (messageFile) => readFile(messageFile, 'utf-8'),
     writeMessageFile: async (messageFile, content) => writeFile(messageFile, content, 'utf-8'),
+    writePendingEntryFile: async (content) => writeFile(resolvePendingEntryPath(), content, 'utf-8'),
     warn: (message) => console.warn(message),
   }
 ): Promise<void> {
@@ -138,6 +188,49 @@ export async function runPrepareCommitMsgHook(
     const existingContent = await deps.readMessageFile(args.messageFile).catch(() => '');
     const nextContent = buildHookCommitMessage(selected, existingContent);
     await deps.writeMessageFile(args.messageFile, nextContent);
+    await deps.writePendingEntryFile(buildPendingHookEntry(config, diffResult.diff));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    deps.warn(`commit-echo hook: ${message}`);
+  }
+}
+
+export async function runPostCommitHook(
+  deps: PostCommitHookDeps = {
+    checkGitRepo,
+    readLatestCommitMessage: () => execSync('git log -1 --pretty=%B', { encoding: 'utf-8' }).trim(),
+    readPendingEntryFile: async () => readFile(resolvePendingEntryPath(), 'utf-8'),
+    appendHistoryEntry: async (entry) => {
+      await mkdir(dirname(getHistoryPath()), { recursive: true });
+      await appendFile(getHistoryPath(), `${entry}\n`, 'utf-8');
+    },
+    removePendingEntryFile: async () => rm(resolvePendingEntryPath(), { force: true }),
+    warn: (message) => console.warn(message),
+  }
+): Promise<void> {
+  try {
+    deps.checkGitRepo();
+
+    const rawEntry = await deps.readPendingEntryFile().catch(() => '');
+    if (!rawEntry) {
+      return;
+    }
+
+    const pending = JSON.parse(rawEntry) as { timestamp: string; diff: string; model: string; provider: string };
+    const message = deps.readLatestCommitMessage().trim();
+    if (!message) {
+      await deps.removePendingEntryFile();
+      return;
+    }
+
+    await deps.appendHistoryEntry(JSON.stringify({
+      timestamp: pending.timestamp,
+      message,
+      diff: pending.diff,
+      model: pending.model,
+      provider: pending.provider,
+    }));
+    await deps.removePendingEntryFile();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     deps.warn(`commit-echo hook: ${message}`);

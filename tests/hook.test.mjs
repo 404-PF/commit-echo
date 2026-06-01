@@ -7,8 +7,10 @@ import { join } from 'node:path';
 
 import {
   buildHookCommitMessage,
+  buildPostCommitHookScript,
   buildPrepareCommitMsgHookScript,
   installPrepareCommitMsgHook,
+  runPostCommitHook,
   runPrepareCommitMsgHook,
   shouldSkipPrepareCommitMsgHook,
 } from '../dist/git/hook.js';
@@ -77,15 +79,22 @@ test('buildHookCommitMessage preserves non-comment template content', () => {
 test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
   const script = buildPrepareCommitMsgHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak');
 
-  assert.match(script, /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook "\$@"; fi/);
-  assert.match(script, /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook "\$@"; fi/);
+  assert.match(script, /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; fi/);
+  assert.match(script, /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; fi/);
   assert.match(script, /if \[ -x 'c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo.bak' \]; then 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; else sh 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; fi/);
+});
+
+test('buildPostCommitHookScript invokes the post-commit entry point', () => {
+  const script = buildPostCommitHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\post-commit.commit-echo.bak');
+
+  assert.match(script, /commit-echo managed hook post-commit/);
+  assert.match(script, /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'post-commit' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'post-commit' "\$@"; fi/);
 });
 
 test('buildPrepareCommitMsgHookScript safely quotes paths containing shell metacharacters', () => {
   const script = buildPrepareCommitMsgHookScript("/tmp/commit-echo/it's/$(bad)/index.js");
 
-  assert.match(script, /if \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook "\$@";/);
+  assert.match(script, /if \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook 'prepare-commit-msg' "\$@";/);
 });
 
 test('installPrepareCommitMsgHook writes a managed hook file inside the current repository', async () => {
@@ -96,8 +105,11 @@ test('installPrepareCommitMsgHook writes a managed hook file inside the current 
       const resolvedHookPath = await installPrepareCommitMsgHook(join(repoDir, 'dist', 'index.js'));
       assert.ok(existsSync(resolvedHookPath));
       const content = readFileSync(resolvedHookPath, 'utf-8');
-      assert.match(content, /commit-echo managed prepare-commit-msg hook/);
-      assert.match(content, /node '.*dist\/index\.js' hook "\$@"/);
+      const postCommitHookPath = join(repoDir, '.git', 'hooks', 'post-commit');
+      assert.match(content, /commit-echo managed hook prepare-commit-msg/);
+      assert.match(content, /node '.*dist\/index\.js' hook 'prepare-commit-msg' "\$@"/);
+      assert.ok(existsSync(postCommitHookPath));
+      assert.match(readFileSync(postCommitHookPath, 'utf-8'), /hook 'post-commit' "\$@"/);
     });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
@@ -145,6 +157,7 @@ test('runPrepareCommitMsgHook rewrites the message file with the first suggestio
       }),
       readMessageFile: async (filePath) => readFileSync(filePath, 'utf-8'),
       writeMessageFile: async (filePath, content) => writeFileSync(filePath, content, 'utf-8'),
+      writePendingEntryFile: async () => {},
       warn: () => {},
     };
 
@@ -203,6 +216,7 @@ test('runPrepareCommitMsgHook leaves merge and commit sources unchanged', async 
       },
       readMessageFile: async (filePath) => readFileSync(filePath, 'utf-8'),
       writeMessageFile: async (filePath, content) => writeFileSync(filePath, content, 'utf-8'),
+      writePendingEntryFile: async () => {},
       warn: () => {},
     };
 
@@ -216,4 +230,92 @@ test('runPrepareCommitMsgHook leaves merge and commit sources unchanged', async 
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
   }
+});
+
+test('runPrepareCommitMsgHook stores a pending history entry for post-commit', async () => {
+  const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-pending-'));
+  const messageFile = join(repoDir, 'COMMIT_EDITMSG');
+  writeFileSync(messageFile, '', 'utf-8');
+
+  try {
+    let pendingEntry = '';
+    const deps = {
+      checkGitRepo: () => {},
+      loadConfig: async () => ({
+        provider: 'mock',
+        model: 'mock-model',
+        historySize: 3,
+        maxDiffSize: 4000,
+      }),
+      getStagedDiff: () => ({ diff: 'diff --git a/file b/file\n+hello', hasChanges: true, staged: true }),
+      buildProfile: async () => ({
+        avgLength: 0,
+        commonPrefixes: [],
+        prefixRates: {},
+        imperativeRate: 0,
+        sentenceCaseRate: 0,
+        usesScopeRate: 0,
+        usesBodyRate: 0,
+        totalCommits: 0,
+      }),
+      generateSuggestions: async () => ({
+        suggestions: [{ index: 1, message: 'feat: prefill hook', body: 'Hook body' }],
+        profile: {
+          avgLength: 0,
+          commonPrefixes: [],
+          prefixRates: {},
+          imperativeRate: 0,
+          sentenceCaseRate: 0,
+          usesScopeRate: 0,
+          usesBodyRate: 0,
+          totalCommits: 0,
+        },
+        model: 'mock-model',
+      }),
+      readMessageFile: async (filePath) => readFileSync(filePath, 'utf-8'),
+      writeMessageFile: async (filePath, content) => writeFileSync(filePath, content, 'utf-8'),
+      writePendingEntryFile: async (content) => {
+        pendingEntry = content;
+      },
+      warn: () => {},
+    };
+
+    await runPrepareCommitMsgHook({ messageFile, source: 'template' }, deps);
+
+    assert.match(pendingEntry, /"diff":"diff --git a\/file b\/file\\n\+hello"/);
+    assert.match(pendingEntry, /"model":"mock-model"/);
+    assert.match(pendingEntry, /"provider":"mock"/);
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('runPostCommitHook appends the committed message to history and clears the pending entry', async () => {
+  let removed = false;
+  const entries = [];
+
+  await runPostCommitHook({
+    checkGitRepo: () => {},
+    readLatestCommitMessage: () => 'feat: persist hook-driven commits',
+    readPendingEntryFile: async () => JSON.stringify({
+      timestamp: '2026-06-01T00:00:00.000Z',
+      diff: 'diff --git a/file b/file\n+hello',
+      model: 'mock-model',
+      provider: 'mock',
+    }),
+    appendHistoryEntry: async (entry) => {
+      entries.push(JSON.parse(entry));
+    },
+    removePendingEntryFile: async () => {
+      removed = true;
+    },
+    warn: () => {},
+  });
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].message, 'feat: persist hook-driven commits');
+  assert.equal(entries[0].model, 'mock-model');
+  assert.equal(entries[0].provider, 'mock');
+  assert.equal(entries[0].diff, 'diff --git a/file b/file\n+hello');
+  assert.equal(removed, true);
 });

@@ -9,7 +9,7 @@ import { initCommand } from './commands/init.js';
 import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
-import { runPrepareCommitMsgHook } from './git/hook.js';
+import { runPostCommitHook, runPrepareCommitMsgHook } from './git/hook.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkg: { version?: string; description?: string };
@@ -78,12 +78,26 @@ program
 
 program
   .command('hook')
-  .description('Internal prepare-commit-msg hook entry point')
-  .argument('<message-file>', 'Commit message file path provided by Git')
+  .description('Internal Git hook entry point')
+  .argument('<hook-name>', 'Git hook name')
+  .argument('[message-file]', 'Commit message file path provided by Git')
   .argument('[source]', 'Commit message source provided by Git')
   .argument('[sha]', 'Commit SHA provided by Git')
-  .action(async (messageFile: string, source?: string, sha?: string) => {
-    await runPrepareCommitMsgHook({ messageFile, source, sha });
+  .action(async (hookName: string, messageFile?: string, source?: string, sha?: string) => {
+    if (hookName === 'prepare-commit-msg') {
+      if (!messageFile) {
+        throw new Error('prepare-commit-msg requires a message file path');
+      }
+      await runPrepareCommitMsgHook({ messageFile, source, sha });
+      return;
+    }
+
+    if (hookName === 'post-commit') {
+      await runPostCommitHook();
+      return;
+    }
+
+    throw new Error(`Unsupported hook: ${hookName}`);
   });
 
 program.action(async () => {
