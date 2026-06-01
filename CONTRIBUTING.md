@@ -40,7 +40,7 @@ src/
 
 - **Style:** Minimal, no comments unless necessary. Match the existing code style.
 - **Imports:** Use ESM `import` syntax (`"type": "module"`).
-- **Formatting:** The project does not currently enforce a formatter – keep code clean and consistent with surrounding files.
+- **Formatting:** Prettier is configured via `.prettierrc`. Run `npm run format` to auto-format the supported source files, or `npm run format:check` to verify formatting in CI.
 - **No linter is configured** – review your own diffs carefully.
 
 ## Pull Request Process
