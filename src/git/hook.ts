@@ -39,6 +39,7 @@ export interface PrepareCommitMsgHookDeps {
   readMessageFile: (messageFile: string) => Promise<string>;
   writeMessageFile: (messageFile: string, content: string) => Promise<void>;
   writePendingEntryFile: (content: string) => Promise<void>;
+  removePendingEntryFile: () => Promise<void>;
   warn: (message: string) => void;
 }
 
@@ -69,6 +70,14 @@ function shellQuote(value: string): string {
 
 export function shouldSkipPrepareCommitMsgHook(source = ''): boolean {
   return source === 'message' || source === 'merge' || source === 'squash' || source === 'commit';
+}
+
+async function clearPendingEntryFile(removePendingEntryFile: () => Promise<void>): Promise<void> {
+  try {
+    await removePendingEntryFile();
+  } catch {
+    // Ignore cleanup errors in hook flows.
+  }
 }
 
 export function buildHookCommitMessage(selected: Suggestion, existingContent = ''): string {
@@ -156,10 +165,12 @@ export async function runPrepareCommitMsgHook(
     readMessageFile: async (messageFile) => readFile(messageFile, 'utf-8'),
     writeMessageFile: async (messageFile, content) => writeFile(messageFile, content, 'utf-8'),
     writePendingEntryFile: async (content) => writeFile(resolvePendingEntryPath(), content, 'utf-8'),
+    removePendingEntryFile: async () => rm(resolvePendingEntryPath(), { force: true }),
     warn: (message) => console.warn(message),
   }
 ): Promise<void> {
   if (shouldSkipPrepareCommitMsgHook(args.source)) {
+    await clearPendingEntryFile(deps.removePendingEntryFile);
     return;
   }
 
@@ -169,11 +180,13 @@ export async function runPrepareCommitMsgHook(
     const config = await deps.loadConfig().catch(() => null);
     if (!config) {
       deps.warn('commit-echo hook: no configuration found; skipping.');
+      await clearPendingEntryFile(deps.removePendingEntryFile);
       return;
     }
 
     const diffResult = deps.getStagedDiff();
     if (!diffResult.hasChanges) {
+      await clearPendingEntryFile(deps.removePendingEntryFile);
       return;
     }
 
@@ -182,6 +195,7 @@ export async function runPrepareCommitMsgHook(
     const selected = suggestions[0];
     if (!selected) {
       deps.warn('commit-echo hook: no suggestions were generated; leaving commit message unchanged.');
+      await clearPendingEntryFile(deps.removePendingEntryFile);
       return;
     }
 

@@ -232,6 +232,83 @@ test('runPrepareCommitMsgHook leaves merge and commit sources unchanged', async 
   }
 });
 
+test('runPrepareCommitMsgHook clears stale pending state for skipped sources', async () => {
+  const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-stale-'));
+  const messageFile = join(repoDir, 'COMMIT_EDITMSG');
+  writeFileSync(messageFile, '', 'utf-8');
+
+  try {
+    let pendingEntry = '';
+    const deps = {
+      checkGitRepo: () => {},
+      loadConfig: async () => ({
+        provider: 'mock',
+        model: 'mock-model',
+        historySize: 3,
+        maxDiffSize: 4000,
+      }),
+      getStagedDiff: () => ({ diff: 'diff --git a/file b/file\n+hello', hasChanges: true, staged: true }),
+      buildProfile: async () => ({
+        avgLength: 0,
+        commonPrefixes: [],
+        prefixRates: {},
+        imperativeRate: 0,
+        sentenceCaseRate: 0,
+        usesScopeRate: 0,
+        usesBodyRate: 0,
+        totalCommits: 0,
+      }),
+      generateSuggestions: async () => ({
+        suggestions: [{ index: 1, message: 'feat: stale pending', body: 'Hook body' }],
+        profile: {
+          avgLength: 0,
+          commonPrefixes: [],
+          prefixRates: {},
+          imperativeRate: 0,
+          sentenceCaseRate: 0,
+          usesScopeRate: 0,
+          usesBodyRate: 0,
+          totalCommits: 0,
+        },
+        model: 'mock-model',
+      }),
+      readMessageFile: async (filePath) => readFileSync(filePath, 'utf-8'),
+      writeMessageFile: async (filePath, content) => writeFileSync(filePath, content, 'utf-8'),
+      writePendingEntryFile: async (content) => {
+        pendingEntry = content;
+      },
+      removePendingEntryFile: async () => {
+        pendingEntry = '';
+      },
+      warn: () => {},
+    };
+
+    await runPrepareCommitMsgHook({ messageFile, source: 'template' }, deps);
+    assert.notEqual(pendingEntry, '');
+
+    await runPrepareCommitMsgHook({ messageFile, source: 'message' }, deps);
+    assert.equal(pendingEntry, '');
+
+    let historyEntry = '';
+    await runPostCommitHook({
+      checkGitRepo: () => {},
+      readLatestCommitMessage: () => 'fix: manual message',
+      readPendingEntryFile: async () => pendingEntry,
+      appendHistoryEntry: async (entry) => {
+        historyEntry = entry;
+      },
+      removePendingEntryFile: async () => {
+        pendingEntry = '';
+      },
+      warn: () => {},
+    });
+
+    assert.equal(historyEntry, '');
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test('runPrepareCommitMsgHook stores a pending history entry for post-commit', async () => {
   const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-pending-'));
   const messageFile = join(repoDir, 'COMMIT_EDITMSG');
