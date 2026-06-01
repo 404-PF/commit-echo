@@ -77,9 +77,15 @@ test('buildHookCommitMessage preserves non-comment template content', () => {
 test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
   const script = buildPrepareCommitMsgHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak');
 
-  assert.match(script, /if \[ -f "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak" \][\s\S]*if \[ -f "c:\/tools\/commit-echo\/dist\/index\.js" \]; then node "c:\/tools\/commit-echo\/dist\/index\.js" hook "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook "\$@"; fi/);
-  assert.match(script, /if \[ -f "c:\/tools\/commit-echo\/dist\/index\.js" \]; then node "c:\/tools\/commit-echo\/dist\/index\.js" hook "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook "\$@"; fi/);
-  assert.match(script, /if \[ -x "c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo.bak" \]; then "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" "\$@" \|\| exit \$\?; else sh "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" "\$@" \|\| exit \$\?; fi/);
+  assert.match(script, /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook "\$@"; fi/);
+  assert.match(script, /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook "\$@"; fi/);
+  assert.match(script, /if \[ -x 'c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo.bak' \]; then 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; else sh 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; fi/);
+});
+
+test('buildPrepareCommitMsgHookScript safely quotes paths containing shell metacharacters', () => {
+  const script = buildPrepareCommitMsgHookScript("/tmp/commit-echo/it's/$(bad)/index.js");
+
+  assert.match(script, /if \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook "\$@";/);
 });
 
 test('installPrepareCommitMsgHook writes a managed hook file inside the current repository', async () => {
@@ -91,7 +97,7 @@ test('installPrepareCommitMsgHook writes a managed hook file inside the current 
       assert.ok(existsSync(resolvedHookPath));
       const content = readFileSync(resolvedHookPath, 'utf-8');
       assert.match(content, /commit-echo managed prepare-commit-msg hook/);
-      assert.match(content, /node ".*dist\/index\.js" hook "\$@"/);
+      assert.match(content, /node '.*dist\/index\.js' hook "\$@"/);
     });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });

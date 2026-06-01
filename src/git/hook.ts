@@ -36,6 +36,11 @@ function toShellPath(value: string): string {
   return value.replace(/\\/g, '/');
 }
 
+function shellQuote(value: string): string {
+  // POSIX-safe single-quote escaping: 'abc' -> 'abc', a'b -> 'a'"'"'b'
+  return `'${toShellPath(value).replace(/'/g, `'"'"'`)}'`;
+}
+
 export function shouldSkipPrepareCommitMsgHook(source = ''): boolean {
   return source === 'message' || source === 'merge' || source === 'squash' || source === 'commit';
 }
@@ -52,16 +57,16 @@ export function buildHookCommitMessage(selected: Suggestion, existingContent = '
 }
 
 export function buildPrepareCommitMsgHookScript(cliPath: string, backupPath?: string): string {
-  const normalizedCliPath = toShellPath(cliPath);
-  const normalizedBackupPath = backupPath ? toShellPath(backupPath) : '';
+  const quotedCliPath = shellQuote(cliPath);
+  const quotedBackupPath = backupPath ? shellQuote(backupPath) : '';
 
   return [
     '#!/bin/sh',
     HOOK_MARKER,
-    normalizedBackupPath
-      ? `if [ -f "${normalizedBackupPath}" ]; then if [ -x "${normalizedBackupPath}" ]; then "${normalizedBackupPath}" "$@" || exit $?; else sh "${normalizedBackupPath}" "$@" || exit $?; fi; fi`
+    quotedBackupPath
+      ? `if [ -f ${quotedBackupPath} ]; then if [ -x ${quotedBackupPath} ]; then ${quotedBackupPath} "$@" || exit $?; else sh ${quotedBackupPath} "$@" || exit $?; fi; fi`
       : '',
-    `if [ -f "${normalizedCliPath}" ]; then node "${normalizedCliPath}" hook "$@"; elif command -v commit-echo >/dev/null 2>&1; then commit-echo hook "$@"; fi`,
+    `if [ -f ${quotedCliPath} ]; then node ${quotedCliPath} hook "$@"; elif command -v commit-echo >/dev/null 2>&1; then commit-echo hook "$@"; fi`,
     '',
   ]
     .filter((line) => line.length > 0)

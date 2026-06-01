@@ -191,18 +191,21 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     userPromptTemplate,
   };
 
-  await saveConfig(config);
+  const persistSetup = async () => {
+    await saveConfig(config);
 
-  if (options.installHook) {
-    try {
-      const hookPath = await installPrepareCommitMsgHook();
-      console.log(pc.green(`Installed prepare-commit-msg hook at ${hookPath}`));
-    } catch (err) {
-      console.warn(pc.yellow(`Could not install prepare-commit-msg hook: ${err instanceof Error ? err.message : String(err)}`));
+    if (options.installHook) {
+      try {
+        const hookPath = await installPrepareCommitMsgHook();
+        console.log(pc.green(`Installed prepare-commit-msg hook at ${hookPath}`));
+      } catch (err) {
+        console.warn(pc.yellow(`Could not install prepare-commit-msg hook: ${err instanceof Error ? err.message : String(err)}`));
+      }
     }
-  }
+  };
 
   if (needsApiKey && !config.apiKey && !process.env[apiKeyEnv]) {
+    await persistSetup();
     const warn = pc.yellow(`\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${apiKeyEnv}`)} before running suggestions.`);
     outro(warn);
     return;
@@ -231,6 +234,8 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       return;
     }
   }
+
+  await persistSetup();
 
   const displayKey = config.apiKey ? 'stored in config' : `\$${apiKeyEnv}`;
   const displayUrl = providerKey === CUSTOM_KEY
