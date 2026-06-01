@@ -28,25 +28,35 @@ function runSuggestUntil(args, { cwd, env, text }) {
     });
     let stdout = '';
     let stderr = '';
+    let settled = false;
     const timeout = setTimeout(() => {
+      settled = true;
       child.kill('SIGINT');
       reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
     }, 5000);
-    child.stdout.on('data', (chunk) => {
+    child.stdout.on('data', async (chunk) => {
       stdout += chunk.toString();
-      if (stdout.includes(text)) {
+      if (!settled && stdout.includes(text)) {
+        settled = true;
         clearTimeout(timeout);
         child.kill('SIGINT');
-        resolve({ stdout, stderr });
+        try {
+          await onceExit(child);
+          resolve({ stdout, stderr });
+        } catch (err) {
+          reject(err);
+        }
       }
     });
     child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
     child.on('error', (err) => {
+      settled = true;
       clearTimeout(timeout);
       reject(err);
     });
     child.on('exit', (code, signal) => {
-      if (!stdout.includes(text)) {
+      if (!settled && !stdout.includes(text)) {
+        settled = true;
         clearTimeout(timeout);
         reject(new Error(`Exited before ${text}. code: ${code} signal: ${signal} stdout: ${stdout} stderr: ${stderr}`));
       }

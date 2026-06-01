@@ -1,7 +1,7 @@
 import { execSync, spawnSync } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 
 export interface DiffResult {
   diff: string;
@@ -74,7 +74,7 @@ export function commit(message: string, body?: string): CommitResult {
 }
 
 export function getRepoRoot(): string {
-  return execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
+  return normalize(execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim());
 }
 
 export function getBranchName(): string {
