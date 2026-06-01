@@ -42,17 +42,13 @@ export function shouldSkipPrepareCommitMsgHook(source = ''): boolean {
 
 export function buildHookCommitMessage(selected: Suggestion, existingContent = ''): string {
   const message = selected.body ? `${selected.message}\n\n${selected.body}` : selected.message;
-  const preservedComments = existingContent
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length === 0 || line.trimStart().startsWith('#'))
-    .join('\n')
-    .trim();
+  const preservedTemplate = existingContent.trim();
 
-  if (!preservedComments) {
+  if (!preservedTemplate) {
     return message;
   }
 
-  return `${message}\n\n${preservedComments}`;
+  return `${message}\n\n${preservedTemplate}`;
 }
 
 export function buildPrepareCommitMsgHookScript(cliPath: string, backupPath?: string): string {

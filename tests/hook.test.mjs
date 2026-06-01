@@ -73,6 +73,18 @@ test('buildHookCommitMessage preserves commit template comments', () => {
   assert.ok(result.includes('# Lines starting with # will be ignored.'));
 });
 
+test('buildHookCommitMessage preserves non-comment template content', () => {
+  const result = buildHookCommitMessage(
+    { index: 1, message: 'feat: add hook support', body: 'Explain the change.' },
+    'Ticket: ABC-123\n\nDetails:\n- add tests\n# comment'
+  );
+
+  assert.ok(result.startsWith('feat: add hook support\n\nExplain the change.'));
+  assert.ok(result.includes('Ticket: ABC-123'));
+  assert.ok(result.includes('Details:'));
+  assert.ok(result.includes('# comment'));
+});
+
 test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
   const script = buildPrepareCommitMsgHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak');
 
@@ -151,7 +163,7 @@ test('runPrepareCommitMsgHook rewrites the message file with the first suggestio
   }
 });
 
-test('runPrepareCommitMsgHook leaves amend and merge sources unchanged', async () => {
+test('runPrepareCommitMsgHook leaves merge and commit sources unchanged', async () => {
   const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-skip-'));
   const messageFile = join(repoDir, 'COMMIT_EDITMSG');
   writeFileSync(messageFile, 'original\n', 'utf-8');
@@ -200,7 +212,10 @@ test('runPrepareCommitMsgHook leaves amend and merge sources unchanged', async (
     };
 
     await runPrepareCommitMsgHook({ messageFile, source: 'merge' }, deps);
+    assert.equal(called, false);
+    assert.equal(readFileSync(messageFile, 'utf-8'), 'original\n');
 
+    await runPrepareCommitMsgHook({ messageFile, source: 'commit' }, deps);
     assert.equal(called, false);
     assert.equal(readFileSync(messageFile, 'utf-8'), 'original\n');
   } finally {
