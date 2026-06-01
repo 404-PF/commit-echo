@@ -9,6 +9,7 @@ import { initCommand } from './commands/init.js';
 import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
+import { runPrepareCommitMsgHook } from './git/hook.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkg: { version?: string; description?: string };
@@ -48,7 +49,10 @@ ${pc.dim('Custom prompt template variables:')}
 program
   .command('init')
   .description('Run interactive setup wizard to configure provider and model')
-  .action(initCommand);
+  .option('--install-hook', 'Install a prepare-commit-msg hook in the current repository')
+  .action(async (options) => {
+    await initCommand({ installHook: Boolean(options.installHook) });
+  });
 
 program
   .command('suggest')
@@ -71,6 +75,16 @@ program
   .command('history')
   .description('View learned style profile and recent commit history')
   .action(historyCommand);
+
+program
+  .command('hook')
+  .description('Internal prepare-commit-msg hook entry point')
+  .argument('<message-file>', 'Commit message file path provided by Git')
+  .argument('[source]', 'Commit message source provided by Git')
+  .argument('[sha]', 'Commit SHA provided by Git')
+  .action(async (messageFile: string, source?: string, sha?: string) => {
+    await runPrepareCommitMsgHook({ messageFile, source, sha });
+  });
 
 program.action(async () => {
   const opts = program.opts();

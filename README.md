@@ -11,6 +11,7 @@ LLM-powered CLI that learns your Git commit style and auto-suggests personalized
 - **Style learning** — Adapts to your commit conventions over time by analyzing your history
 - **Multi-provider** — Works with OpenAI, Anthropic, Ollama, and OpenAI-compatible endpoints
 - **Interactive setup** — Guided wizard to configure your provider and model
+- **Git hook integration** — Optional `prepare-commit-msg` hook installation from `commit-echo init --install-hook`
 - **Non-destructive** — Review and edit suggestions before committing
 
 ## Installation
@@ -43,6 +44,9 @@ commit-echo --yes
 # Interactive setup wizard
 commit-echo init
 
+# Interactive setup and install a prepare-commit-msg hook
+commit-echo init --install-hook
+
 # Generate suggestions without committing
 commit-echo suggest
 
@@ -64,6 +68,8 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 ## Configuration
 
 Run `commit-echo init` to configure your provider and model. Configuration is stored in `~/.config/commit-echo/config.json`.
+
+If you want `git commit` to prefill the first suggestion automatically, run `commit-echo init --install-hook` from inside a Git repository. The hook skips merge commits, cherry-picks, amend flows, and any commit where a message was already supplied.
 
 ### Options
 

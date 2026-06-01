@@ -4,6 +4,7 @@ import { BUILTIN_PROVIDERS, getProviderInfo, fetchModels } from '../providers/in
 import { saveConfig, configExists, loadConfig } from '../config/store.js';
 import type { Config } from '../types.js';
 import { getAvailableTemplateVars } from '../llm/prompt.js';
+import { installPrepareCommitMsgHook } from '../git/hook.js';
 
 const CUSTOM_KEY = '__custom__';
 
@@ -14,7 +15,7 @@ export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   };
 }
 
-export async function initCommand(): Promise<void> {
+export async function initCommand(options: { installHook?: boolean } = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo init')));
 
   const isReconfig = configExists();
@@ -191,6 +192,15 @@ export async function initCommand(): Promise<void> {
   };
 
   await saveConfig(config);
+
+  if (options.installHook) {
+    try {
+      const hookPath = await installPrepareCommitMsgHook();
+      console.log(pc.green(`Installed prepare-commit-msg hook at ${hookPath}`));
+    } catch (err) {
+      console.warn(pc.yellow(`Could not install prepare-commit-msg hook: ${err instanceof Error ? err.message : String(err)}`));
+    }
+  }
 
   if (needsApiKey && !config.apiKey && !process.env[apiKeyEnv]) {
     const warn = pc.yellow(`\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${apiKeyEnv}`)} before running suggestions.`);
