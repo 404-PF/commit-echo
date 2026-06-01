@@ -76,6 +76,7 @@ test('buildHookCommitMessage preserves commit template comments', () => {
 test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
   const script = buildPrepareCommitMsgHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak');
 
+  assert.match(script, /if \[ -f "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak" \][\s\S]*node "c:\/tools\/commit-echo\/dist\/index\.js" hook "\$@"/);
   assert.match(script, /node "c:\/tools\/commit-echo\/dist\/index.js" hook "\$@"/);
   assert.match(script, /if \[ -x "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" \]; then "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" "\$@"; else sh "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" "\$@"; fi/);
 });
