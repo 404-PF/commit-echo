@@ -73,11 +73,11 @@ test('buildHookCommitMessage preserves commit template comments', () => {
   assert.ok(result.includes('# Lines starting with # will be ignored.'));
 });
 
-test('buildPrepareCommitMsgHookScript points to the CLI entry point and optional backup', () => {
+test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
   const script = buildPrepareCommitMsgHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak');
 
   assert.match(script, /node "c:\/tools\/commit-echo\/dist\/index.js" hook "\$@"/);
-  assert.match(script, /sh "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" "\$@"/);
+  assert.match(script, /if \[ -x "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" \]; then "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" "\$@"; else sh "c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak" "\$@"; fi/);
 });
 
 test('installPrepareCommitMsgHook writes a managed hook file inside the current repository', async () => {
