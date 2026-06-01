@@ -63,7 +63,7 @@ export function buildPrepareCommitMsgHookScript(cliPath: string, backupPath?: st
     '#!/bin/sh',
     HOOK_MARKER,
     normalizedBackupPath
-      ? `if [ -f "${normalizedBackupPath}" ]; then if [ -x "${normalizedBackupPath}" ]; then "${normalizedBackupPath}" "$@"; else sh "${normalizedBackupPath}" "$@"; fi; fi`
+      ? `if [ -f "${normalizedBackupPath}" ]; then if [ -x "${normalizedBackupPath}" ]; then "${normalizedBackupPath}" "$@" || exit $?; else sh "${normalizedBackupPath}" "$@" || exit $?; fi; fi`
       : '',
     `node "${normalizedCliPath}" hook "$@"`,
     '',
