@@ -167,6 +167,54 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
   assert.ok(result.code === 0 || result.signal === 'SIGINT');
 });
 
+test('suggest reports no changes before checking for an API key', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-no-changes-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  execFileSync('git', ['add', 'README.md'], { cwd: repo });
+  execFileSync('git', ['commit', '-m', 'feat: settle fixture'], { cwd: repo });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: 'openai',
+      model: 'gpt-4.1',
+      historySize: 5,
+      maxDiffSize: 4000,
+    }, null, 2),
+    'utf8'
+  );
+
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest'], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
+      FORCE_COLOR: '0',
+      OPENAI_API_KEY: '',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+
+  const result = await onceExit(child);
+
+  assert.ok(result.code === 0 || result.signal === null);
+  assert.equal(stderr, '');
+  assert.match(stdout, /No changes detected/);
+  assert.doesNotMatch(stdout, /No API key found/);
+});
+
 test('suggest --model overrides configured model for one invocation and -m is an alias', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-model-'));
   const { home, repo, configDir } = await setupRepo(root);
