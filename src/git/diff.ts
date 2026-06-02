@@ -69,7 +69,9 @@ export function commit(message: string, body?: string): CommitResult {
     }
     return parseCommitOutput(result.stdout);
   } finally {
-    try { unlinkSync(tmpFile); } catch {}
+    try {
+      unlinkSync(tmpFile);
+    } catch {}
   }
 }
 
