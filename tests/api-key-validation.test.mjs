@@ -69,3 +69,51 @@ test('assertApiKeyAvailable does not throw for providers that do not need an API
   assert.doesNotThrow(() => assertApiKeyAvailable(config));
   assert.equal(assertApiKeyAvailable(config), '');
 });
+
+test('assertApiKeyAvailable supports CUSTOM_API_KEY for custom providers', () => {
+  const original = process.env.CUSTOM_API_KEY;
+  process.env.CUSTOM_API_KEY = 'custom-test-key';
+
+  try {
+    assert.equal(
+      assertApiKeyAvailable({
+        provider: '__custom__',
+        model: 'gpt-4.1',
+        baseUrl: 'https://example.test/v1',
+        historySize: 50,
+        maxDiffSize: 4000,
+      }),
+      'custom-test-key'
+    );
+  } finally {
+    if (original === undefined) {
+      delete process.env.CUSTOM_API_KEY;
+    } else {
+      process.env.CUSTOM_API_KEY = original;
+    }
+  }
+});
+
+test('assertApiKeyAvailable raises a clear error for custom providers without a key', () => {
+  const original = process.env.CUSTOM_API_KEY;
+  delete process.env.CUSTOM_API_KEY;
+
+  try {
+    assert.throws(
+      () => assertApiKeyAvailable({
+        provider: '__custom__',
+        model: 'gpt-4.1',
+        baseUrl: 'https://example.test/v1',
+        historySize: 50,
+        maxDiffSize: 4000,
+      }),
+      /No API key found\. Run commit-echo init to set one, or export CUSTOM_API_KEY\./
+    );
+  } finally {
+    if (original === undefined) {
+      delete process.env.CUSTOM_API_KEY;
+    } else {
+      process.env.CUSTOM_API_KEY = original;
+    }
+  }
+});

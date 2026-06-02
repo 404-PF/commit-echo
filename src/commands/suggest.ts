@@ -97,14 +97,6 @@ export async function suggestCommand(
     config.model = options.model;
   }
 
-  let apiKey: string;
-  try {
-    apiKey = assertApiKeyAvailable(config);
-  } catch (err) {
-    outro(pc.red(err instanceof Error ? err.message : "Missing API key"));
-    return;
-  }
-
   let diffResult = getStagedDiff();
 
   if (!diffResult.hasChanges) {
@@ -117,6 +109,14 @@ export async function suggestCommand(
       );
       return;
     }
+  }
+
+  let apiKey: string;
+  try {
+    apiKey = assertApiKeyAvailable(config);
+  } catch (err) {
+    outro(pc.red(err instanceof Error ? err.message : "Missing API key"));
+    return;
   }
 
   const profile = await buildProfile(config.historySize);

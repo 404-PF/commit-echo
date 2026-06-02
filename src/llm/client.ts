@@ -15,10 +15,17 @@ import {
 import { buildProfile, formatProfile } from "../history/store.js";
 import { getBranchName } from "../git/diff.js";
 
+function getApiKeyEnv(config: Config): string | undefined {
+  if (config.provider === "__custom__") {
+    return "CUSTOM_API_KEY";
+  }
+
+  return getProviderInfo(config.provider)?.apiKeyEnv;
+}
+
 export function resolveApiKey(config: Config): string {
   if (config.apiKey) return config.apiKey;
-  const info = getProviderInfo(config.provider);
-  const envVar = info?.apiKeyEnv;
+  const envVar = getApiKeyEnv(config);
   if (envVar && process.env[envVar]) return process.env[envVar]!;
   return "";
 }
@@ -26,9 +33,10 @@ export function resolveApiKey(config: Config): string {
 export function assertApiKeyAvailable(config: Config): string {
   const apiKey = resolveApiKey(config);
   const info = getProviderInfo(config.provider);
+  const needsApiKey = config.provider === "__custom__" || info?.needsApiKey;
 
-  if (!apiKey && info?.needsApiKey) {
-    const envVar = info.apiKeyEnv || "YOUR_PROVIDER_API_KEY";
+  if (!apiKey && needsApiKey) {
+    const envVar = getApiKeyEnv(config) || "YOUR_PROVIDER_API_KEY";
     throw new Error(
       `No API key found. Run commit-echo init to set one, or export ${envVar}.`,
     );
