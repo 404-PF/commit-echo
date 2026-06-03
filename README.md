@@ -102,24 +102,39 @@ If a custom template is not set, the built-in prompt is used as a fallback.
 
 ### Environment
 
-Set the API key for the provider you plan to use before running the setup wizard or generating suggestions:
+Set the API key for the provider you plan to use before running the setup wizard or generating suggestions. The table below lists all built-in providers, their API key environment variables, and whether a key is required.
+
+| Provider key | Display name | API key env var | Required? |
+|---|---|---|---|
+| `openai` | OpenAI | `OPENAI_API_KEY` | Yes |
+| `anthropic` | Anthropic | `ANTHROPIC_API_KEY` | Yes |
+| `google` | Google Gemini | `GOOGLE_API_KEY` | Yes |
+| `mistral` | Mistral | `MISTRAL_API_KEY` | Yes |
+| `groq` | Groq | `GROQ_API_KEY` | Yes |
+| `cohere` | Cohere | `COHERE_API_KEY` | Yes |
+| `deepseek` | DeepSeek | `DEEPSEEK_API_KEY` | Yes |
+| `ollama` | Ollama | `OLLAMA_API_KEY` | No / optional for local Ollama |
+| `together` | Together AI | `TOGETHER_API_KEY` | Yes |
+| `fireworks` | Fireworks AI | `FIREWORKS_API_KEY` | Yes |
+
+> **Note:** Ollama uses the local server at `http://localhost:11434/v1` and normally does not require an API key; the env var is only relevant if your local setup expects one.
+
+Example (macOS / Linux):
 
 ```bash
 export OPENAI_API_KEY=sk-example
-# or
-export ANTHROPIC_API_KEY=sk-ant-example
 ```
+
+Example (Windows PowerShell):
 
 ```powershell
 $env:OPENAI_API_KEY = "sk-example"
-# or
-$env:ANTHROPIC_API_KEY = "sk-ant-example"
 ```
+
+Example (Windows CMD):
 
 ```cmd
 set OPENAI_API_KEY=sk-example
-REM or
-set ANTHROPIC_API_KEY=sk-ant-example
 ```
 
 ### Full flow: review staged changes and commit
