@@ -69,7 +69,7 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 
 Run `commit-echo init` to configure your provider and model. Configuration is stored in `~/.config/commit-echo/config.json`.
 
-If you want `git commit` to prefill the first suggestion automatically, run `commit-echo init --install-hook` from inside a Git repository. The hook skips merge commits, cherry-picks, amend flows, and any commit where a message was already supplied.
+If you want `git commit` to prefill the first suggestion automatically, run `commit-echo init --install-hook` from inside a Git repository. This installs both a `prepare-commit-msg` hook (prefills the first suggestion) and a `post-commit` hook (logs the committed message for style learning). The hooks skip merge commits, cherry-picks, amend flows, and any commit where a message was already supplied.
 
 ### Options
 

@@ -76,8 +76,7 @@ program
 
 program.command('history').description('View learned style profile and recent commit history').action(historyCommand);
 
-program
-  .command('hook')
+const hookCommand = new Command('hook')
   .description('Internal Git hook entry point')
   .argument('<hook-name>', 'Git hook name')
   .argument('[message-file]', 'Commit message file path provided by Git')
@@ -99,6 +98,8 @@ program
 
     throw new Error(`Unsupported hook: ${hookName}`);
   });
+
+program.addCommand(hookCommand, { hidden: true });
 
 program.action(async () => {
   const opts = program.opts();
