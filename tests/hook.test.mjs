@@ -76,11 +76,21 @@ test('buildHookCommitMessage preserves non-comment template content', () => {
   assert.ok(result.includes('# comment'));
 });
 
+test('buildHookCommitMessage preserves template whitespace exactly', () => {
+  const template = '\nTicket: ABC-123\n\nDetails:\n- add tests\n# comment\n\n';
+  const result = buildHookCommitMessage(
+    { index: 1, message: 'feat: add hook support', body: 'Explain the change.' },
+    template
+  );
+
+  assert.equal(result, `feat: add hook support\n\nExplain the change.\n\n${template}`);
+});
+
 test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
   const script = buildPrepareCommitMsgHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak');
 
-  assert.match(script, /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; fi/);
-  assert.match(script, /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; fi/);
+  assert.match(script, /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/);
+  assert.match(script, /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/);
   assert.match(script, /if \[ -x 'c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo.bak' \]; then 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; else sh 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; fi/);
 });
 
@@ -88,13 +98,13 @@ test('buildPostCommitHookScript invokes the post-commit entry point', () => {
   const script = buildPostCommitHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\post-commit.commit-echo.bak');
 
   assert.match(script, /commit-echo managed hook post-commit/);
-  assert.match(script, /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'post-commit' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'post-commit' "\$@"; fi/);
+  assert.match(script, /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'post-commit' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'post-commit' "\$@"; fi/);
 });
 
 test('buildPrepareCommitMsgHookScript safely quotes paths containing shell metacharacters', () => {
   const script = buildPrepareCommitMsgHookScript("/tmp/commit-echo/it's/$(bad)/index.js");
 
-  assert.match(script, /if \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook 'prepare-commit-msg' "\$@";/);
+  assert.match(script, /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook 'prepare-commit-msg' "\$@";/);
 });
 
 test('installPrepareCommitMsgHook writes a managed hook file inside the current repository', async () => {

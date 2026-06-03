@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { appendFile, copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import type { Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getStagedDiff } from './diff.js';
@@ -82,7 +83,7 @@ async function clearPendingEntryFile(removePendingEntryFile: () => Promise<void>
 
 export function buildHookCommitMessage(selected: Suggestion, existingContent = ''): string {
   const message = selected.body ? `${selected.message}\n\n${selected.body}` : selected.message;
-  const preservedTemplate = existingContent.trim();
+  const preservedTemplate = existingContent;
 
   if (!preservedTemplate) {
     return message;
@@ -102,7 +103,7 @@ function buildHookScript(hookName: string, cliPath: string, backupPath?: string)
     quotedBackupPath
       ? `if [ -f ${quotedBackupPath} ]; then if [ -x ${quotedBackupPath} ]; then ${quotedBackupPath} "$@" || exit $?; else sh ${quotedBackupPath} "$@" || exit $?; fi; fi`
       : '',
-    `if [ -f ${quotedCliPath} ]; then node ${quotedCliPath} hook ${quotedHookName} "$@"; elif command -v commit-echo >/dev/null 2>&1; then commit-echo hook ${quotedHookName} "$@"; fi`,
+    `if command -v commit-echo >/dev/null 2>&1; then commit-echo hook ${quotedHookName} "$@"; elif [ -f ${quotedCliPath} ]; then node ${quotedCliPath} hook ${quotedHookName} "$@"; fi`,
     '',
   ]
     .filter((line) => line.length > 0)
@@ -140,9 +141,13 @@ async function installManagedHook(hookName: string, cliPath: string): Promise<st
 }
 
 export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
+  const resolvedCliPath = cliPath === process.argv[1]
+    ? fileURLToPath(new URL('../index.js', import.meta.url))
+    : cliPath;
+
   checkGitRepo();
-  await installManagedHook(POST_COMMIT_HOOK_NAME, cliPath);
-  return installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, cliPath);
+  await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath);
+  return installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, resolvedCliPath);
 }
 
 function buildPendingHookEntry(config: Config, diff: string): string {
