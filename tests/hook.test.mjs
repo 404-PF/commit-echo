@@ -465,3 +465,27 @@ test('runPostCommitHook clears malformed pending entries', async () => {
   assert.equal(appended, false);
   assert.equal(removed, true);
 });
+
+test('runPostCommitHook clears pending entry when history append fails', async () => {
+  let removed = false;
+
+  await runPostCommitHook({
+    checkGitRepo: () => {},
+    readLatestCommitMessage: () => 'feat: should still clear pending on error',
+    readPendingEntryFile: async () => JSON.stringify({
+      timestamp: '2026-06-01T00:00:00.000Z',
+      diff: 'diff --git a/file b/file\n+hello',
+      model: 'mock-model',
+      provider: 'mock',
+    }),
+    appendHistoryEntry: async () => {
+      throw new Error('disk full');
+    },
+    removePendingEntryFile: async () => {
+      removed = true;
+    },
+    warn: () => {},
+  });
+
+  assert.equal(removed, true);
+});

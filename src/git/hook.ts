@@ -246,14 +246,19 @@ export async function runPostCommitHook(
       return;
     }
 
-    await deps.appendHistoryEntry(JSON.stringify({
+    const entry = JSON.stringify({
       timestamp: pending.timestamp,
       message,
       diff: pending.diff,
       model: pending.model,
       provider: pending.provider,
-    }));
-    await deps.removePendingEntryFile();
+    });
+
+    try {
+      await deps.appendHistoryEntry(entry);
+    } finally {
+      await deps.removePendingEntryFile();
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     deps.warn(`commit-echo hook: ${message}`);
