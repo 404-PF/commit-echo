@@ -87,11 +87,7 @@ export function substituteTemplateVars(template: string, vars: TemplateVars): st
  * If config provides a `systemPromptTemplate`, it is used with template
  * variables substituted. Otherwise the built-in prompt is returned.
  */
-export function resolveSystemPrompt(
-  profile: StyleProfile,
-  vars: TemplateVars,
-  config?: Config
-): string {
+export function resolveSystemPrompt(profile: StyleProfile, vars: TemplateVars, config?: Config): string {
   if (config?.systemPromptTemplate) {
     return substituteTemplateVars(config.systemPromptTemplate, vars);
   }
@@ -104,10 +100,7 @@ export function resolveSystemPrompt(
  * If config provides a `userPromptTemplate`, it is used with template
  * variables substituted. Otherwise the built-in prompt is returned.
  */
-export function resolveUserPrompt(
-  vars: TemplateVars,
-  config?: Config
-): string {
+export function resolveUserPrompt(vars: TemplateVars, config?: Config): string {
   if (config?.userPromptTemplate) {
     return substituteTemplateVars(config.userPromptTemplate, vars);
   }

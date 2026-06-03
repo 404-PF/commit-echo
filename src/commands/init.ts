@@ -67,10 +67,17 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       initialValue: existingConfig?.baseUrl,
       validate: (value) => {
         if (!value) return 'Base URL is required';
-        try { new URL(value); } catch { return 'Invalid URL format'; }
+        try {
+          new URL(value);
+        } catch {
+          return 'Invalid URL format';
+        }
       },
     });
-    if (isCancel(urlResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(urlResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
     baseUrl = urlResult;
     apiKeyEnv = 'CUSTOM_API_KEY';
     needsApiKey = true;
@@ -88,7 +95,10 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   if (needsApiKey) {
     const existingKey = existingConfig?.apiKey ?? process.env[apiKeyEnv] ?? '';
     const keyResult = await text(buildApiKeyPrompt(existingKey, apiKeyEnv));
-    if (isCancel(keyResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(keyResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
 
     if (keyResult) {
       apiKey = keyResult;
@@ -104,20 +114,21 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
 
   let models: string[];
   try {
-    models = await fetchModels(
-      providerKey as string,
-      providerKey === CUSTOM_KEY ? baseUrl : undefined,
-      apiKey ?? ''
-    );
+    models = await fetchModels(providerKey as string, providerKey === CUSTOM_KEY ? baseUrl : undefined, apiKey ?? '');
     modelSpinner.stop('Models fetched successfully.');
   } catch (err) {
     modelSpinner.stop(pc.yellow('Could not fetch models automatically.'));
     const manualResult = await text({
       message: 'Enter model name manually:',
       placeholder: existingConfig?.model ?? 'gpt-4o',
-      validate: (value) => { if (!value) return 'Model name is required'; },
+      validate: (value) => {
+        if (!value) return 'Model name is required';
+      },
     });
-    if (isCancel(manualResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(manualResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
     models = [manualResult];
   }
 
@@ -142,29 +153,35 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       if (!Number.isInteger(n) || n < 1) return 'Enter a positive integer';
     },
   });
-  if (isCancel(historyResult)) { outro('Setup cancelled.'); return; }
+  if (isCancel(historyResult)) {
+    outro('Setup cancelled.');
+    return;
+  }
 
   const useCustomPrompts = await confirm({
     message: 'Set custom prompt templates? (Advanced)',
     initialValue: false,
   });
-  if (isCancel(useCustomPrompts)) { outro('Setup cancelled.'); return; }
+  if (isCancel(useCustomPrompts)) {
+    outro('Setup cancelled.');
+    return;
+  }
 
   let systemPromptTemplate: string | undefined;
   let userPromptTemplate: string | undefined;
 
   if (useCustomPrompts) {
-    note(
-      `\nAvailable variables:\n${getAvailableTemplateVars()}\n` +
-      `Leave empty to use the built-in prompt.\n`
-    );
+    note(`\nAvailable variables:\n${getAvailableTemplateVars()}\n` + `Leave empty to use the built-in prompt.\n`);
 
     const sysResult = await text({
       message: 'Custom system prompt template (optional):',
       placeholder: 'You are a commit assistant...',
       initialValue: existingConfig?.systemPromptTemplate,
     });
-    if (isCancel(sysResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(sysResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
     if (sysResult) {
       systemPromptTemplate = sysResult;
     }
@@ -174,7 +191,10 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       placeholder: 'Generate commit messages for:\n{{diff}}',
       initialValue: existingConfig?.userPromptTemplate,
     });
-    if (isCancel(userResult)) { outro('Setup cancelled.'); return; }
+    if (isCancel(userResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
     if (userResult) {
       userPromptTemplate = userResult;
     }
@@ -206,7 +226,9 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
 
   if (needsApiKey && !config.apiKey && !process.env[apiKeyEnv]) {
     await persistSetup();
-    const warn = pc.yellow(`\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${apiKeyEnv}`)} before running suggestions.`);
+    const warn = pc.yellow(
+      `\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${apiKeyEnv}`)} before running suggestions.`,
+    );
     outro(warn);
     return;
   }
@@ -238,21 +260,20 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   await persistSetup();
 
   const displayKey = config.apiKey ? 'stored in config' : `\$${apiKeyEnv}`;
-  const displayUrl = providerKey === CUSTOM_KEY
-    ? baseUrl
-    : getProviderInfo(providerKey as string)?.baseUrl;
+  const displayUrl = providerKey === CUSTOM_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
 
-  const templateInfo = config.systemPromptTemplate || config.userPromptTemplate
-    ? `\n  Custom prompts: ${pc.dim(config.systemPromptTemplate ? 'system ✓' : '')}${config.systemPromptTemplate && config.userPromptTemplate ? ', ' : ''}${pc.dim(config.userPromptTemplate ? 'user ✓' : '')}`
-    : '';
+  const templateInfo =
+    config.systemPromptTemplate || config.userPromptTemplate
+      ? `\n  Custom prompts: ${pc.dim(config.systemPromptTemplate ? 'system ✓' : '')}${config.systemPromptTemplate && config.userPromptTemplate ? ', ' : ''}${pc.dim(config.userPromptTemplate ? 'user ✓' : '')}`
+      : '';
 
   outro(
     `${pc.green('✓')} Configuration saved.\n` +
-    `  Provider: ${pc.cyan(providerKey as string)}\n` +
-    `  Model: ${pc.cyan(config.model)}\n` +
-    `  Endpoint: ${pc.dim(displayUrl ?? '')}\n` +
-    `  API key: ${pc.dim(displayKey)}` +
-    templateInfo +
-    `\n\nRun ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`
+      `  Provider: ${pc.cyan(providerKey as string)}\n` +
+      `  Model: ${pc.cyan(config.model)}\n` +
+      `  Endpoint: ${pc.dim(displayUrl ?? '')}\n` +
+      `  API key: ${pc.dim(displayKey)}` +
+      templateInfo +
+      `\n\nRun ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`,
   );
 }

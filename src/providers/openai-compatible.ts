@@ -7,25 +7,27 @@ export class OpenAICompatibleProvider implements Provider {
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+        }),
       },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-      }),
-    }, 'OpenAI-compatible API request');
+      'OpenAI-compatible API request',
+    );
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
-      throw new Error(
-        `OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`
-      );
+      throw new Error(`OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
     const data = (await response.json()) as {
