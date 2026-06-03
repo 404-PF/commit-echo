@@ -204,6 +204,7 @@ export async function runPrepareCommitMsgHook(
     await deps.writeMessageFile(args.messageFile, nextContent);
     await deps.writePendingEntryFile(buildPendingHookEntry(config, diffResult.diff));
   } catch (err) {
+    await clearPendingEntryFile(deps.removePendingEntryFile);
     const message = err instanceof Error ? err.message : String(err);
     deps.warn(`commit-echo hook: ${message}`);
   }
@@ -230,7 +231,15 @@ export async function runPostCommitHook(
       return;
     }
 
-    const pending = JSON.parse(rawEntry) as { timestamp: string; diff: string; model: string; provider: string };
+    let pending: { timestamp: string; diff: string; model: string; provider: string };
+    try {
+      pending = JSON.parse(rawEntry) as { timestamp: string; diff: string; model: string; provider: string };
+    } catch {
+      deps.warn('commit-echo hook: invalid pending hook entry; clearing stale state.');
+      await deps.removePendingEntryFile();
+      return;
+    }
+
     const message = deps.readLatestCommitMessage().trim();
     if (!message) {
       await deps.removePendingEntryFile();

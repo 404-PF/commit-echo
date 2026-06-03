@@ -367,6 +367,54 @@ test('runPrepareCommitMsgHook stores a pending history entry for post-commit', a
   }
 });
 
+test('runPrepareCommitMsgHook clears stale pending state when suggestion generation fails', async () => {
+  const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-error-'));
+  const messageFile = join(repoDir, 'COMMIT_EDITMSG');
+  writeFileSync(messageFile, '', 'utf-8');
+
+  try {
+    let pendingEntry = 'stale';
+    const deps = {
+      checkGitRepo: () => {},
+      loadConfig: async () => ({
+        provider: 'mock',
+        model: 'mock-model',
+        historySize: 3,
+        maxDiffSize: 4000,
+      }),
+      getStagedDiff: () => ({ diff: 'diff --git a/file b/file\n+hello', hasChanges: true, staged: true }),
+      buildProfile: async () => ({
+        avgLength: 0,
+        commonPrefixes: [],
+        prefixRates: {},
+        imperativeRate: 0,
+        sentenceCaseRate: 0,
+        usesScopeRate: 0,
+        usesBodyRate: 0,
+        totalCommits: 0,
+      }),
+      generateSuggestions: async () => {
+        throw new Error('provider unavailable');
+      },
+      readMessageFile: async (filePath) => readFileSync(filePath, 'utf-8'),
+      writeMessageFile: async (filePath, content) => writeFileSync(filePath, content, 'utf-8'),
+      writePendingEntryFile: async (content) => {
+        pendingEntry = content;
+      },
+      removePendingEntryFile: async () => {
+        pendingEntry = '';
+      },
+      warn: () => {},
+    };
+
+    await runPrepareCommitMsgHook({ messageFile, source: 'template' }, deps);
+
+    assert.equal(pendingEntry, '');
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test('runPostCommitHook appends the committed message to history and clears the pending entry', async () => {
   let removed = false;
   const entries = [];
@@ -394,5 +442,26 @@ test('runPostCommitHook appends the committed message to history and clears the 
   assert.equal(entries[0].model, 'mock-model');
   assert.equal(entries[0].provider, 'mock');
   assert.equal(entries[0].diff, 'diff --git a/file b/file\n+hello');
+  assert.equal(removed, true);
+});
+
+test('runPostCommitHook clears malformed pending entries', async () => {
+  let removed = false;
+  let appended = false;
+
+  await runPostCommitHook({
+    checkGitRepo: () => {},
+    readLatestCommitMessage: () => 'feat: should not append',
+    readPendingEntryFile: async () => '{not-json',
+    appendHistoryEntry: async () => {
+      appended = true;
+    },
+    removePendingEntryFile: async () => {
+      removed = true;
+    },
+    warn: () => {},
+  });
+
+  assert.equal(appended, false);
   assert.equal(removed, true);
 });
