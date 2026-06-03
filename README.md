@@ -164,6 +164,32 @@ Suggestions generated:
   3. chore: refresh package metadata
 ```
 
+### Inspect suggestion diagnostics with `--verbose`
+
+Use verbose mode when you want to confirm which model handled the request, how much commit history was folded into the style profile, or whether the diff had to be truncated before sending it to the provider.
+
+```bash
+commit-echo suggest --verbose
+```
+
+Sample output:
+
+```text
+Suggestions generated:
+Model: gpt-4o
+Style profile: 5 commit(s), avg length 31.4, imperative rate 80.0%, common prefixes: feat, fix, docs
+Truncation: not applied
+  1. fix: handle empty staged diff
+  2. test: cover custom provider validation
+  3. chore: refresh package metadata
+```
+
+Verbose fields:
+
+- `Model` shows the resolved model name after any `--model` override is applied.
+- `Style profile` summarizes the recent commit history used for tone and structure: how many commits were sampled, the average subject length, the share of imperative subjects, and the most common prefixes.
+- `Truncation` tells you whether `maxDiffSize` trimmed the staged diff before generation. If truncation happens, the CLI also prints a warning with the original and reduced character counts.
+
 ### View learned style history
 
 ```bash
