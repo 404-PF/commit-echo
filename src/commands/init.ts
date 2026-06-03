@@ -225,7 +225,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   };
 
   if (needsApiKey && !config.apiKey && !process.env[apiKeyEnv]) {
-    await saveConfig(config);
+    await persistSetup();
     const warn = pc.yellow(
       `\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${apiKeyEnv}`)} before running suggestions.`,
     );

@@ -6,9 +6,8 @@ import { dirname } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
-import { loadConfig } from '../config/store.js';
+import { loadConfig, getHistoryPath } from '../config/store.js';
 import { buildProfile } from '../history/store.js';
-import { getHistoryPath } from '../config/store.js';
 import { generateSuggestions } from '../llm/client.js';
 
 const MANAGED_HOOK_MARKER = '# commit-echo managed hook';
@@ -44,8 +43,8 @@ export interface PrepareCommitMsgHookDeps {
   warn: (message: string) => void;
 }
 
-function resolveGitPath(path: string): string {
-  return execSync(`git rev-parse --git-path ${path}`, { encoding: 'utf-8' }).trim();
+function resolveGitPath(gitPath: string): string {
+  return execSync(`git rev-parse --git-path ${gitPath}`, { encoding: 'utf-8' }).trim();
 }
 
 function resolveHookPath(hookName: string): string {
@@ -82,7 +81,8 @@ async function clearPendingEntryFile(removePendingEntryFile: () => Promise<void>
 }
 
 export function buildHookCommitMessage(selected: Suggestion, existingContent = ''): string {
-  const message = selected.body ? `${selected.message}\n\n${selected.body}` : selected.message;
+  const body = selected.body?.replace(/^\n+/, '') ?? '';
+  const message = body ? `${selected.message}\n\n${body}` : selected.message;
 
   if (!existingContent) {
     return message;
