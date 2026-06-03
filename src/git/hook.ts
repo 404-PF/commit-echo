@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { appendFile, copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
-import type { Config, Suggestion, StyleProfile } from '../types.js';
+import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
 import { loadConfig } from '../config/store.js';
@@ -83,13 +83,12 @@ async function clearPendingEntryFile(removePendingEntryFile: () => Promise<void>
 
 export function buildHookCommitMessage(selected: Suggestion, existingContent = ''): string {
   const message = selected.body ? `${selected.message}\n\n${selected.body}` : selected.message;
-  const preservedTemplate = existingContent;
 
-  if (!preservedTemplate) {
+  if (!existingContent) {
     return message;
   }
 
-  return `${message}\n\n${preservedTemplate}`;
+  return `${message}\n\n${existingContent}`;
 }
 
 function buildHookScript(hookName: string, cliPath: string, backupPath?: string): string {
@@ -236,9 +235,9 @@ export async function runPostCommitHook(
       return;
     }
 
-    let pending: { timestamp: string; diff: string; model: string; provider: string };
+    let pending: CommitEntry;
     try {
-      pending = JSON.parse(rawEntry) as { timestamp: string; diff: string; model: string; provider: string };
+      pending = JSON.parse(rawEntry) as CommitEntry;
     } catch {
       deps.warn('commit-echo hook: invalid pending hook entry; clearing stale state.');
       await deps.removePendingEntryFile();
