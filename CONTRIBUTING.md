@@ -61,7 +61,14 @@ When opening an issue, use the closest template from `.github/ISSUE_TEMPLATE/`:
 ## Adding a New LLM Provider
 
 1. Create a file in `src/providers/` implementing the provider interface from `src/types.ts`.
-2. Register it in the provider lookup logic.
+2. Add a new entry to the `BUILTIN_PROVIDERS` array in `src/providers/registry.ts` with the following fields:
+   - `key`: Unique identifier (e.g., `my-provider`)
+   - `name`: Display name (e.g., `My Provider`)
+   - `baseUrl`: API base URL
+   - `apiKeyEnv`: Environment variable name for the API key (e.g., `MY_PROVIDER_API_KEY`)
+   - `website`: Provider website URL
+   - `docsUrl`: Provider documentation URL
+   - `needsApiKey`: `true` if an API key is required, `false` for local providers like Ollama
 3. Add any needed configuration keys in `src/config/`.
 
 ## License
