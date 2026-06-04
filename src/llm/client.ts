@@ -5,7 +5,7 @@ import type {
   TruncationInfo,
 } from "../types.js";
 import { getProviderInfo } from "../providers/index.js";
-import { complete } from "../providers/index.js";
+import { complete, completeStream } from "../providers/index.js";
 import {
   resolveSystemPrompt,
   resolveUserPrompt,
@@ -109,6 +109,52 @@ export async function generateSuggestions(
     model: result.model,
     truncation: truncation.wasTruncated ? truncation : undefined,
   };
+}
+
+/**
+ * Stream commit suggestions from the LLM provider.
+ * Yields text chunks as they arrive. After iteration completes, the caller
+ * can parse the accumulated text using `parseSuggestions()`.
+ */
+export async function* generateSuggestionsStream(
+  config: Config,
+  diff: string,
+  profileParam?: StyleProfile,
+  apiKeyParam?: string,
+): AsyncGenerator<{ chunk: string; model: string }> {
+  const profile = profileParam ?? (await buildProfile(config.historySize));
+
+  const { diff: truncatedDiff } = truncateDiff(diff, config.maxDiffSize);
+
+  const branch = getBranchName();
+  const profileStr = formatProfile(profile);
+
+  const vars = {
+    diff: truncatedDiff,
+    profile: profileStr,
+    branch,
+  };
+
+  const systemPrompt = resolveSystemPrompt(profile, vars, config);
+  const userPrompt = resolveUserPrompt(vars, config);
+
+  const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
+
+  let model = config.model;
+  const stream = completeStream(config.provider, config.baseUrl, {
+    model: config.model,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.7,
+    maxTokens: 1024,
+    apiKey,
+  });
+
+  for await (const chunk of stream) {
+    yield { chunk, model };
+  }
 }
 
 export async function testConnection(config: Config): Promise<string> {

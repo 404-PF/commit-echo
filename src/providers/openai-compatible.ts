@@ -46,6 +46,72 @@ export class OpenAICompatibleProvider implements Provider {
     };
   }
 
+  async *completeStream(params: ChatParams): AsyncIterable<string> {
+    const { model, messages, temperature = 0.7, maxTokens = 1024, apiKey, baseUrl } = params;
+
+    const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+
+    const response = await fetchWithTimeout(
+      url,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          stream: true,
+        }),
+      },
+      'OpenAI-compatible streaming request',
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      throw new Error(`OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (payload === '[DONE]') return;
+
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: { delta?: { content?: string } }[];
+            };
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) yield content;
+          } catch {
+            // Skip malformed JSON chunks
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
     const url = `${baseUrl.replace(/\/+$/, '')}/models`;
 

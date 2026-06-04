@@ -49,6 +49,20 @@ export async function complete(
   return provider.complete({ ...params, baseUrl });
 }
 
+export async function* completeStream(
+  configProvider: string,
+  baseUrlOverride: string | undefined,
+  params: Omit<ChatParams, 'baseUrl'>,
+): AsyncIterable<string> {
+  const provider = createProvider(configProvider);
+  const baseUrl = getBaseUrl(configProvider, baseUrlOverride);
+  if (provider.completeStream) {
+    yield* provider.completeStream({ ...params, baseUrl });
+  } else {
+    throw new Error(`Streaming is not supported for the '${configProvider}' provider. Use non-streaming mode.`);
+  }
+}
+
 export async function fetchModels(
   configProvider: string,
   baseUrlOverride: string | undefined,

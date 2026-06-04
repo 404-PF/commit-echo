@@ -72,5 +72,6 @@ export interface ChatResult {
 
 export interface Provider {
   complete(params: ChatParams): Promise<ChatResult>;
+  completeStream?(params: ChatParams): AsyncIterable<string>;
   fetchModels(baseUrl: string, apiKey: string): Promise<string[]>;
 }

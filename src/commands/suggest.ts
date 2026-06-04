@@ -21,8 +21,14 @@ import {
   getUnstagedDiff,
   commit,
 } from "../git/diff.js";
-import { assertApiKeyAvailable, generateSuggestions } from "../llm/client.js";
+import {
+  assertApiKeyAvailable,
+  generateSuggestions,
+  generateSuggestionsStream,
+} from "../llm/client.js";
 import { appendEntry, buildProfile } from "../history/store.js";
+import { parseSuggestions } from "../llm/prompt.js";
+import { truncateDiff } from "../llm/prompt.js";
 
 function showTruncationWarning(info: TruncationInfo): void {
   const pct = ((info.truncatedSize / info.originalSize) * 100).toFixed(1);
@@ -74,6 +80,7 @@ export async function suggestCommand(
     autoCommit?: boolean;
     verbose?: boolean;
     model?: string;
+    stream?: boolean;
   } = {},
 ): Promise<void> {
   intro(pc.bold(pc.cyan("commit-echo")));
@@ -121,49 +128,105 @@ export async function suggestCommand(
 
   const profile = await buildProfile(config.historySize);
 
-  const genSpinner = spinner();
-  genSpinner.start("Generating commit suggestions...");
+  let suggestions: Suggestion[];
+  let truncation: TruncationInfo | undefined;
+  let model: string;
 
-  try {
-    const { suggestions, truncation, model } = await generateSuggestions(
+  if (options.stream) {
+    // Streaming mode: show text as it arrives
+    const { info: truncInfo } = truncateDiff(diffResult.diff, config.maxDiffSize);
+    truncation = truncInfo.wasTruncated ? truncInfo : undefined;
+
+    console.log(pc.dim("Streaming suggestions...\n"));
+
+    let accumulated = "";
+    for await (const { chunk } of generateSuggestionsStream(
       config,
       diffResult.diff,
       profile,
       apiKey,
-    );
-    genSpinner.stop(pc.green("Suggestions generated:"));
-
-    if (options.verbose) {
-      showVerboseInfo(model, profile, truncation);
+    )) {
+      accumulated += chunk;
+      // Write each chunk directly to stdout for progressive output
+      process.stdout.write(chunk);
     }
+    process.stdout.write("\n\n");
 
-    if (truncation) {
-      showTruncationWarning(truncation);
-    }
+    model = config.model;
 
-    await displaySuggestions(suggestions);
+    const parsed = parseSuggestions(accumulated);
+    suggestions = parsed.map((p, i) => ({
+      index: i + 1,
+      message: p.message,
+      body: p.body,
+    }));
 
-    if (options.autoCommit && suggestions.length > 0) {
-      const first = suggestions[0]!;
-      if (options.commit !== false) {
-        if (!diffResult.staged) {
-          outro(
-            pc.red(
-              "Auto-commit requires staged changes. Stage your changes with `git add` and try again.",
-            ),
-          );
-          process.exit(1);
-        }
-        await acceptAndCommit(first, config, diffResult.diff, true);
-      } else {
-        console.log(`\n  ${pc.green("Selected:")} ${pc.bold(first.message)}`);
-        if (first.body) {
-          console.log(`  ${pc.dim(first.body)}`);
-        }
-      }
+    if (suggestions.length === 0) {
+      outro(
+        pc.red(
+          "Could not parse any suggestions from LLM response. The model may need a different prompt format.",
+        ),
+      );
       return;
     }
+  } else {
+    // Non-streaming mode: use spinner and wait for full response
+    const genSpinner = spinner();
+    genSpinner.start("Generating commit suggestions...");
 
+    try {
+      const result = await generateSuggestions(
+        config,
+        diffResult.diff,
+        profile,
+        apiKey,
+      );
+      suggestions = result.suggestions;
+      truncation = result.truncation;
+      model = result.model;
+      genSpinner.stop(pc.green("Suggestions generated:"));
+    } catch (err) {
+      genSpinner.stop(pc.red("Failed to generate suggestions."));
+      const message = err instanceof Error ? err.message : "Unknown error";
+      outro(pc.red(message));
+      return;
+    }
+  }
+
+  if (options.verbose) {
+    showVerboseInfo(model, profile, truncation);
+  }
+
+  if (truncation) {
+    showTruncationWarning(truncation);
+  }
+
+  if (!options.stream) {
+    await displaySuggestions(suggestions);
+  }
+
+  if (options.autoCommit && suggestions.length > 0) {
+    const first = suggestions[0]!;
+    if (options.commit !== false) {
+      if (!diffResult.staged) {
+        outro(
+          pc.red(
+            "Auto-commit requires staged changes. Stage your changes with `git add` and try again.",
+          ),
+        );
+        process.exit(1);
+      }
+      await acceptAndCommit(first, config, diffResult.diff, true);
+    } else {
+      console.log(`\n  ${pc.green("Selected:")} ${pc.bold(first.message)}`);
+      if (first.body) {
+        console.log(`  ${pc.dim(first.body)}`);
+      }
+    }
+    return;
+  }
+
+  try {
     const action = await select({
       message: "Choose an action:",
       options: [
@@ -208,7 +271,6 @@ export async function suggestCommand(
       await acceptAndCommit(selected, config, diffResult.diff);
     }
   } catch (err) {
-    genSpinner.stop(pc.red("Failed to generate suggestions."));
     const message = err instanceof Error ? err.message : "Unknown error";
     outro(pc.red(message));
   }
