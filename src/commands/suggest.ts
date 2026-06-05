@@ -28,7 +28,6 @@ import {
 } from "../llm/client.js";
 import { appendEntry, buildProfile } from "../history/store.js";
 import { parseSuggestions } from "../llm/prompt.js";
-import { truncateDiff } from "../llm/prompt.js";
 
 function showTruncationWarning(info: TruncationInfo): void {
   const pct = ((info.truncatedSize / info.originalSize) * 100).toFixed(1);
@@ -134,21 +133,25 @@ export async function suggestCommand(
 
   if (options.stream) {
     // Streaming mode: show text as it arrives
-    const { info: truncInfo } = truncateDiff(diffResult.diff, config.maxDiffSize);
-    truncation = truncInfo.wasTruncated ? truncInfo : undefined;
-
     console.log(pc.dim("Streaming suggestions...\n"));
 
     let accumulated = "";
-    for await (const { chunk } of generateSuggestionsStream(
-      config,
-      diffResult.diff,
-      profile,
-      apiKey,
-    )) {
-      accumulated += chunk;
-      // Write each chunk directly to stdout for progressive output
-      process.stdout.write(chunk);
+    try {
+      for await (const { chunk } of generateSuggestionsStream(
+        config,
+        diffResult.diff,
+        profile,
+        apiKey,
+      )) {
+        accumulated += chunk;
+        // Write each chunk directly to stdout for progressive output
+        process.stdout.write(chunk);
+      }
+    } catch (err) {
+      process.stdout.write("\n");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      outro(pc.red(`Streaming failed: ${message}`));
+      return;
     }
     process.stdout.write("\n\n");
 

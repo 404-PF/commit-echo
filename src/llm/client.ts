@@ -140,7 +140,7 @@ export async function* generateSuggestionsStream(
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 
-  let model = config.model;
+  const model = config.model;
   const stream = completeStream(config.provider, config.baseUrl, {
     model: config.model,
     messages: [
