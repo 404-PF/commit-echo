@@ -2,12 +2,20 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { platform, tmpdir } from 'node:os';
 
 import { buildProfile } from '../dist/history/store.js';
 
+function configDirFor(homeDir) {
+  return platform() === 'darwin'
+    ? join(homeDir, 'Library', 'Application Support', 'commit-echo')
+    : platform() === 'win32'
+      ? join(homeDir, 'AppData', 'Roaming', 'commit-echo')
+      : join(homeDir, '.config', 'commit-echo');
+}
+
 function writeHistory(homeDir, messages) {
-  const configDir = join(homeDir, 'Library', 'Application Support', 'commit-echo');
+  const configDir = configDirFor(homeDir);
   const historyPath = join(configDir, 'history.jsonl');
   mkdirSync(configDir, { recursive: true });
   writeFileSync(
@@ -19,16 +27,28 @@ function writeHistory(homeDir, messages) {
       model: 'test-model',
       provider: 'openai',
     })).join('\n') + '\n',
-    'utf-8'
+    'utf-8',
   );
+}
+
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }
 
 test('buildProfile excludes descriptive verb forms from the imperative-rate denominator', async () => {
   const originalHome = process.env.HOME;
+  const originalAppData = process.env.APPDATA;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
 
   try {
     process.env.HOME = tempHome;
+    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
+    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
     writeHistory(tempHome, [
       'fix: add retries',
       'fix: added retries',
@@ -40,7 +60,9 @@ test('buildProfile excludes descriptive verb forms from the imperative-rate deno
     assert.equal(profile.totalCommits, 3);
     assert.equal(profile.imperativeRate, 1);
   } finally {
-    process.env.HOME = originalHome;
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
     rmSync(tempHome, { recursive: true, force: true });
   }
 });
