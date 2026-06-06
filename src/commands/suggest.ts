@@ -157,9 +157,6 @@ export async function suggestCommand(
       )) {
         if (event.kind === "meta") {
           truncation = event.truncation;
-          if (truncation) {
-            showTruncationWarning(truncation);
-          }
           continue;
         }
 
@@ -168,8 +165,8 @@ export async function suggestCommand(
           continue;
         }
 
-        accumulated += event.chunk;
-        process.stdout.write(event.chunk);
+        accumulated += event.text;
+        process.stdout.write(event.text);
       }
     } catch (err) {
       process.stdout.write("\n");
@@ -222,7 +219,7 @@ export async function suggestCommand(
     showVerboseInfo(model, profile, truncation);
   }
 
-  if (truncation && !options.stream) {
+  if (truncation) {
     showTruncationWarning(truncation);
   }
 

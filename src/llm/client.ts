@@ -115,7 +115,7 @@ export async function generateSuggestions(
 export type SuggestionStreamEvent =
   | { kind: "meta"; truncation?: TruncationInfo }
   | { kind: "model"; model: string }
-  | { kind: "chunk"; chunk: string };
+  | { kind: "text"; text: string };
 
 /**
  * Stream commit suggestions from the LLM provider.
@@ -177,7 +177,7 @@ export async function* generateSuggestionsStream(
       yield { kind: "model", model: chunk.model };
       continue;
     }
-    yield { kind: "chunk", chunk: chunk.text };
+    yield { kind: "text", text: chunk.text };
   }
 }
 

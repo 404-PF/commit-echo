@@ -49,8 +49,8 @@ test('generateSuggestionsStream yields meta then text chunks', async () => {
     assert.equal(events[0]?.truncation, undefined);
 
     const chunks = events
-      .filter((event) => event.kind === 'chunk')
-      .map((event) => event.chunk);
+      .filter((event) => event.kind === 'text')
+      .map((event) => event.text);
     assert.equal(chunks.join(''), '1. feat: stream test');
   } finally {
     globalThis.fetch = originalFetch;
