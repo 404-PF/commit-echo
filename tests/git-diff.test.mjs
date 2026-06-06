@@ -15,6 +15,7 @@ import test from "node:test";
 import {
   checkGitRepo,
   commit,
+  getBranchName,
   getRepoRoot,
   getStagedDiff,
   getUnstagedDiff,
@@ -200,5 +201,32 @@ test("getRepoRoot returns the absolute path of the repository root", () => {
     });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("getBranchName returns the current branch name", () => {
+  const repoDir = initRepo();
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    const branchName = git(["rev-parse", "--abbrev-ref", "HEAD"], repoDir).trim();
+
+    withCwd(repoDir, () => {
+      assert.equal(getBranchName(), branchName);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("getBranchName returns unknown when git command fails", () => {
+  const dir = createTempDir();
+
+  try {
+    withCwd(dir, () => {
+      assert.equal(getBranchName(), "unknown");
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
