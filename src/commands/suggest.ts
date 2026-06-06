@@ -28,6 +28,7 @@ import {
 } from "../llm/client.js";
 import { appendEntry, buildProfile } from "../history/store.js";
 import { parseSuggestions } from "../llm/prompt.js";
+import { assertStreamingSupported } from "../providers/index.js";
 
 function showTruncationWarning(info: TruncationInfo): void {
   const pct = ((info.truncatedSize / info.originalSize) * 100).toFixed(1);
@@ -132,6 +133,13 @@ export async function suggestCommand(
   let model: string;
 
   if (options.stream) {
+    try {
+      assertStreamingSupported(config.provider);
+    } catch (err) {
+      outro(pc.red(err instanceof Error ? err.message : "Streaming not supported"));
+      return;
+    }
+
     // Streaming mode: show text as it arrives
     console.log(pc.dim("Streaming suggestions...\n"));
 
@@ -145,6 +153,9 @@ export async function suggestCommand(
       )) {
         if (event.kind === "meta") {
           truncation = event.truncation;
+          if (truncation) {
+            showTruncationWarning(truncation);
+          }
           continue;
         }
 
@@ -204,13 +215,11 @@ export async function suggestCommand(
     showVerboseInfo(model, profile, truncation);
   }
 
-  if (truncation) {
+  if (truncation && !options.stream) {
     showTruncationWarning(truncation);
   }
 
-  if (!options.stream) {
-    await displaySuggestions(suggestions);
-  }
+  await displaySuggestions(suggestions);
 
   if (options.autoCommit && suggestions.length > 0) {
     const first = suggestions[0]!;

@@ -39,6 +39,15 @@ export function createProvider(configProvider: string): Provider {
   return new OpenAICompatibleProvider();
 }
 
+export function assertStreamingSupported(configProvider: string): void {
+  const provider = createProvider(configProvider);
+  if (!provider.completeStream) {
+    throw new Error(
+      `Streaming is not supported for the '${configProvider}' provider. Use non-streaming mode.`,
+    );
+  }
+}
+
 export async function complete(
   configProvider: string,
   baseUrlOverride: string | undefined,
@@ -54,13 +63,10 @@ export async function* completeStream(
   baseUrlOverride: string | undefined,
   params: Omit<ChatParams, 'baseUrl'>,
 ): AsyncIterable<string> {
+  assertStreamingSupported(configProvider);
   const provider = createProvider(configProvider);
   const baseUrl = getBaseUrl(configProvider, baseUrlOverride);
-  if (provider.completeStream) {
-    yield* provider.completeStream({ ...params, baseUrl });
-  } else {
-    throw new Error(`Streaming is not supported for the '${configProvider}' provider. Use non-streaming mode.`);
-  }
+  yield* provider.completeStream!({ ...params, baseUrl });
 }
 
 export async function fetchModels(
