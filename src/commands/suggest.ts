@@ -20,6 +20,7 @@ import {
   checkGitRepo,
   getStagedDiff,
   getUnstagedDiff,
+  getBranchName,
   commit,
 } from "../git/diff.js";
 import {
@@ -27,8 +28,13 @@ import {
   generateSuggestions,
   generateSuggestionsStream,
 } from "../llm/client.js";
-import { appendEntry, buildProfile } from "../history/store.js";
-import { parseSuggestions } from "../llm/prompt.js";
+import {
+  parseSuggestions,
+  resolveSystemPrompt,
+  resolveUserPrompt,
+  truncateDiff,
+} from "../llm/prompt.js";
+import { appendEntry, buildProfile, formatProfile } from "../history/store.js";
 import { getStreamingProvider } from "../providers/index.js";
 
 function showTruncationWarning(info: TruncationInfo): void {
@@ -68,6 +74,37 @@ function showVerboseInfo(
   );
 }
 
+export function formatDryRunOutput(
+  diff: string,
+  profileSummary: string,
+  systemPrompt: string,
+  userPrompt: string,
+  truncation?: TruncationInfo,
+): string {
+  return [
+    pc.yellow("Dry run: no LLM API call will be made."),
+    "",
+    pc.bold("Diff:"),
+    pc.dim(diff),
+    "",
+    pc.bold("Style profile:"),
+    pc.dim(profileSummary),
+    "",
+    pc.bold("System prompt:"),
+    pc.dim(systemPrompt),
+    "",
+    pc.bold("User prompt:"),
+    pc.dim(userPrompt),
+    "",
+    pc.bold("Truncation:"),
+    pc.dim(
+      truncation
+        ? `${truncation.originalSize} -> ${truncation.truncatedSize} chars across ${truncation.filesTruncated} file(s)`
+        : "None. The diff above will be sent in full.",
+    ),
+  ].join("\n");
+}
+
 async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   for (const s of suggestions) {
     const full = s.body ? `${s.message}\n  ${pc.dim(s.body)}` : s.message;
@@ -82,9 +119,19 @@ export async function suggestCommand(
     verbose?: boolean;
     model?: string;
     stream?: boolean;
+    dryRun?: boolean;
+    noCommit?: boolean;
   } = {},
 ): Promise<void> {
   intro(pc.bold(pc.cyan("commit-echo")));
+
+  if (options.noCommit) {
+    console.warn(
+      pc.yellow(
+        "Note: --no-commit is deprecated; 'commit-echo suggest' already skips committing.",
+      ),
+    );
+  }
 
   try {
     checkGitRepo();
@@ -119,6 +166,32 @@ export async function suggestCommand(
     }
   }
 
+  const profile = await buildProfile(config.historySize);
+
+  if (options.dryRun) {
+    const { diff: truncatedDiff, info: truncation } = truncateDiff(
+      diffResult.diff,
+      config.maxDiffSize,
+    );
+    const vars = {
+      diff: truncatedDiff,
+      profile: formatProfile(profile),
+      branch: getBranchName(),
+    };
+
+    console.log(
+      formatDryRunOutput(
+        truncatedDiff,
+        vars.profile,
+        resolveSystemPrompt(profile, vars, config),
+        resolveUserPrompt(vars, config),
+        truncation.wasTruncated ? truncation : undefined,
+      ),
+    );
+    outro(pc.green("Dry run complete."));
+    return;
+  }
+
   let apiKey: string;
   try {
     apiKey = assertApiKeyAvailable(config);
@@ -126,8 +199,6 @@ export async function suggestCommand(
     outro(pc.red(err instanceof Error ? err.message : "Missing API key"));
     return;
   }
-
-  const profile = await buildProfile(config.historySize);
 
   let suggestions: Suggestion[];
   let truncation: TruncationInfo | undefined;
@@ -142,7 +213,6 @@ export async function suggestCommand(
       return;
     }
 
-    // Streaming mode: show text as it arrives
     console.log(pc.dim("Streaming suggestions...\n"));
 
     model = config.model;
@@ -192,7 +262,6 @@ export async function suggestCommand(
       return;
     }
   } else {
-    // Non-streaming mode: use spinner and wait for full response
     const genSpinner = spinner();
     genSpinner.start("Generating commit suggestions...");
 

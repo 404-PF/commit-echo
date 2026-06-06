@@ -173,8 +173,10 @@ What it does:
 ### Generate suggestions without committing
 
 ```bash
-commit-echo suggest --no-commit
+commit-echo suggest
 ```
+
+`commit-echo suggest --no-commit` is still accepted as a deprecated compatibility alias.
 
 Sample output:
 

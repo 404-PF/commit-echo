@@ -69,6 +69,8 @@ program
   .option('-v, --verbose', 'Print diagnostic information about the suggestion request')
   .option('-m, --model <model>', 'Override the configured LLM model for this invocation')
   .option('--stream', 'Stream suggestions as they are generated (progressive output)')
+  .option('-n, --dry-run', 'Show the LLM input without generating suggestions')
+  .option('--no-commit', 'Deprecated alias; suggest already skips committing unless --commit is passed')
   .option('--auto', 'Alias for --yes')
   .action(async (options) => {
     const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
@@ -80,6 +82,8 @@ program
       verbose: Boolean(options.verbose),
       model: options.model,
       stream: Boolean(options.stream),
+      dryRun: Boolean(options.dryRun),
+      noCommit: process.argv.includes('--no-commit'),
     });
   });
 
