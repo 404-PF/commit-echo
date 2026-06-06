@@ -184,6 +184,9 @@ export async function batchCommand(
     return;
   }
 
+  // Build style profile once (shared across all repos)
+  const profile = await buildProfile(config.historySize);
+
   const results: BatchResult[] = [];
 
   for (const repoPath of repos) {
@@ -238,9 +241,7 @@ export async function batchCommand(
       continue;
     }
 
-    // Build style profile and generate suggestions
-    const profile = await buildProfile(config.historySize);
-
+    // Generate suggestions using the shared profile
     let suggestions: Suggestion[];
     try {
       const result = await generateSuggestions(config, diff, profile, apiKey);
