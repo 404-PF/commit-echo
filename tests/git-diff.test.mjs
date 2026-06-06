@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -20,7 +21,7 @@ import {
 } from "../dist/git/diff.js";
 
 function createTempDir() {
-  return mkdtempSync(join(tmpdir(), "commit-echo-git-diff-test-"));
+  return realpathSync.native(mkdtempSync(join(tmpdir(), "commit-echo-git-diff-test-")));
 }
 
 function git(args, cwd) {
@@ -35,6 +36,7 @@ function initRepo() {
   const repoDir = createTempDir();
 
   git(["init"], repoDir);
+  git(["config", "core.fsmonitor", "false"], repoDir);
   git(["config", "user.name", "Test User"], repoDir);
   git(["config", "user.email", "test@example.com"], repoDir);
 
