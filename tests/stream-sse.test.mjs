@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  parseAnthropicSseLines,
+  parseAnthropicSseLine,
   parseOpenAiSseLine,
+  SSE_STREAM_END,
 } from '../dist/providers/sse.js';
 import { AnthropicProvider } from '../dist/providers/anthropic.js';
 import { OpenAICompatibleProvider } from '../dist/providers/openai-compatible.js';
@@ -38,59 +39,45 @@ test('parseOpenAiSseLine surfaces API errors', () => {
   assert.equal(result.error, 'rate limited');
 });
 
-test('parseAnthropicSseLines handles event and data split across line batches', () => {
+test('parseAnthropicSseLine handles event and data split across batches', () => {
   const state = { currentEvent: '' };
 
-  const first = parseAnthropicSseLines(['event: content_block_delta'], state);
-  let result = first.next();
-  assert.equal(result.done, true);
-  assert.equal(result.value, false);
+  const eventResult = parseAnthropicSseLine('event: content_block_delta', state);
+  assert.equal(eventResult, null);
 
-  const second = parseAnthropicSseLines(
-    ['data: {"delta":{"text":"hello"}}'],
+  assert.equal(state.currentEvent, 'content_block_delta');
+
+  const dataResult = parseAnthropicSseLine(
+    'data: {"delta":{"text":"hello"}}',
     state,
   );
-  result = second.next();
-  assert.deepEqual(result.value, { kind: 'text', text: 'hello' });
-  result = second.next();
-  assert.equal(result.done, true);
-  assert.equal(result.value, false);
+  assert.deepEqual(dataResult, { kind: 'text', text: 'hello' });
 });
 
-test('parseAnthropicSseLines extracts model from message_start', () => {
+test('parseAnthropicSseLine extracts model from message_start', () => {
   const state = { currentEvent: '' };
-  const parser = parseAnthropicSseLines(
-    [
-      'event: message_start',
-      'data: {"type":"message_start","message":{"model":"claude-sonnet-4"}}',
-    ],
+  parseAnthropicSseLine('event: message_start', state);
+  const result = parseAnthropicSseLine(
+    'data: {"type":"message_start","message":{"model":"claude-sonnet-4"}}',
     state,
   );
-
-  const result = parser.next();
-  assert.deepEqual(result.value, { kind: 'model', model: 'claude-sonnet-4' });
+  assert.deepEqual(result, { kind: 'model', model: 'claude-sonnet-4' });
 });
 
-test('parseAnthropicSseLines stops on message_stop', () => {
+test('parseAnthropicSseLine returns SSE_STREAM_END on message_stop', () => {
   const state = { currentEvent: '' };
-  const parser = parseAnthropicSseLines(
-    ['event: message_stop', 'data: {}'],
-    state,
-  );
-
-  const result = parser.next();
-  assert.equal(result.done, true);
-  assert.equal(result.value, true);
+  parseAnthropicSseLine('event: message_stop', state);
+  const result = parseAnthropicSseLine('data: {}', state);
+  assert.equal(result, SSE_STREAM_END);
 });
 
-test('parseAnthropicSseLines throws on error events', () => {
+test('parseAnthropicSseLine throws on error events', () => {
   const state = { currentEvent: '' };
-  const parser = parseAnthropicSseLines(
-    ['event: error', 'data: {"error":{"message":"overloaded"}}'],
-    state,
+  parseAnthropicSseLine('event: error', state);
+  assert.throws(
+    () => parseAnthropicSseLine('data: {"error":{"message":"overloaded"}}', state),
+    /overloaded/,
   );
-
-  assert.throws(() => parser.next(), /overloaded/);
 });
 
 test('Anthropic completeStream reassembles event/data split across network chunks', async () => {

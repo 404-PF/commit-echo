@@ -1,6 +1,6 @@
 import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../types.js';
 import { fetchWithTimeout } from './request.js';
-import { parseAnthropicSseLines } from './sse.js';
+import { parseAnthropicSseLine, streamSseResponse } from './sse.js';
 
 function buildAnthropicRequestBody(
   params: ChatParams,
@@ -99,55 +99,10 @@ export class AnthropicProvider implements Provider {
       throw new Error(`Anthropic API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body');
-
-    const decoder = new TextDecoder();
-    let buffer = '';
     const sseState = { currentEvent: '' };
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (value) {
-          buffer += decoder.decode(value, { stream: !done });
-        }
-
-        const lines = buffer.split('\n');
-        buffer = done ? '' : (lines.pop() ?? '');
-
-        const parser = parseAnthropicSseLines(lines, sseState);
-        let result = parser.next();
-        while (!result.done) {
-          yield result.value;
-          result = parser.next();
-        }
-
-        if (result.value) {
-          await reader.cancel();
-          return;
-        }
-
-        if (done) {
-          if (buffer.trim()) {
-            const tail = parseAnthropicSseLines([buffer], sseState);
-            let tailResult = tail.next();
-            while (!tailResult.done) {
-              yield tailResult.value;
-              tailResult = tail.next();
-            }
-            if (tailResult.value) {
-              await reader.cancel();
-              return;
-            }
-          }
-          break;
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* streamSseResponse(response, (line) =>
+      parseAnthropicSseLine(line, sseState),
+    );
   }
 
   async fetchModels(_baseUrl: string, _apiKey: string): Promise<string[]> {

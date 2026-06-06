@@ -39,7 +39,7 @@ export function createProvider(configProvider: string): Provider {
   return new OpenAICompatibleProvider();
 }
 
-export function assertStreamingSupported(configProvider: string): Provider {
+export function getStreamingProvider(configProvider: string): Provider {
   const provider = createProvider(configProvider);
   if (!provider.completeStream) {
     throw new Error(
@@ -65,7 +65,7 @@ export async function* completeStream(
   params: Omit<ChatParams, 'baseUrl'>,
   provider?: Provider,
 ): AsyncIterable<ProviderStreamChunk> {
-  const resolvedProvider = provider ?? assertStreamingSupported(configProvider);
+  const resolvedProvider = provider ?? getStreamingProvider(configProvider);
   const baseUrl = getBaseUrl(configProvider, baseUrlOverride);
   yield* resolvedProvider.completeStream!({ ...params, baseUrl });
 }

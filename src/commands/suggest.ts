@@ -29,7 +29,7 @@ import {
 } from "../llm/client.js";
 import { appendEntry, buildProfile } from "../history/store.js";
 import { parseSuggestions } from "../llm/prompt.js";
-import { assertStreamingSupported } from "../providers/index.js";
+import { getStreamingProvider } from "../providers/index.js";
 
 function showTruncationWarning(info: TruncationInfo): void {
   const pct = ((info.truncatedSize / info.originalSize) * 100).toFixed(1);
@@ -136,7 +136,7 @@ export async function suggestCommand(
   if (options.stream) {
     let streamProvider: Provider;
     try {
-      streamProvider = assertStreamingSupported(config.provider);
+      streamProvider = getStreamingProvider(config.provider);
     } catch (err) {
       outro(pc.red(err instanceof Error ? err.message : "Streaming not supported"));
       return;

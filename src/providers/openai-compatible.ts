@@ -1,6 +1,6 @@
 import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../types.js';
 import { fetchWithTimeout } from './request.js';
-import { parseOpenAiSseLine } from './sse.js';
+import { parseOpenAiSseLine, streamSseResponse, SSE_STREAM_END } from './sse.js';
 
 function buildOpenAiRequestBody(
   params: ChatParams,
@@ -85,55 +85,14 @@ export class OpenAICompatibleProvider implements Provider {
       throw new Error(`OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body');
-
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (value) {
-          buffer += decoder.decode(value, { stream: !done });
-        }
-
-        const lines = buffer.split('\n');
-        buffer = done ? '' : (lines.pop() ?? '');
-
-        for (const line of lines) {
-          const parsed = parseOpenAiSseLine(line);
-          if (parsed.error) {
-            throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
-          }
-          if (parsed.done) {
-            await reader.cancel();
-            return;
-          }
-          if (parsed.model) yield { kind: 'model', model: parsed.model };
-          if (parsed.text) yield { kind: 'text', text: parsed.text };
-        }
-
-        if (done) {
-          if (buffer.trim()) {
-            const parsed = parseOpenAiSseLine(buffer);
-            if (parsed.error) {
-              throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
-            }
-            if (parsed.done) {
-              await reader.cancel();
-              return;
-            }
-            if (parsed.model) yield { kind: 'model', model: parsed.model };
-            if (parsed.text) yield { kind: 'text', text: parsed.text };
-          }
-          break;
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    yield* streamSseResponse(response, (line) => {
+      const parsed = parseOpenAiSseLine(line);
+      if (parsed.error) throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
+      if (parsed.done) return SSE_STREAM_END;
+      if (parsed.model) return { kind: 'model', model: parsed.model };
+      if (parsed.text) return { kind: 'text', text: parsed.text };
+      return null;
+    });
   }
 
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {

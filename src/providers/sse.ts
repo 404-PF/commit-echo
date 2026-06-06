@@ -4,6 +4,65 @@ export type AnthropicSseState = {
   currentEvent: string;
 };
 
+export const SSE_STREAM_END = Symbol('SSE_STREAM_END');
+
+export type SseLineParser = (line: string) => ProviderStreamChunk | typeof SSE_STREAM_END | null;
+
+/**
+ * Read an SSE response body, split into lines, and yield parsed chunks.
+ * Handles buffering for partial lines and ensures the reader is released
+ * safely even after `reader.cancel()` has been called.
+ */
+export async function* streamSseResponse(
+  response: Response,
+  parseLine: SseLineParser,
+): AsyncIterable<ProviderStreamChunk> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let cancelled = false;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done });
+      }
+
+      const lines = buffer.split('\n');
+      buffer = done ? '' : (lines.pop() ?? '');
+
+      for (const line of lines) {
+        const result = parseLine(line);
+        if (result === SSE_STREAM_END) {
+          await reader.cancel();
+          cancelled = true;
+          return;
+        }
+        if (result) yield result;
+      }
+
+      if (done) {
+        if (buffer.trim()) {
+          const result = parseLine(buffer);
+          if (result === SSE_STREAM_END) {
+            await reader.cancel();
+            cancelled = true;
+            return;
+          }
+          if (result) yield result;
+        }
+        break;
+      }
+    }
+  } finally {
+    if (!cancelled) reader.releaseLock();
+  }
+}
+
 export function parseOpenAiSseLine(line: string): {
   text?: string;
   model?: string;
@@ -41,64 +100,66 @@ export function parseOpenAiSseLine(line: string): {
   return {};
 }
 
-export function* parseAnthropicSseLines(
-  lines: string[],
+/**
+ * Parse a single Anthropic SSE line. Call repeatedly for each line in a batch,
+ * passing shared `state` to track event types across event/data line pairs.
+ */
+export function parseAnthropicSseLine(
+  line: string,
   state: AnthropicSseState,
-): Generator<ProviderStreamChunk, boolean> {
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+): ProviderStreamChunk | typeof SSE_STREAM_END | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
 
-    if (trimmed.startsWith('event:')) {
-      state.currentEvent = trimmed.slice(6).trim();
-      continue;
-    }
-
-    if (!trimmed.startsWith('data:')) continue;
-
-    const payload = trimmed.slice(5).trim();
-
-    if (state.currentEvent === 'message_start') {
-      try {
-        const parsed = JSON.parse(payload) as {
-          message?: { model?: string };
-        };
-        if (parsed.message?.model) {
-          yield { kind: 'model', model: parsed.message.model };
-        }
-      } catch {
-        // Skip malformed JSON
-      }
-      continue;
-    }
-
-    if (state.currentEvent === 'content_block_delta') {
-      try {
-        const parsed = JSON.parse(payload) as { delta?: { text?: string } };
-        if (parsed.delta?.text) {
-          yield { kind: 'text', text: parsed.delta.text };
-        }
-      } catch {
-        // Skip malformed JSON
-      }
-      continue;
-    }
-
-    if (state.currentEvent === 'error') {
-      let message = 'Anthropic streaming error';
-      try {
-        const parsed = JSON.parse(payload) as { error?: { message?: string } };
-        if (parsed.error?.message) message = parsed.error.message;
-      } catch {
-        // Use default message
-      }
-      throw new Error(message);
-    }
-
-    if (state.currentEvent === 'message_stop') {
-      return true;
-    }
+  if (trimmed.startsWith('event:')) {
+    state.currentEvent = trimmed.slice(6).trim();
+    return null;
   }
 
-  return false;
+  if (!trimmed.startsWith('data:')) return null;
+
+  const payload = trimmed.slice(5).trim();
+
+  if (state.currentEvent === 'message_start') {
+    try {
+      const parsed = JSON.parse(payload) as {
+        message?: { model?: string };
+      };
+      if (parsed.message?.model) {
+        return { kind: 'model', model: parsed.message.model };
+      }
+    } catch {
+      // Skip malformed JSON
+    }
+    return null;
+  }
+
+  if (state.currentEvent === 'content_block_delta') {
+    try {
+      const parsed = JSON.parse(payload) as { delta?: { text?: string } };
+      if (parsed.delta?.text) {
+        return { kind: 'text', text: parsed.delta.text };
+      }
+    } catch {
+      // Skip malformed JSON
+    }
+    return null;
+  }
+
+  if (state.currentEvent === 'error') {
+    let message = 'Anthropic streaming error';
+    try {
+      const parsed = JSON.parse(payload) as { error?: { message?: string } };
+      if (parsed.error?.message) message = parsed.error.message;
+    } catch {
+      // Use default message
+    }
+    throw new Error(message);
+  }
+
+  if (state.currentEvent === 'message_stop') {
+    return SSE_STREAM_END;
+  }
+
+  return null;
 }
