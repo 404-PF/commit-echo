@@ -33,6 +33,8 @@ export async function* streamSseResponse(
       }
 
       const lines = buffer.split('\n');
+      // When not done, the last element is an incomplete line — put it back.
+      // When done, keep all elements so the final line is processed below.
       buffer = done ? '' : (lines.pop() ?? '');
 
       for (const line of lines) {
@@ -45,18 +47,7 @@ export async function* streamSseResponse(
         if (result) yield result;
       }
 
-      if (done) {
-        if (buffer.trim()) {
-          const result = parseLine(buffer);
-          if (result === SSE_STREAM_END) {
-            await reader.cancel();
-            cancelled = true;
-            return;
-          }
-          if (result) yield result;
-        }
-        break;
-      }
+      if (done) break;
     }
   } finally {
     if (!cancelled) reader.releaseLock();
