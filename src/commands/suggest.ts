@@ -137,15 +137,19 @@ export async function suggestCommand(
 
     let accumulated = "";
     try {
-      for await (const { chunk } of generateSuggestionsStream(
+      for await (const event of generateSuggestionsStream(
         config,
         diffResult.diff,
         profile,
         apiKey,
       )) {
-        accumulated += chunk;
-        // Write each chunk directly to stdout for progressive output
-        process.stdout.write(chunk);
+        if (event.kind === "meta") {
+          truncation = event.truncation;
+          continue;
+        }
+
+        accumulated += event.chunk;
+        process.stdout.write(event.chunk);
       }
     } catch (err) {
       process.stdout.write("\n");

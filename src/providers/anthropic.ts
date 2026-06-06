@@ -1,5 +1,6 @@
 import type { ChatParams, ChatResult, Provider } from '../types.js';
 import { fetchWithTimeout } from './request.js';
+import { parseAnthropicSseLines } from './sse.js';
 
 export class AnthropicProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
@@ -106,34 +107,45 @@ export class AnthropicProvider implements Provider {
 
     const decoder = new TextDecoder();
     let buffer = '';
+    const sseState = { currentEvent: '' };
 
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        if (value) {
+          buffer += decoder.decode(value, { stream: !done });
+        }
+
         const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+        buffer = done ? '' : (lines.pop() ?? '');
 
-        let currentEvent = '';
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('event:')) {
-            currentEvent = trimmed.slice(6).trim();
-          } else if (trimmed.startsWith('data:')) {
-            const payload = trimmed.slice(5).trim();
-            if (currentEvent === 'content_block_delta') {
-              try {
-                const parsed = JSON.parse(payload) as { delta?: { text?: string } };
-                if (parsed.delta?.text) yield parsed.delta.text;
-              } catch {
-                // Skip malformed JSON
-              }
-            } else if (currentEvent === 'message_stop') {
+        const parser = parseAnthropicSseLines(lines, sseState);
+        let result = parser.next();
+        while (!result.done) {
+          yield result.value;
+          result = parser.next();
+        }
+
+        if (result.value) {
+          await reader.cancel();
+          return;
+        }
+
+        if (done) {
+          if (buffer.trim()) {
+            const tail = parseAnthropicSseLines([buffer], sseState);
+            let tailResult = tail.next();
+            while (!tailResult.done) {
+              yield tailResult.value;
+              tailResult = tail.next();
+            }
+            if (tailResult.value) {
+              await reader.cancel();
               return;
             }
           }
+          break;
         }
       }
     } finally {

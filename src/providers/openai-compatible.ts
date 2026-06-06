@@ -1,5 +1,6 @@
 import type { ChatParams, ChatResult, Provider } from '../types.js';
 import { fetchWithTimeout } from './request.js';
+import { parseOpenAiSseLine } from './sse.js';
 
 export class OpenAICompatibleProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
@@ -84,27 +85,35 @@ export class OpenAICompatibleProvider implements Provider {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        if (value) {
+          buffer += decoder.decode(value, { stream: !done });
+        }
+
         const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+        buffer = done ? '' : (lines.pop() ?? '');
 
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === '[DONE]') return;
-
-          try {
-            const parsed = JSON.parse(payload) as {
-              choices?: { delta?: { content?: string } }[];
-            };
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) yield content;
-          } catch {
-            // Skip malformed JSON chunks
+          const parsed = parseOpenAiSseLine(line);
+          if (parsed.error) {
+            throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
           }
+          if (parsed.done) {
+            await reader.cancel();
+            return;
+          }
+          if (parsed.text) yield parsed.text;
+        }
+
+        if (done) {
+          if (buffer.trim()) {
+            const parsed = parseOpenAiSseLine(buffer);
+            if (parsed.error) {
+              throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
+            }
+            if (parsed.text) yield parsed.text;
+          }
+          break;
         }
       }
     } finally {

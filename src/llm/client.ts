@@ -111,20 +111,28 @@ export async function generateSuggestions(
   };
 }
 
+export type SuggestionStreamEvent =
+  | { kind: "meta"; truncation?: TruncationInfo }
+  | { kind: "chunk"; chunk: string };
+
 /**
  * Stream commit suggestions from the LLM provider.
- * Yields text chunks as they arrive. After iteration completes, the caller
- * can parse the accumulated text using `parseSuggestions()`.
+ * Yields a meta event first (including truncation info), then text chunks.
+ * After iteration completes, the caller can parse accumulated text with
+ * `parseSuggestions()`.
  */
 export async function* generateSuggestionsStream(
   config: Config,
   diff: string,
   profileParam?: StyleProfile,
   apiKeyParam?: string,
-): AsyncGenerator<{ chunk: string; model: string }> {
+): AsyncGenerator<SuggestionStreamEvent> {
   const profile = profileParam ?? (await buildProfile(config.historySize));
 
-  const { diff: truncatedDiff } = truncateDiff(diff, config.maxDiffSize);
+  const { diff: truncatedDiff, info: truncation } = truncateDiff(
+    diff,
+    config.maxDiffSize,
+  );
 
   const branch = getBranchName();
   const profileStr = formatProfile(profile);
@@ -140,7 +148,11 @@ export async function* generateSuggestionsStream(
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 
-  const model = config.model;
+  yield {
+    kind: "meta",
+    truncation: truncation.wasTruncated ? truncation : undefined,
+  };
+
   const stream = completeStream(config.provider, config.baseUrl, {
     model: config.model,
     messages: [
@@ -153,7 +165,7 @@ export async function* generateSuggestionsStream(
   });
 
   for await (const chunk of stream) {
-    yield { chunk, model };
+    yield { kind: "chunk", chunk };
   }
 }
 
