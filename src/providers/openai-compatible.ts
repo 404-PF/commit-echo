@@ -1,10 +1,30 @@
-import type { ChatParams, ChatResult, Provider } from '../types.js';
+import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../types.js';
 import { fetchWithTimeout } from './request.js';
 import { parseOpenAiSseLine } from './sse.js';
 
+function buildOpenAiRequestBody(
+  params: ChatParams,
+  options: { stream?: boolean } = {},
+): Record<string, unknown> {
+  const { model, messages, temperature = 0.7, maxTokens = 1024 } = params;
+
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  };
+
+  if (options.stream) {
+    body.stream = true;
+  }
+
+  return body;
+}
+
 export class OpenAICompatibleProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
-    const { model, messages, temperature = 0.7, maxTokens = 1024, apiKey, baseUrl } = params;
+    const { model, apiKey, baseUrl } = params;
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
@@ -16,12 +36,7 @@ export class OpenAICompatibleProvider implements Provider {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-        }),
+        body: JSON.stringify(buildOpenAiRequestBody(params)),
       },
       'OpenAI-compatible API request',
     );
@@ -47,8 +62,8 @@ export class OpenAICompatibleProvider implements Provider {
     };
   }
 
-  async *completeStream(params: ChatParams): AsyncIterable<string> {
-    const { model, messages, temperature = 0.7, maxTokens = 1024, apiKey, baseUrl } = params;
+  async *completeStream(params: ChatParams): AsyncIterable<ProviderStreamChunk> {
+    const { apiKey, baseUrl } = params;
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
@@ -60,13 +75,7 @@ export class OpenAICompatibleProvider implements Provider {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-          stream: true,
-        }),
+        body: JSON.stringify(buildOpenAiRequestBody(params, { stream: true })),
       },
       'OpenAI-compatible streaming request',
     );
@@ -102,7 +111,8 @@ export class OpenAICompatibleProvider implements Provider {
             await reader.cancel();
             return;
           }
-          if (parsed.text) yield parsed.text;
+          if (parsed.model) yield { kind: 'model', model: parsed.model };
+          if (parsed.text) yield { kind: 'text', text: parsed.text };
         }
 
         if (done) {
@@ -111,7 +121,8 @@ export class OpenAICompatibleProvider implements Provider {
             if (parsed.error) {
               throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
             }
-            if (parsed.text) yield parsed.text;
+            if (parsed.model) yield { kind: 'model', model: parsed.model };
+            if (parsed.text) yield { kind: 'text', text: parsed.text };
           }
           break;
         }

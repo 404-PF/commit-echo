@@ -30,6 +30,15 @@ test('parseOpenAiSseLine extracts delta content', () => {
   assert.equal(result.text, 'hello');
 });
 
+test('parseOpenAiSseLine extracts model from stream chunk', () => {
+  const result = parseOpenAiSseLine(
+    'data: {"model":"gpt-4o","choices":[{"delta":{"content":"hello"}}]}',
+  );
+
+  assert.equal(result.model, 'gpt-4o');
+  assert.equal(result.text, 'hello');
+});
+
 test('parseOpenAiSseLine detects stream completion', () => {
   assert.deepEqual(parseOpenAiSseLine('data: [DONE]'), { done: true });
 });
@@ -55,10 +64,24 @@ test('parseAnthropicSseLines handles event and data split across line batches', 
     state,
   );
   result = second.next();
-  assert.equal(result.value, 'hello');
+  assert.deepEqual(result.value, { kind: 'text', text: 'hello' });
   result = second.next();
   assert.equal(result.done, true);
   assert.equal(result.value, false);
+});
+
+test('parseAnthropicSseLines extracts model from message_start', () => {
+  const state = { currentEvent: '' };
+  const parser = parseAnthropicSseLines(
+    [
+      'event: message_start',
+      'data: {"type":"message_start","message":{"model":"claude-sonnet-4"}}',
+    ],
+    state,
+  );
+
+  const result = parser.next();
+  assert.deepEqual(result.value, { kind: 'model', model: 'claude-sonnet-4' });
 });
 
 test('parseAnthropicSseLines stops on message_stop', () => {
@@ -109,7 +132,7 @@ test('Anthropic completeStream reassembles event/data split across network chunk
       chunks.push(chunk);
     }
 
-    assert.deepEqual(chunks, ['hi']);
+    assert.deepEqual(chunks, [{ kind: 'text', text: 'hi' }]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -139,7 +162,10 @@ test('OpenAI completeStream processes final line without trailing newline', asyn
       chunks.push(chunk);
     }
 
-    assert.deepEqual(chunks, ['hel', 'lo']);
+    assert.deepEqual(chunks, [
+      { kind: 'text', text: 'hel' },
+      { kind: 'text', text: 'lo' },
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -70,6 +70,43 @@ test('generateSuggestionsStream yields meta then text chunks', async () => {
   }
 });
 
+test('generateSuggestionsStream yields model from provider stream', async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () =>
+    new Response(
+      streamFromChunks([
+        'data: {"model":"gpt-4o-mini","choices":[{"delta":{"content":"1. feat: stream test"}}]}\n',
+        'data: [DONE]\n',
+      ]),
+      { status: 200 },
+    );
+
+  try {
+    const events = [];
+    for await (const event of generateSuggestionsStream(
+      {
+        provider: '__custom__',
+        model: 'test-model',
+        baseUrl: 'http://127.0.0.1/v1',
+        apiKey: 'test-key',
+        historySize: 5,
+        maxDiffSize: 100_000,
+      },
+      'diff --git a/file.txt b/file.txt\n',
+      emptyProfile,
+      'test-key',
+    )) {
+      events.push(event);
+    }
+
+    const modelEvent = events.find((event) => event.kind === 'model');
+    assert.equal(modelEvent?.model, 'gpt-4o-mini');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('generateSuggestionsStream meta includes truncation info', async () => {
   const originalFetch = globalThis.fetch;
   const largeDiff = `diff --git a/big.txt b/big.txt\n${'x'.repeat(200)}`;

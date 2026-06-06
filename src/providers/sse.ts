@@ -1,9 +1,12 @@
+import type { ProviderStreamChunk } from '../types.js';
+
 export type AnthropicSseState = {
   currentEvent: string;
 };
 
 export function parseOpenAiSseLine(line: string): {
   text?: string;
+  model?: string;
   done?: boolean;
   error?: string;
 } {
@@ -16,6 +19,7 @@ export function parseOpenAiSseLine(line: string): {
   try {
     const parsed = JSON.parse(payload) as {
       error?: { message?: string };
+      model?: string;
       choices?: { delta?: { content?: string } }[];
     };
 
@@ -23,8 +27,13 @@ export function parseOpenAiSseLine(line: string): {
       return { error: parsed.error.message };
     }
 
+    const result: { text?: string; model?: string } = {};
+    if (parsed.model) result.model = parsed.model;
+
     const content = parsed.choices?.[0]?.delta?.content;
-    if (content) return { text: content };
+    if (content) result.text = content;
+
+    return result;
   } catch {
     // Skip malformed JSON chunks
   }
@@ -35,7 +44,7 @@ export function parseOpenAiSseLine(line: string): {
 export function* parseAnthropicSseLines(
   lines: string[],
   state: AnthropicSseState,
-): Generator<string, boolean> {
+): Generator<ProviderStreamChunk, boolean> {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -49,10 +58,26 @@ export function* parseAnthropicSseLines(
 
     const payload = trimmed.slice(5).trim();
 
+    if (state.currentEvent === 'message_start') {
+      try {
+        const parsed = JSON.parse(payload) as {
+          message?: { model?: string };
+        };
+        if (parsed.message?.model) {
+          yield { kind: 'model', model: parsed.message.model };
+        }
+      } catch {
+        // Skip malformed JSON
+      }
+      continue;
+    }
+
     if (state.currentEvent === 'content_block_delta') {
       try {
         const parsed = JSON.parse(payload) as { delta?: { text?: string } };
-        if (parsed.delta?.text) yield parsed.delta.text;
+        if (parsed.delta?.text) {
+          yield { kind: 'text', text: parsed.delta.text };
+        }
       } catch {
         // Skip malformed JSON
       }

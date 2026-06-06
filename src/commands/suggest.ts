@@ -143,6 +143,7 @@ export async function suggestCommand(
     // Streaming mode: show text as it arrives
     console.log(pc.dim("Streaming suggestions...\n"));
 
+    model = config.model;
     let accumulated = "";
     try {
       for await (const event of generateSuggestionsStream(
@@ -159,6 +160,11 @@ export async function suggestCommand(
           continue;
         }
 
+        if (event.kind === "model") {
+          model = event.model;
+          continue;
+        }
+
         accumulated += event.chunk;
         process.stdout.write(event.chunk);
       }
@@ -169,8 +175,6 @@ export async function suggestCommand(
       return;
     }
     process.stdout.write("\n\n");
-
-    model = config.model;
 
     const parsed = parseSuggestions(accumulated);
     suggestions = parsed.map((p, i) => ({
@@ -219,7 +223,9 @@ export async function suggestCommand(
     showTruncationWarning(truncation);
   }
 
-  await displaySuggestions(suggestions);
+  if (!options.stream) {
+    await displaySuggestions(suggestions);
+  }
 
   if (options.autoCommit && suggestions.length > 0) {
     const first = suggestions[0]!;

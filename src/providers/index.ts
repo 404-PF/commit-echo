@@ -1,4 +1,4 @@
-import type { Provider, ChatParams, ChatResult } from '../types.js';
+import type { Provider, ChatParams, ChatResult, ProviderStreamChunk } from '../types.js';
 import { OpenAICompatibleProvider } from './openai-compatible.js';
 import { AnthropicProvider } from './anthropic.js';
 import { CohereProvider } from './cohere.js';
@@ -62,7 +62,7 @@ export async function* completeStream(
   configProvider: string,
   baseUrlOverride: string | undefined,
   params: Omit<ChatParams, 'baseUrl'>,
-): AsyncIterable<string> {
+): AsyncIterable<ProviderStreamChunk> {
   assertStreamingSupported(configProvider);
   const provider = createProvider(configProvider);
   const baseUrl = getBaseUrl(configProvider, baseUrlOverride);

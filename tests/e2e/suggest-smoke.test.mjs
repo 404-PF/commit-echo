@@ -350,6 +350,11 @@ test('suggest --stream prints incremental SSE output', async (t) => {
   assert.match(stdout, /Streaming suggestions/);
   assert.match(stdout, /feat: streamed suggestion/);
   assert.equal(requests.at(-1)?.stream, true);
+  assert.equal(
+    (stdout.match(/feat: streamed suggestion/g) ?? []).length,
+    1,
+    'streamed suggestion text should not be printed twice',
+  );
 });
 
 test('suggest --stream fails fast for unsupported providers', async (t) => {
