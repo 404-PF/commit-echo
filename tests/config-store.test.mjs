@@ -13,9 +13,11 @@ function escapeRegExp(value) {
 test("loadConfig reports invalid JSON with the config path and fix hint", async () => {
   const originalHome = process.env.HOME;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const originalAppData = process.env.APPDATA;
   const home = await mkdtemp(`${tmpdir()}/commit-echo-config-`);
 
   process.env.HOME = home;
+  process.env.APPDATA = home;
   delete process.env.XDG_CONFIG_HOME;
 
   try {
@@ -35,6 +37,12 @@ test("loadConfig reports invalid JSON with the config path and fix hint", async 
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+
+    if (originalAppData === undefined) {
+      delete process.env.APPDATA;
+    } else {
+      process.env.APPDATA = originalAppData;
     }
 
     if (originalXdgConfigHome === undefined) {
