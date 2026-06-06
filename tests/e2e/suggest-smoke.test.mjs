@@ -19,6 +19,10 @@ function onceExit(child) {
   });
 }
 
+function stripAnsi(text) {
+  return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
 function runSuggestUntil(args, { cwd, env, text }) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
@@ -64,6 +68,36 @@ function runSuggestUntil(args, { cwd, env, text }) {
   });
 }
 
+function runCli(args, { cwd, env }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
+      cwd,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      child.kill('SIGINT');
+      reject(new Error(`Timed out running ${args.join(' ')}. stdout: ${stdout} stderr: ${stderr}`));
+    }, 8000);
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+    child.on('exit', (code, signal) => {
+      clearTimeout(timeout);
+      resolve({ code, signal, stdout, stderr });
+    });
+  });
+}
+
 function configDirFor(home) {
   return platform() === 'darwin'
     ? join(home, 'Library', 'Application Support', 'commit-echo')
@@ -92,6 +126,24 @@ async function setupRepo(root) {
   await mkdir(configDir, { recursive: true });
 
   return { home, repo, configDir };
+}
+
+async function writeCustomProviderConfig(configDir, port) {
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
 }
 
 test('suggest smoke test boots the CLI, loads config, and prints suggestions', async (t) => {
@@ -176,6 +228,116 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
   assert.doesNotMatch(stdout, /Analyzed 1 commit/);
   assert.equal(stderr, '');
   assert.ok(result.code === 0 || result.signal === 'SIGINT');
+});
+
+test('suggest --auto selects the first suggestion like --yes without committing', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-auto-suggest-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          model: 'fixture-model',
+          choices: [{ message: { content: '1. feat: choose first alias\n2. docs: should not select' } }],
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(configDir, port);
+
+  const env = {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    FORCE_COLOR: '0',
+  };
+
+  const yes = await runCli(['suggest', '--yes'], { cwd: repo, env });
+  const auto = await runCli(['suggest', '--auto'], { cwd: repo, env });
+
+  for (const result of [yes, auto]) {
+    const stdout = stripAnsi(result.stdout);
+    assert.equal(result.code, 0);
+    assert.equal(result.signal, null);
+    assert.equal(result.stderr, '');
+    assert.match(stdout, /Suggestions generated:/);
+    assert.match(stdout, /Selected:\s+feat: choose first alias/);
+    assert.doesNotMatch(stdout, /Choose an action/);
+  }
+
+  assert.equal(
+    execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(),
+    'feat: initial fixture',
+  );
+});
+
+test('top-level --auto commits the first suggestion like --yes', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-auto-commit-'));
+  const yesFixture = await setupRepo(join(root, 'yes'));
+  const autoFixture = await setupRepo(join(root, 'auto'));
+
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          model: 'fixture-model',
+          choices: [{ message: { content: '1. feat: auto alias parity\n2. docs: should not commit' } }],
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(yesFixture.configDir, port);
+  await writeCustomProviderConfig(autoFixture.configDir, port);
+
+  const envFor = (home) => ({
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    FORCE_COLOR: '0',
+  });
+
+  const yes = await runCli(['--yes'], { cwd: yesFixture.repo, env: envFor(yesFixture.home) });
+  const auto = await runCli(['--auto'], { cwd: autoFixture.repo, env: envFor(autoFixture.home) });
+
+  for (const [result, repo] of [
+    [yes, yesFixture.repo],
+    [auto, autoFixture.repo],
+  ]) {
+    const stdout = stripAnsi(result.stdout);
+    assert.equal(result.code, 0);
+    assert.equal(result.signal, null);
+    assert.equal(result.stderr, '');
+    assert.match(stdout, /Selected:\s+feat: auto alias parity/);
+    assert.equal(
+      execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(),
+      'feat: auto alias parity',
+    );
+  }
 });
 
 test('suggest reports no changes before checking for an API key', async (t) => {
