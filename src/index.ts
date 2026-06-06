@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { initCommand } from './commands/init.js';
 import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
+import { batchCommand } from './commands/batch.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
 import { runPostCommitHook, runPrepareCommitMsgHook } from './git/hook.js';
 
@@ -39,6 +40,9 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
+  ${pc.cyan('commit-echo batch')}     Process all git repos in current directory
+  ${pc.cyan('commit-echo batch --recursive')} Search subdirectories for repos
+  ${pc.cyan('commit-echo batch --yes')} Auto-commit repos with staged changes
 
 ${pc.dim('Custom prompt template variables:')}
   ${getAvailableTemplateVars()
@@ -80,6 +84,22 @@ program
   });
 
 program.command('history').description('View learned style profile and recent commit history').action(historyCommand);
+
+program
+  .command('batch')
+  .description('Process multiple git repositories in batch mode')
+  .argument('[directory]', 'Directory to scan for git repositories')
+  .option('-r, --recursive', 'Recursively search subdirectories for git repos')
+  .option('-y, --yes', 'Automatically accept the first suggestion and commit without prompts')
+  .option('--auto', 'Alias for --yes')
+  .action(async (directory, options) => {
+    const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
+    await batchCommand({
+      directory: directory || undefined,
+      recursive: Boolean(options.recursive),
+      yes: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
+    });
+  });
 
 const hookCommand = new Command('hook')
   .description('Internal Git hook entry point')
