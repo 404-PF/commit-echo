@@ -5,6 +5,7 @@ import { getHistoryPath, getConfigDir } from '../config/store.js';
 
 const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([^)]+\))?:\s*/;
 
+/** Append one commit entry to the configured JSONL history file. */
 export async function appendEntry(entry: CommitEntry): Promise<void> {
   const historyPath = getHistoryPath();
   const configDir = getConfigDir();
@@ -14,24 +15,55 @@ export async function appendEntry(entry: CommitEntry): Promise<void> {
   await appendFile(historyPath, JSON.stringify(entry) + '\n', 'utf-8');
 }
 
+/** Load recent valid history entries while warning once about corrupted JSONL rows. */
 export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
   const historyPath = getHistoryPath();
   if (!existsSync(historyPath)) return [];
 
   const raw = await readFile(historyPath, 'utf-8');
-  const lines = raw.split('\n').filter(Boolean).reverse().slice(0, limit);
+  const lines = raw
+    .split('\n')
+    .map((line, index) => ({ line, lineNumber: index + 1 }))
+    .filter(({ line }) => line.trim().length > 0)
+    .reverse();
 
-  return lines
-    .map((line) => {
-      try {
-        return JSON.parse(line) as CommitEntry;
-      } catch {
-        return null;
+  const entries: CommitEntry[] = [];
+  const corruptedLineNumbers: number[] = [];
+
+  for (const { line, lineNumber } of lines) {
+    try {
+      const entry = JSON.parse(line) as CommitEntry;
+      if (entries.length < limit) {
+        entries.push(entry);
       }
-    })
-    .filter((e): e is CommitEntry => e !== null);
+    } catch {
+      corruptedLineNumbers.push(lineNumber);
+    }
+  }
+
+  warnCorruptedHistory(historyPath, corruptedLineNumbers);
+
+  return entries;
 }
 
+/** Emit a compact warning that identifies corrupted history line numbers. */
+function warnCorruptedHistory(historyPath: string, corruptedLineNumbers: number[]): void {
+  if (corruptedLineNumbers.length === 0) return;
+
+  const count = corruptedLineNumbers.length;
+  const noun = count === 1 ? 'entry' : 'entries';
+  const lines = corruptedLineNumbers
+    .slice(0, 5)
+    .sort((a, b) => a - b)
+    .join(', ');
+  const suffix = count > 5 ? `, +${count - 5} more` : '';
+
+  console.warn(
+    `Warning: ignored ${count} corrupted commit history ${noun} in ${historyPath} (line ${lines}${suffix}).`,
+  );
+}
+
+/** Count raw history rows in the configured history file. */
 export async function countEntries(): Promise<number> {
   const historyPath = getHistoryPath();
   if (!existsSync(historyPath)) return 0;
@@ -40,6 +72,7 @@ export async function countEntries(): Promise<number> {
   return raw.split('\n').filter(Boolean).length;
 }
 
+/** Build a style profile from recent commit history entries. */
 export async function buildProfile(historySize: number): Promise<StyleProfile> {
   const entries = await loadEntries(historySize);
 
@@ -125,6 +158,7 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
   };
 }
 
+/** Format a style profile for CLI display. */
 export function formatProfile(profile: StyleProfile): string {
   if (profile.totalCommits === 0) {
     return 'No commit history yet. Suggestions will use default style.';
