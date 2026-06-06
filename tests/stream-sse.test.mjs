@@ -7,20 +7,7 @@ import {
 } from '../dist/providers/sse.js';
 import { AnthropicProvider } from '../dist/providers/anthropic.js';
 import { OpenAICompatibleProvider } from '../dist/providers/openai-compatible.js';
-
-function streamFromChunks(chunks) {
-  let index = 0;
-  return new ReadableStream({
-    pull(controller) {
-      if (index >= chunks.length) {
-        controller.close();
-        return;
-      }
-      controller.enqueue(new TextEncoder().encode(chunks[index]));
-      index += 1;
-    },
-  });
-}
+import { streamFromChunks } from './helpers/stream-from-chunks.mjs';
 
 test('parseOpenAiSseLine extracts delta content', () => {
   const result = parseOpenAiSseLine(
@@ -166,6 +153,36 @@ test('OpenAI completeStream processes final line without trailing newline', asyn
       { kind: 'text', text: 'hel' },
       { kind: 'text', text: 'lo' },
     ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('OpenAI completeStream handles [DONE] in final buffer without trailing newline', async () => {
+  const originalFetch = globalThis.fetch;
+  const provider = new OpenAICompatibleProvider();
+
+  globalThis.fetch = async () =>
+    new Response(
+      streamFromChunks([
+        'data: {"choices":[{"delta":{"content":"done"}}]}\n',
+        'data: [DONE]',
+      ]),
+      { status: 200 },
+    );
+
+  try {
+    const chunks = [];
+    for await (const chunk of provider.completeStream({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'test' }],
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
+    })) {
+      chunks.push(chunk);
+    }
+
+    assert.deepEqual(chunks, [{ kind: 'text', text: 'done' }]);
   } finally {
     globalThis.fetch = originalFetch;
   }

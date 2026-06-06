@@ -398,3 +398,64 @@ test('suggest --stream fails fast for unsupported providers', async (t) => {
   assert.match(stdout, /Streaming is not supported for the 'cohere' provider/);
   assert.doesNotMatch(stdout, /Streaming suggestions/);
 });
+
+test('suggest --stream reports parse failure for unparseable streamed output', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-parse-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write('data: {"choices":[{"delta":{"content":"not a numbered suggestion list"}}]}\n\n');
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: '__custom__',
+      model: 'fixture-model',
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8'
+  );
+
+  const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--stream'], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
+      FORCE_COLOR: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+
+  const result = await onceExit(child);
+  assert.equal(result.code, 0);
+  assert.match(stdout, /not a numbered suggestion list/);
+  assert.match(stdout, /Could not parse any suggestions from LLM response/);
+});

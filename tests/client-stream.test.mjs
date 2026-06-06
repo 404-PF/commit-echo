@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { generateSuggestionsStream } from '../dist/llm/client.js';
+import { streamFromChunks } from './helpers/stream-from-chunks.mjs';
 
 const emptyProfile = {
   avgLength: 0,
@@ -13,20 +14,6 @@ const emptyProfile = {
   usesBodyRate: 0,
   totalCommits: 0,
 };
-
-function streamFromChunks(chunks) {
-  let index = 0;
-  return new ReadableStream({
-    pull(controller) {
-      if (index >= chunks.length) {
-        controller.close();
-        return;
-      }
-      controller.enqueue(new TextEncoder().encode(chunks[index]));
-      index += 1;
-    },
-  });
-}
 
 test('generateSuggestionsStream yields meta then text chunks', async () => {
   const originalFetch = globalThis.fetch;

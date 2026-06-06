@@ -121,6 +121,10 @@ export class OpenAICompatibleProvider implements Provider {
             if (parsed.error) {
               throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
             }
+            if (parsed.done) {
+              await reader.cancel();
+              return;
+            }
             if (parsed.model) yield { kind: 'model', model: parsed.model };
             if (parsed.text) yield { kind: 'text', text: parsed.text };
           }
