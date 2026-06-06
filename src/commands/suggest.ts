@@ -10,6 +10,7 @@ import {
 import pc from "picocolors";
 import type {
   Config,
+  Provider,
   StyleProfile,
   Suggestion,
   TruncationInfo,
@@ -133,8 +134,9 @@ export async function suggestCommand(
   let model: string;
 
   if (options.stream) {
+    let streamProvider: Provider;
     try {
-      assertStreamingSupported(config.provider);
+      streamProvider = assertStreamingSupported(config.provider);
     } catch (err) {
       outro(pc.red(err instanceof Error ? err.message : "Streaming not supported"));
       return;
@@ -151,6 +153,7 @@ export async function suggestCommand(
         diffResult.diff,
         profile,
         apiKey,
+        streamProvider,
       )) {
         if (event.kind === "meta") {
           truncation = event.truncation;

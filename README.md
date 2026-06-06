@@ -187,10 +187,11 @@ Suggestions generated:
 
 ### Stream suggestions as they are generated
 
-Use `--stream` to print LLM output incrementally instead of waiting behind a spinner. Supported for OpenAI-compatible and Anthropic providers; use non-streaming mode for Cohere.
+Use `--stream` to print LLM output incrementally instead of waiting behind a spinner. Supported for OpenAI-compatible and Anthropic providers; use non-streaming mode for Cohere. Pair with `--yes` for a non-interactive workflow that streams output and auto-commits the first suggestion.
 
 ```bash
 commit-echo suggest --stream
+commit-echo suggest --stream --yes
 ```
 
 ### Inspect suggestion diagnostics with `--verbose`

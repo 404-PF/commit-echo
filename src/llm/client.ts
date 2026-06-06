@@ -1,5 +1,6 @@
 import type {
   Config,
+  Provider,
   Suggestion,
   StyleProfile,
   TruncationInfo,
@@ -127,6 +128,7 @@ export async function* generateSuggestionsStream(
   diff: string,
   profileParam?: StyleProfile,
   apiKeyParam?: string,
+  provider?: Provider,
 ): AsyncGenerator<SuggestionStreamEvent> {
   const profile = profileParam ?? (await buildProfile(config.historySize));
 
@@ -154,16 +156,21 @@ export async function* generateSuggestionsStream(
     truncation: truncation.wasTruncated ? truncation : undefined,
   };
 
-  const stream = completeStream(config.provider, config.baseUrl, {
-    model: config.model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.7,
-    maxTokens: 1024,
-    apiKey,
-  });
+  const stream = completeStream(
+    config.provider,
+    config.baseUrl,
+    {
+      model: config.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      maxTokens: 1024,
+      apiKey,
+    },
+    provider,
+  );
 
   for await (const chunk of stream) {
     if (chunk.kind === "model") {
