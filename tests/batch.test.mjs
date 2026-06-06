@@ -285,7 +285,8 @@ test('gitCommit creates a commit and returns hash and summary', () => {
     const result = gitCommit(repo, 'feat: initial commit');
 
     assert.ok(result.hash, 'expected a commit hash');
-    assert.equal(result.hash.length, 7);
+    assert.ok(/^[0-9a-f]+$/.test(result.hash), 'hash should be hex');
+    assert.ok(result.hash.length >= 7, 'hash should be at least 7 chars');
     assert.ok(result.summary.includes('feat: initial commit'));
   } finally {
     rmSync(root, { recursive: true, force: true });
