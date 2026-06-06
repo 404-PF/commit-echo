@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync, writeFileSync, unlinkSync } from 'no
 import { basename, join } from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { intro, outro, confirm, select, isCancel } from '@clack/prompts';
+import { intro, outro, confirm, select, text, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
 import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
@@ -25,7 +25,18 @@ export function findGitRepositories(rootDir: string, recursive: boolean): string
 
   if (!existsSync(rootDir)) return repos;
 
-  const entries = readdirSync(rootDir, { withFileTypes: true });
+  // If rootDir itself is a git repo, return it directly
+  if (existsSync(join(rootDir, '.git'))) {
+    repos.push(rootDir);
+    return repos.sort();
+  }
+
+  let entries;
+  try {
+    entries = readdirSync(rootDir, { withFileTypes: true });
+  } catch {
+    return repos; // skip unreadable directories
+  }
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
@@ -71,7 +82,7 @@ export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean
 export function getGitDiff(cwd: string, staged: boolean): string {
   const cmd = staged ? 'git diff --cached' : 'git diff';
   try {
-    return execSync(cmd, { cwd, encoding: 'utf-8' }).trim();
+    return execSync(cmd, { cwd, encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }).trim();
   } catch (err) {
     throw new Error(
       `Failed to get diff: ${err instanceof Error ? err.message : String(err)}`,
@@ -82,7 +93,7 @@ export function getGitDiff(cwd: string, staged: boolean): string {
 /**
  * Run `git commit` inside a specific repository directory.
  */
-function gitCommit(
+export function gitCommit(
   cwd: string,
   message: string,
   body?: string,
@@ -112,7 +123,7 @@ function gitCommit(
 
     const summary = result.stdout.trim().split('\n').find(Boolean) ?? '';
     const match = summary.match(
-      /^\[(?:.+\s)?([a-f0-9]{7,})\]\s+(.+)$/i,
+      /\[.*?([a-f0-9]{7,})\]\s+(.+)$/i,
     );
 
     return {
@@ -383,16 +394,26 @@ export async function batchCommand(
         continue;
       }
 
+      // Prompt for an optional commit body (consistent with `suggest` UX)
+      const customBody = await text({
+        message: `Optional body for ${repoName}:`,
+        initialValue: selected.body ?? '',
+      });
+      const finalBody =
+        isCancel(customBody) || !customBody
+          ? selected.body
+          : customBody;
+
       try {
         const commitResult = gitCommit(
           repoPath,
           selected.message,
-          selected.body,
+          finalBody,
         );
         await appendEntry({
           timestamp: new Date().toISOString(),
-          message: selected.body
-            ? `${selected.message}\n\n${selected.body}`
+          message: finalBody
+            ? `${selected.message}\n\n${finalBody}`
             : selected.message,
           diff,
           model: config.model,

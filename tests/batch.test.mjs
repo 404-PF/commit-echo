@@ -16,6 +16,7 @@ import {
   findGitRepositories,
   gitHasChanges,
   getGitDiff,
+  gitCommit,
 } from '../dist/commands/batch.js';
 
 function createTempDir() {
@@ -123,6 +124,33 @@ test('findGitRepositories sorts results alphabetically', () => {
     assert.equal(repos[0], repoA);
     assert.equal(repos[1], repoB);
     assert.equal(repos[2], repoC);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('findGitRepositories returns rootDir when it is itself a git repo', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'inner');
+    // Point directly at the repo itself, not its parent
+    const repos = findGitRepositories(repo, false);
+
+    assert.equal(repos.length, 1);
+    assert.equal(repos[0], repo);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('findGitRepositories returns rootDir even with recursive flag', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'inner');
+    const repos = findGitRepositories(repo, true);
+
+    assert.equal(repos.length, 1);
+    assert.equal(repos[0], repo);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -240,6 +268,54 @@ test('getGitDiff throws when not in a git repo', () => {
   const root = createTempDir();
   try {
     assert.throws(() => getGitDiff(root, true), /Failed to get diff/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ─── gitCommit ────────────────────────────────────────────────────────────
+
+test('gitCommit creates a commit and returns hash and summary', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'repo');
+    writeFileSync(join(repo, 'file.txt'), 'content\n', 'utf-8');
+    git(['add', 'file.txt'], repo);
+
+    const result = gitCommit(repo, 'feat: initial commit');
+
+    assert.ok(result.hash, 'expected a commit hash');
+    assert.equal(result.hash.length, 7);
+    assert.ok(result.summary.includes('feat: initial commit'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit includes body in the commit message', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'repo');
+    writeFileSync(join(repo, 'file.txt'), 'content\n', 'utf-8');
+    git(['add', 'file.txt'], repo);
+
+    const result = gitCommit(repo, 'feat: with body', 'Optional body text here');
+
+    assert.ok(result.hash, 'expected a commit hash');
+    // Verify body is in the full commit message
+    const log = git(['log', '--format=%B', '-1'], repo);
+    assert.match(log, /feat: with body/);
+    assert.match(log, /Optional body text here/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('gitCommit throws on empty commit (nothing to commit)', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'repo');
+    assert.throws(() => gitCommit(repo, 'message'), /nothing to commit/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
