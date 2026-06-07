@@ -15,6 +15,8 @@ export interface CommitResult {
   output: string;
 }
 
+const GIT_DIFF_MAX_BUFFER = 100 * 1024 * 1024;
+
 export function checkGitRepo(): void {
   try {
     execSync('git rev-parse --git-dir', { encoding: 'utf-8', stdio: 'pipe' });
@@ -25,7 +27,10 @@ export function checkGitRepo(): void {
 }
 
 export function getStagedDiff(): DiffResult {
-  const diff = execSync('git diff --cached', { encoding: 'utf-8' });
+  const diff = execSync('git diff --cached', {
+    encoding: 'utf-8',
+    maxBuffer: GIT_DIFF_MAX_BUFFER,
+  });
   return {
     diff: diff.trim(),
     hasChanges: diff.trim().length > 0,
@@ -34,7 +39,10 @@ export function getStagedDiff(): DiffResult {
 }
 
 export function getUnstagedDiff(): DiffResult {
-  const diff = execSync('git diff', { encoding: 'utf-8' });
+  const diff = execSync('git diff', {
+    encoding: 'utf-8',
+    maxBuffer: GIT_DIFF_MAX_BUFFER,
+  });
   return {
     diff: diff.trim(),
     hasChanges: diff.trim().length > 0,

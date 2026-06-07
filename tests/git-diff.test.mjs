@@ -33,6 +33,10 @@ function git(args, cwd) {
   });
 }
 
+function createLargeDiffText() {
+  return "large diff line\n".repeat(90_000);
+}
+
 function initRepo() {
   const repoDir = createTempDir();
 
@@ -99,6 +103,26 @@ test("getStagedDiff returns diff when changes are staged", () => {
   }
 });
 
+test("getStagedDiff handles diffs larger than the default execSync buffer", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "large.txt"), createLargeDiffText(), "utf-8");
+    git(["add", "large.txt"], repoDir);
+
+    withCwd(repoDir, () => {
+      const result = getStagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.equal(result.staged, true);
+      assert.ok(result.diff.length > 1024 * 1024);
+      assert.ok(result.diff.includes("large diff line"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getStagedDiff returns empty diff when no changes are staged", () => {
   const repoDir = initRepo();
 
@@ -132,6 +156,29 @@ test("getUnstagedDiff returns diff for unstaged changes", () => {
       assert.equal(result.staged, false);
       assert.ok(result.diff.includes("diff --git"));
       assert.ok(result.diff.includes("+world"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("getUnstagedDiff handles diffs larger than the default execSync buffer", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "large.txt"), "initial\n", "utf-8");
+    git(["add", "large.txt"], repoDir);
+    git(["commit", "-m", "initial commit"], repoDir);
+
+    writeFileSync(join(repoDir, "large.txt"), createLargeDiffText(), "utf-8");
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.equal(result.staged, false);
+      assert.ok(result.diff.length > 1024 * 1024);
+      assert.ok(result.diff.includes("large diff line"));
     });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
