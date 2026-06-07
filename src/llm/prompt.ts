@@ -205,6 +205,7 @@ export function parseSuggestions(content: string, count: number = 3): { message:
   let bulletIndent: string | null = null;
 
   for (const line of lines) {
+    // Keep numberedMatch and top-level bulletMatch as suggestions while using listStyle/bulletIndent to leave nested bullets in the current body.
     const numberedMatch = line.match(/^\d+[.)]\s+(.*\S.*)/);
     const bulletMatch = line.match(/^(\s*)[-*]\s+(.*\S.*)/);
     const isTopLevelBullet =
