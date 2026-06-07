@@ -55,6 +55,22 @@ test('substituteTemplateVars replaces multiple occurrences', () => {
   assert.equal(result, 'SAME and SAME');
 });
 
+test('substituteTemplateVars does not rescan substituted values', () => {
+  const result = substituteTemplateVars(
+    'Analyze:\n{{diff}}\n\nProfile: {{profile}}',
+    {
+      diff: 'diff contains literal {{profile}} and {{branch}} markers',
+      profile: 'learned profile',
+      branch: 'main',
+    }
+  );
+
+  assert.equal(
+    result,
+    'Analyze:\ndiff contains literal {{profile}} and {{branch}} markers\n\nProfile: learned profile'
+  );
+});
+
 test('resolveSystemPrompt falls back to built-in when no config template', () => {
   const prompt = resolveSystemPrompt(EMPTY_PROFILE, {
     diff: '',
