@@ -140,6 +140,32 @@ test('treats indented numbered sub-items as body text, not new suggestions', () 
   assert.equal(result[1].message, 'fix: handle empty history');
 });
 
+test('treats indented bullet sub-items as body text, not new suggestions', () => {
+  const input = `1. refactor: simplify auth flow
+   - Extract session parsing
+   - Share redirect handling
+2. fix: handle expired tokens
+   - Return login redirect
+3. test: cover auth retries`;
+
+  const result = parseSuggestions(input);
+
+  assert.deepEqual(result, [
+    {
+      message: 'refactor: simplify auth flow',
+      body: 'Extract session parsing\nShare redirect handling',
+    },
+    {
+      message: 'fix: handle expired tokens',
+      body: 'Return login redirect',
+    },
+    {
+      message: 'test: cover auth retries',
+      body: undefined,
+    },
+  ]);
+});
+
 test('returns fewer than count if fewer items present', () => {
   const input = `- only one suggestion`;
   const result = parseSuggestions(input, 3);

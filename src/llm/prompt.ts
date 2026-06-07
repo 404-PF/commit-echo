@@ -201,21 +201,35 @@ export function parseSuggestions(content: string, count: number = 3): { message:
   const suggestions: { message: string; body?: string }[] = [];
   const lines = content.split('\n');
   let current: { message: string; bodyLines: string[] } | null = null;
+  let listStyle: 'numbered' | 'bullet' | null = null;
+  let bulletIndent: string | null = null;
 
   for (const line of lines) {
-    const listItemMatch = line.match(/^(?:\d+[.)]|\s*[-*])\s+(.*\S.*)/);
-    if (listItemMatch) {
+    const numberedMatch = line.match(/^\d+[.)]\s+(.*\S.*)/);
+    const bulletMatch = line.match(/^(\s*)[-*]\s+(.*\S.*)/);
+    const isTopLevelBullet =
+      bulletMatch &&
+      (bulletMatch[1] === '' ||
+        (listStyle !== 'numbered' && (bulletIndent == null || bulletMatch[1] === bulletIndent)));
+    const listItemText = numberedMatch?.[1] ?? (isTopLevelBullet ? bulletMatch?.[2] : undefined);
+
+    if (listItemText) {
       if (current) {
         suggestions.push({
           message: current.message,
           body: current.bodyLines.length > 0 ? current.bodyLines.join('\n').trim() : undefined,
         });
       }
-      current = { message: listItemMatch[1]!.trim(), bodyLines: [] };
+      current = { message: listItemText.trim(), bodyLines: [] };
+      listStyle = numberedMatch ? 'numbered' : 'bullet';
+      if (bulletMatch && bulletIndent == null) {
+        bulletIndent = bulletMatch[1]!;
+      }
     } else if (current) {
       const trimmed = line.trim();
       if (trimmed) {
-        current.bodyLines.push(trimmed);
+        const bodyLine = listStyle === 'numbered' && bulletMatch ? bulletMatch[2]!.trim() : trimmed;
+        current.bodyLines.push(bodyLine);
       }
     }
   }
