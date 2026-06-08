@@ -35,7 +35,19 @@ export function getHistoryPath(): string {
 export async function loadConfig(): Promise<Config> {
   const configPath = getConfigPath();
   const raw = await readFile(configPath, 'utf-8');
-  const parsed = JSON.parse(raw) as Partial<Config>;
+  let parsed: Partial<Config> = {};
+
+  try {
+    parsed = JSON.parse(raw) as Partial<Config>;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(
+        `Invalid JSON in config file: ${configPath}. Fix the JSON syntax or run \`commit-echo init\` to recreate it.`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
 
   return {
     provider: parsed.provider ?? '',
