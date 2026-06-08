@@ -199,171 +199,172 @@ export async function suggestCommand(
     outro(pc.red(err instanceof Error ? err.message : "Missing API key"));
     return;
   }
+  while (true) {
+    let suggestions: Suggestion[];
+    let truncation: TruncationInfo | undefined;
+    let model: string;
 
-  let suggestions: Suggestion[];
-  let truncation: TruncationInfo | undefined;
-  let model: string;
-
-  if (options.stream) {
-    let streamProvider: Provider;
-    try {
-      streamProvider = getStreamingProvider(config.provider);
-    } catch (err) {
-      outro(pc.red(err instanceof Error ? err.message : "Streaming not supported"));
-      return;
-    }
-
-    console.log(pc.dim("Streaming suggestions...\n"));
-
-    model = config.model;
-    let accumulated = "";
-    try {
-      for await (const event of generateSuggestionsStream(
-        config,
-        diffResult.diff,
-        profile,
-        apiKey,
-        streamProvider,
-      )) {
-        if (event.kind === "meta") {
-          truncation = event.truncation;
-          continue;
-        }
-
-        if (event.kind === "model") {
-          model = event.model;
-          continue;
-        }
-
-        accumulated += event.text;
-        process.stdout.write(event.text);
+    if (options.stream) {
+      let streamProvider: Provider;
+      try {
+        streamProvider = getStreamingProvider(config.provider);
+      } catch (err) {
+        outro(pc.red(err instanceof Error ? err.message : "Streaming not supported"));
+        return;
       }
-    } catch (err) {
-      process.stdout.write("\n");
-      const message = err instanceof Error ? err.message : "Unknown error";
-      outro(pc.red(`Streaming failed: ${message}`));
-      return;
-    }
-    process.stdout.write("\n\n");
 
-    const parsed = parseSuggestions(accumulated);
-    suggestions = parsed.map((p, i) => ({
-      index: i + 1,
-      message: p.message,
-      body: p.body,
-    }));
+      console.log(pc.dim("Streaming suggestions...\n"));
 
-    if (suggestions.length === 0) {
-      outro(
-        pc.red(
-          "Could not parse any suggestions from LLM response. The model may need a different prompt format.",
-        ),
-      );
-      return;
-    }
-  } else {
-    const genSpinner = spinner();
-    genSpinner.start("Generating commit suggestions...");
+      model = config.model;
+      let accumulated = "";
+      try {
+        for await (const event of generateSuggestionsStream(
+          config,
+          diffResult.diff,
+          profile,
+          apiKey,
+          streamProvider,
+        )) {
+          if (event.kind === "meta") {
+            truncation = event.truncation;
+            continue;
+          }
 
-    try {
-      const result = await generateSuggestions(
-        config,
-        diffResult.diff,
-        profile,
-        apiKey,
-      );
-      suggestions = result.suggestions;
-      truncation = result.truncation;
-      model = result.model;
-      genSpinner.stop(pc.green("Suggestions generated:"));
-    } catch (err) {
-      genSpinner.stop(pc.red("Failed to generate suggestions."));
-      const message = err instanceof Error ? err.message : "Unknown error";
-      outro(pc.red(message));
-      return;
-    }
-  }
+          if (event.kind === "model") {
+            model = event.model;
+            continue;
+          }
 
-  if (options.verbose) {
-    showVerboseInfo(model, profile, truncation);
-  }
+          accumulated += event.text;
+          process.stdout.write(event.text);
+        }
+      } catch (err) {
+        process.stdout.write("\n");
+        const message = err instanceof Error ? err.message : "Unknown error";
+        outro(pc.red(`Streaming failed: ${message}`));
+        return;
+      }
+      process.stdout.write("\n\n");
 
-  if (truncation) {
-    showTruncationWarning(truncation);
-  }
+      const parsed = parseSuggestions(accumulated);
+      suggestions = parsed.map((p, i) => ({
+        index: i + 1,
+        message: p.message,
+        body: p.body,
+      }));
 
-  if (!options.stream) {
-    await displaySuggestions(suggestions);
-  }
-
-  if (options.autoCommit && suggestions.length > 0) {
-    const first = suggestions[0]!;
-    if (options.commit !== false) {
-      if (!diffResult.staged) {
+      if (suggestions.length === 0) {
         outro(
           pc.red(
-            "Auto-commit requires staged changes. Stage your changes with `git add` and try again.",
+            "Could not parse any suggestions from LLM response. The model may need a different prompt format.",
           ),
         );
-        process.exit(1);
+        return;
       }
-      await acceptAndCommit(first, config, diffResult.diff, true);
     } else {
-      console.log(`\n  ${pc.green("Selected:")} ${pc.bold(first.message)}`);
-      if (first.body) {
-        console.log(`  ${pc.dim(first.body)}`);
+      const genSpinner = spinner();
+      genSpinner.start("Generating commit suggestions...");
+
+      try {
+        const result = await generateSuggestions(
+          config,
+          diffResult.diff,
+          profile,
+          apiKey,
+        );
+        suggestions = result.suggestions;
+        truncation = result.truncation;
+        model = result.model;
+        genSpinner.stop(pc.green("Suggestions generated:"));
+      } catch (err) {
+        genSpinner.stop(pc.red("Failed to generate suggestions."));
+        const message = err instanceof Error ? err.message : "Unknown error";
+        outro(pc.red(message));
+        return;
       }
     }
-    return;
-  }
 
-  try {
-    const action = await select({
-      message: "Choose an action:",
-      options: [
-        { value: "select", label: "Select a suggestion to commit" },
-        { value: "regenerate", label: "Regenerate suggestions" },
-        { value: "cancel", label: "Cancel" },
-      ],
-    });
+    if (options.verbose) {
+      showVerboseInfo(model, profile, truncation);
+    }
 
-    if (isCancel(action) || action === "cancel") {
-      outro("Cancelled.");
+    if (truncation) {
+      showTruncationWarning(truncation);
+    }
+
+    if (!options.stream) {
+      await displaySuggestions(suggestions);
+    }
+
+    if (options.autoCommit && suggestions.length > 0) {
+      const first = suggestions[0]!;
+      if (options.commit !== false) {
+        if (!diffResult.staged) {
+          outro(
+            pc.red(
+              "Auto-commit requires staged changes. Stage your changes with `git add` and try again.",
+            ),
+          );
+          process.exit(1);
+        }
+        await acceptAndCommit(first, config, diffResult.diff, true);
+      } else {
+        console.log(`\n  ${pc.green("Selected:")} ${pc.bold(first.message)}`);
+        if (first.body) {
+          console.log(`  ${pc.dim(first.body)}`);
+        }
+      }
       return;
     }
 
-    if (action === "regenerate") {
-      await suggestCommand(options);
-      return;
+    try {
+      const action = await select({
+        message: "Choose an action:",
+        options: [
+          { value: "select", label: "Select a suggestion to commit" },
+          { value: "regenerate", label: "Regenerate suggestions" },
+          { value: "cancel", label: "Cancel" },
+        ],
+      });
+
+      if (isCancel(action) || action === "cancel") {
+        outro("Cancelled.");
+        return;
+      }
+
+      if (action === "regenerate") {
+        continue;
+      }
+
+      const suggestionOptions = suggestions.map((s) => ({
+        value: s.index,
+        label: s.message.length > 60 ? s.message.slice(0, 57) + "..." : s.message,
+      }));
+
+      const selectedIndex = await select({
+        message: "Select a commit message:",
+        options: suggestionOptions,
+      });
+
+      if (isCancel(selectedIndex)) {
+        outro("Cancelled.");
+        return;
+      }
+
+      const selected = suggestions.find((s) => s.index === selectedIndex);
+      if (!selected) {
+        outro(pc.red("Invalid selection."));
+        return;
+      }
+
+      if (options.commit !== false) {
+        await acceptAndCommit(selected, config, diffResult.diff);
+      }
+      break;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      outro(pc.red(message));
     }
-
-    const suggestionOptions = suggestions.map((s) => ({
-      value: s.index,
-      label: s.message.length > 60 ? s.message.slice(0, 57) + "..." : s.message,
-    }));
-
-    const selectedIndex = await select({
-      message: "Select a commit message:",
-      options: suggestionOptions,
-    });
-
-    if (isCancel(selectedIndex)) {
-      outro("Cancelled.");
-      return;
-    }
-
-    const selected = suggestions.find((s) => s.index === selectedIndex);
-    if (!selected) {
-      outro(pc.red("Invalid selection."));
-      return;
-    }
-
-    if (options.commit !== false) {
-      await acceptAndCommit(selected, config, diffResult.diff);
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    outro(pc.red(message));
   }
 }
 
