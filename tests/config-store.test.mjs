@@ -1,16 +1,16 @@
-import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname } from "node:path";
-import test from "node:test";
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname } from 'node:path';
+import test from 'node:test';
 
-import { getConfigPath, loadConfig } from "../dist/config/store.js";
+import { getConfigPath, loadConfig } from '../dist/config/store.js';
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-test("loadConfig reports invalid JSON with the config path and fix hint", async () => {
+test('loadConfig reports invalid JSON with the config path and fix hint', async () => {
   const originalHome = process.env.HOME;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const originalAppData = process.env.APPDATA;
@@ -23,7 +23,7 @@ test("loadConfig reports invalid JSON with the config path and fix hint", async 
   try {
     const configPath = getConfigPath();
     await mkdir(dirname(configPath), { recursive: true });
-    await writeFile(configPath, "{ invalid json", "utf-8");
+    await writeFile(configPath, '{ invalid json', 'utf-8');
 
     await assert.rejects(loadConfig(), (error) => {
       assert.equal(error instanceof Error, true);
@@ -50,5 +50,7 @@ test("loadConfig reports invalid JSON with the config path and fix hint", async 
     } else {
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
     }
+
+    await rm(home, { recursive: true, force: true });
   }
 });

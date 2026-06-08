@@ -35,7 +35,7 @@ export function getHistoryPath(): string {
 export async function loadConfig(): Promise<Config> {
   const configPath = getConfigPath();
   const raw = await readFile(configPath, 'utf-8');
-  let parsed: Partial<Config>;
+  let parsed: Partial<Config> = {};
 
   try {
     parsed = JSON.parse(raw) as Partial<Config>;
