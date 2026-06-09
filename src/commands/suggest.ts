@@ -364,6 +364,7 @@ export async function suggestCommand(
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       outro(pc.red(message));
+      return;
     }
   }
 }
