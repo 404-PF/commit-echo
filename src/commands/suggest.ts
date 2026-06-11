@@ -120,7 +120,7 @@ export async function suggestCommand(
     if (!diffResult.hasChanges) {
       diffResult = getUnstagedDiff();
       if (!diffResult.hasChanges) {
-        outro(pc.yellow('No changes detected. Stage your changes first with `git add`.'));
+        outro(pc.yellow('No changes detected in your working directory.'));
         return;
       }
     }
