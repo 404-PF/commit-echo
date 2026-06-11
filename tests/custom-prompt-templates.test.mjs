@@ -21,11 +21,29 @@ const EMPTY_PROFILE = {
 
 test('substituteTemplateVars replaces all known variables', () => {
   const result = substituteTemplateVars(
-    'Branch: {{branch}}\nDiff: {{diff}}\nProfile: {{profile}}',
-    { diff: 'my diff', profile: 'my profile', branch: 'main' }
+    'Branch: {{branch}}\nDiff: {{diff}}\nProfile: {{profile}}\nMessage: {{message}}',
+    { diff: 'my diff', profile: 'my profile', branch: 'main', message: 'my message' }
   );
 
-  assert.equal(result, 'Branch: main\nDiff: my diff\nProfile: my profile');
+  assert.equal(result, 'Branch: main\nDiff: my diff\nProfile: my profile\nMessage: my message');
+});
+
+test('substituteTemplateVars replaces message variable', () => {
+  const result = substituteTemplateVars(
+    'Message: {{message}}',
+    { diff: '', profile: '', branch: '', message: 'chore: first commit' }
+  );
+
+  assert.equal(result, 'Message: chore: first commit');
+});
+
+test('substituteTemplateVars handles empty message', () => {
+  const result = substituteTemplateVars(
+    'Message: {{message}}',
+    { diff: '', profile: '', branch: '', message: '' }
+  );
+
+  assert.equal(result, 'Message: ');
 });
 
 test('substituteTemplateVars leaves unknown variables as-is', () => {
@@ -87,15 +105,16 @@ test('resolveSystemPrompt uses custom template when configured', () => {
     diff: 'my diff',
     profile: 'my profile',
     branch: 'feature-x',
+    message: 'last commit msg',
   }, {
     provider: '',
     model: '',
     historySize: 0,
     maxDiffSize: 0,
-    systemPromptTemplate: 'Branch: {{branch}} | Profile: {{profile}}',
+    systemPromptTemplate: 'Branch: {{branch}} | Profile: {{profile}} | Message: {{message}}',
   });
 
-  assert.equal(prompt, 'Branch: feature-x | Profile: my profile');
+  assert.equal(prompt, 'Branch: feature-x | Profile: my profile | Message: last commit msg');
   assert.ok(!prompt.includes('expert Git commit message assistant'));
 });
 
@@ -115,15 +134,16 @@ test('resolveUserPrompt uses custom template when configured', () => {
     diff: 'some diff',
     profile: '',
     branch: 'main',
+    message: 'another message',
   }, {
     provider: '',
     model: '',
     historySize: 0,
     maxDiffSize: 0,
-    userPromptTemplate: 'Branch: {{branch}}\n\n{{diff}}',
+    userPromptTemplate: 'Branch: {{branch}}\n\n{{diff}}\n\nPrev: {{message}}',
   });
 
-  assert.equal(prompt, 'Branch: main\n\nsome diff');
+  assert.equal(prompt, 'Branch: main\n\nsome diff\n\nPrev: another message');
   assert.ok(!prompt.includes('Generate 3 commit message suggestions'));
 });
 

@@ -21,6 +21,7 @@ import {
   getStagedDiff,
   getUnstagedDiff,
   getBranchName,
+  getLastCommitMessage,
   commit,
 } from "../git/diff.js";
 import {
@@ -177,6 +178,7 @@ export async function suggestCommand(
       diff: truncatedDiff,
       profile: formatProfile(profile),
       branch: getBranchName(),
+      message: getLastCommitMessage(),
     };
 
     console.log(

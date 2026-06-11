@@ -68,6 +68,7 @@ export interface TemplateVars {
   diff: string;
   profile: string;
   branch: string;
+  message: string;
 }
 
 /**
@@ -75,7 +76,7 @@ export interface TemplateVars {
  * Unknown variables are left as-is.
  */
 export function substituteTemplateVars(template: string, vars: TemplateVars): string {
-  return template.replace(/\{\{(diff|profile|branch)\}\}/g, (_match, key: keyof TemplateVars) => vars[key]);
+  return template.replace(/\{\{(diff|profile|branch|message)\}\}/g, (_match, key: keyof TemplateVars) => vars[key] ?? '');
 }
 
 /**
@@ -112,7 +113,7 @@ export function getAvailableTemplateVars(): string {
     '{{diff}}     - The git diff text',
     '{{profile}}  - The learned style profile summary',
     '{{branch}}   - Current git branch name',
-    '{{message}}  - (reserved) Previous commit message context',
+    '{{message}}  - Previous commit message context',
   ].join('\n');
 }
 
