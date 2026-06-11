@@ -14,7 +14,7 @@ import {
   truncateDiff,
 } from "./prompt.js";
 import { buildProfile, formatProfile } from "../history/store.js";
-import { getBranchName } from "../git/diff.js";
+import { getBranchName, getLastCommitMessage } from "../git/diff.js";
 
 function getApiKeyEnv(config: Config): string | undefined {
   if (config.provider === "__custom__") {
@@ -67,11 +67,13 @@ export async function generateSuggestions(
 
   const branch = getBranchName();
   const profileStr = formatProfile(profile);
+  const message = getLastCommitMessage();
 
   const vars = {
     diff: truncatedDiff,
     profile: profileStr,
     branch,
+    message,
   };
 
   const systemPrompt = resolveSystemPrompt(profile, vars, config);
@@ -139,11 +141,13 @@ export async function* generateSuggestionsStream(
 
   const branch = getBranchName();
   const profileStr = formatProfile(profile);
+  const message = getLastCommitMessage();
 
   const vars = {
     diff: truncatedDiff,
     profile: profileStr,
     branch,
+    message,
   };
 
   const systemPrompt = resolveSystemPrompt(profile, vars, config);

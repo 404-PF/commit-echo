@@ -1,11 +1,27 @@
 import { intro, outro, select, text, confirm, spinner, isCancel } from '@clack/prompts';
+
 import pc from 'picocolors';
+
 import type { Config, Provider, StyleProfile, Suggestion, TruncationInfo } from '../types.js';
+
 import { loadOrPromptConfig } from '../config/store.js';
-import { checkGitRepo, getStagedDiff, getUnstagedDiff, getBranchName, commit, type DiffResult } from '../git/diff.js';
+
+import {
+  checkGitRepo,
+  getStagedDiff,
+  getUnstagedDiff,
+  getBranchName,
+  getLastCommitMessage,
+  commit,
+  type DiffResult,
+} from '../git/diff.js';
+
 import { assertApiKeyAvailable, generateSuggestions, generateSuggestionsStream } from '../llm/client.js';
+
 import { parseSuggestions, resolveSystemPrompt, resolveUserPrompt, truncateDiff } from '../llm/prompt.js';
+
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
+
 import { getStreamingProvider } from '../providers/index.js';
 
 function showTruncationWarning(info: TruncationInfo): void {
@@ -137,6 +153,7 @@ export async function suggestCommand(
       diff: truncatedDiff,
       profile: formatProfile(profile),
       branch: getBranchName(),
+      message: getLastCommitMessage(),
     };
 
     console.log(

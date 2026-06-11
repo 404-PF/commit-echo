@@ -94,3 +94,12 @@ export function getBranchName(): string {
     return 'unknown';
   }
 }
+
+export function getLastCommitMessage(): string {
+  try {
+    return execSync('git log -1 --format=%s', { encoding: 'utf-8', stdio: 'pipe' }).trim();
+  } catch {
+    return '';
+  }
+}
+
