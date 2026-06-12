@@ -105,6 +105,8 @@ export async function suggestCommand(
 ): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
+  const shouldCommit = options.commit === true;
+
   if (options.noCommit) {
     console.warn(pc.yellow("Note: --no-commit is deprecated; 'commit-echo suggest' already skips committing."));
   }
@@ -262,7 +264,7 @@ export async function suggestCommand(
 
     if (options.autoCommit && suggestions.length > 0) {
       const first = suggestions[0]!;
-      if (options.commit !== false) {
+      if (shouldCommit) {
         if (!diffResult.staged) {
           outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
           process.exit(1);
@@ -317,7 +319,7 @@ export async function suggestCommand(
         return;
       }
 
-      if (options.commit !== false) {
+      if (shouldCommit) {
         await acceptAndCommit(selected, config, diffResult.diff);
       }
       break;
