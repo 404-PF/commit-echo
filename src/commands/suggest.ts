@@ -1,21 +1,11 @@
-import {
-  intro,
-  outro,
-  select,
-  text,
-  confirm,
-  spinner,
-  isCancel,
-} from "@clack/prompts";
-import pc from "picocolors";
-import type {
-  Config,
-  Provider,
-  StyleProfile,
-  Suggestion,
-  TruncationInfo,
-} from "../types.js";
-import { loadOrPromptConfig } from "../config/store.js";
+import { intro, outro, select, text, confirm, spinner, isCancel } from '@clack/prompts';
+
+import pc from 'picocolors';
+
+import type { Config, Provider, StyleProfile, Suggestion, TruncationInfo } from '../types.js';
+
+import { loadOrPromptConfig } from '../config/store.js';
+
 import {
   checkGitRepo,
   getStagedDiff,
@@ -23,20 +13,16 @@ import {
   getBranchName,
   getLastCommitMessage,
   commit,
-} from "../git/diff.js";
-import {
-  assertApiKeyAvailable,
-  generateSuggestions,
-  generateSuggestionsStream,
-} from "../llm/client.js";
-import {
-  parseSuggestions,
-  resolveSystemPrompt,
-  resolveUserPrompt,
-  truncateDiff,
-} from "../llm/prompt.js";
-import { appendEntry, buildProfile, formatProfile } from "../history/store.js";
-import { getStreamingProvider } from "../providers/index.js";
+  type DiffResult,
+} from '../git/diff.js';
+
+import { assertApiKeyAvailable, generateSuggestions, generateSuggestionsStream } from '../llm/client.js';
+
+import { parseSuggestions, resolveSystemPrompt, resolveUserPrompt, truncateDiff } from '../llm/prompt.js';
+
+import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
+
+import { getStreamingProvider } from '../providers/index.js';
 
 function showTruncationWarning(info: TruncationInfo): void {
   const pct = ((info.truncatedSize / info.originalSize) * 100).toFixed(1);
@@ -49,15 +35,8 @@ function showTruncationWarning(info: TruncationInfo): void {
   );
 }
 
-function showVerboseInfo(
-  model: string,
-  profile: StyleProfile,
-  truncation?: TruncationInfo,
-): void {
-  const commonPrefixes =
-    profile.commonPrefixes.length > 0
-      ? profile.commonPrefixes.join(", ")
-      : "none";
+function showVerboseInfo(model: string, profile: StyleProfile, truncation?: TruncationInfo): void {
+  const commonPrefixes = profile.commonPrefixes.length > 0 ? profile.commonPrefixes.join(', ') : 'none';
 
   console.log(pc.dim(`Model: ${model}`));
   console.log(
@@ -70,7 +49,7 @@ function showVerboseInfo(
     pc.dim(
       truncation
         ? `Truncation: ${truncation.originalSize} -> ${truncation.truncatedSize} chars, ${truncation.filesTruncated} file(s) affected`
-        : "Truncation: not applied",
+        : 'Truncation: not applied',
     ),
   );
 }
@@ -83,27 +62,27 @@ export function formatDryRunOutput(
   truncation?: TruncationInfo,
 ): string {
   return [
-    pc.yellow("Dry run: no LLM API call will be made."),
-    "",
-    pc.bold("Diff:"),
+    pc.yellow('Dry run: no LLM API call will be made.'),
+    '',
+    pc.bold('Diff:'),
     pc.dim(diff),
-    "",
-    pc.bold("Style profile:"),
+    '',
+    pc.bold('Style profile:'),
     pc.dim(profileSummary),
-    "",
-    pc.bold("System prompt:"),
+    '',
+    pc.bold('System prompt:'),
     pc.dim(systemPrompt),
-    "",
-    pc.bold("User prompt:"),
+    '',
+    pc.bold('User prompt:'),
     pc.dim(userPrompt),
-    "",
-    pc.bold("Truncation:"),
+    '',
+    pc.bold('Truncation:'),
     pc.dim(
       truncation
         ? `${truncation.originalSize} -> ${truncation.truncatedSize} chars across ${truncation.filesTruncated} file(s)`
-        : "None. The diff above will be sent in full.",
+        : 'None. The diff above will be sent in full.',
     ),
-  ].join("\n");
+  ].join('\n');
 }
 
 async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
@@ -124,20 +103,18 @@ export async function suggestCommand(
     noCommit?: boolean;
   } = {},
 ): Promise<void> {
-  intro(pc.bold(pc.cyan("commit-echo")));
+  intro(pc.bold(pc.cyan('commit-echo')));
+
+  const shouldCommit = options.commit === true;
 
   if (options.noCommit) {
-    console.warn(
-      pc.yellow(
-        "Note: --no-commit is deprecated; 'commit-echo suggest' already skips committing.",
-      ),
-    );
+    console.warn(pc.yellow("Note: --no-commit is deprecated; 'commit-echo suggest' already skips committing."));
   }
 
   try {
     checkGitRepo();
   } catch (err) {
-    outro(pc.red(err instanceof Error ? err.message : "Not a git repository."));
+    outro(pc.red(err instanceof Error ? err.message : 'Not a git repository.'));
     return;
   }
 
@@ -145,7 +122,7 @@ export async function suggestCommand(
   try {
     config = await loadOrPromptConfig();
   } catch (err) {
-    outro(pc.red(err instanceof Error ? err.message : "Configuration error"));
+    outro(pc.red(err instanceof Error ? err.message : 'Configuration error'));
     return;
   }
 
@@ -153,27 +130,27 @@ export async function suggestCommand(
     config.model = options.model;
   }
 
-  let diffResult = getStagedDiff();
+  let diffResult: DiffResult;
 
-  if (!diffResult.hasChanges) {
-    diffResult = getUnstagedDiff();
+  try {
+    diffResult = getStagedDiff();
+
     if (!diffResult.hasChanges) {
-      outro(
-        pc.yellow(
-          "No changes detected. Stage your changes first with `git add`.",
-        ),
-      );
-      return;
+      diffResult = getUnstagedDiff();
+      if (!diffResult.hasChanges) {
+        outro(pc.yellow('No changes detected in your working directory.'));
+        return;
+      }
     }
+  } catch (err) {
+    outro(pc.red(`Failed to read git diff: ${err instanceof Error ? err.message : String(err)}`));
+    return;
   }
 
   const profile = await buildProfile(config.historySize);
 
   if (options.dryRun) {
-    const { diff: truncatedDiff, info: truncation } = truncateDiff(
-      diffResult.diff,
-      config.maxDiffSize,
-    );
+    const { diff: truncatedDiff, info: truncation } = truncateDiff(diffResult.diff, config.maxDiffSize);
     const vars = {
       diff: truncatedDiff,
       profile: formatProfile(profile),
@@ -190,7 +167,7 @@ export async function suggestCommand(
         truncation.wasTruncated ? truncation : undefined,
       ),
     );
-    outro(pc.green("Dry run complete."));
+    outro(pc.green('Dry run complete.'));
     return;
   }
 
@@ -198,7 +175,7 @@ export async function suggestCommand(
   try {
     apiKey = assertApiKeyAvailable(config);
   } catch (err) {
-    outro(pc.red(err instanceof Error ? err.message : "Missing API key"));
+    outro(pc.red(err instanceof Error ? err.message : 'Missing API key'));
     return;
   }
   while (true) {
@@ -211,28 +188,22 @@ export async function suggestCommand(
       try {
         streamProvider = getStreamingProvider(config.provider);
       } catch (err) {
-        outro(pc.red(err instanceof Error ? err.message : "Streaming not supported"));
+        outro(pc.red(err instanceof Error ? err.message : 'Streaming not supported'));
         return;
       }
 
-      console.log(pc.dim("Streaming suggestions...\n"));
+      console.log(pc.dim('Streaming suggestions...\n'));
 
       model = config.model;
-      let accumulated = "";
+      let accumulated = '';
       try {
-        for await (const event of generateSuggestionsStream(
-          config,
-          diffResult.diff,
-          profile,
-          apiKey,
-          streamProvider,
-        )) {
-          if (event.kind === "meta") {
+        for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
+          if (event.kind === 'meta') {
             truncation = event.truncation;
             continue;
           }
 
-          if (event.kind === "model") {
+          if (event.kind === 'model') {
             model = event.model;
             continue;
           }
@@ -241,12 +212,12 @@ export async function suggestCommand(
           process.stdout.write(event.text);
         }
       } catch (err) {
-        process.stdout.write("\n");
-        const message = err instanceof Error ? err.message : "Unknown error";
+        process.stdout.write('\n');
+        const message = err instanceof Error ? err.message : 'Unknown error';
         outro(pc.red(`Streaming failed: ${message}`));
         return;
       }
-      process.stdout.write("\n\n");
+      process.stdout.write('\n\n');
 
       const parsed = parseSuggestions(accumulated);
       suggestions = parsed.map((p, i) => ({
@@ -257,30 +228,23 @@ export async function suggestCommand(
 
       if (suggestions.length === 0) {
         outro(
-          pc.red(
-            "Could not parse any suggestions from LLM response. The model may need a different prompt format.",
-          ),
+          pc.red('Could not parse any suggestions from LLM response. The model may need a different prompt format.'),
         );
         return;
       }
     } else {
       const genSpinner = spinner();
-      genSpinner.start("Generating commit suggestions...");
+      genSpinner.start('Generating commit suggestions...');
 
       try {
-        const result = await generateSuggestions(
-          config,
-          diffResult.diff,
-          profile,
-          apiKey,
-        );
+        const result = await generateSuggestions(config, diffResult.diff, profile, apiKey);
         suggestions = result.suggestions;
         truncation = result.truncation;
         model = result.model;
-        genSpinner.stop(pc.green("Suggestions generated:"));
+        genSpinner.stop(pc.green('Suggestions generated:'));
       } catch (err) {
-        genSpinner.stop(pc.red("Failed to generate suggestions."));
-        const message = err instanceof Error ? err.message : "Unknown error";
+        genSpinner.stop(pc.red('Failed to generate suggestions.'));
+        const message = err instanceof Error ? err.message : 'Unknown error';
         outro(pc.red(message));
         return;
       }
@@ -300,18 +264,14 @@ export async function suggestCommand(
 
     if (options.autoCommit && suggestions.length > 0) {
       const first = suggestions[0]!;
-      if (options.commit !== false) {
+      if (shouldCommit) {
         if (!diffResult.staged) {
-          outro(
-            pc.red(
-              "Auto-commit requires staged changes. Stage your changes with `git add` and try again.",
-            ),
-          );
+          outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
           process.exit(1);
         }
         await acceptAndCommit(first, config, diffResult.diff, true);
       } else {
-        console.log(`\n  ${pc.green("Selected:")} ${pc.bold(first.message)}`);
+        console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
         if (first.body) {
           console.log(`  ${pc.dim(first.body)}`);
         }
@@ -321,63 +281,58 @@ export async function suggestCommand(
 
     try {
       const action = await select({
-        message: "Choose an action:",
+        message: 'Choose an action:',
         options: [
-          { value: "select", label: "Select a suggestion to commit" },
-          { value: "regenerate", label: "Regenerate suggestions" },
-          { value: "cancel", label: "Cancel" },
+          { value: 'select', label: 'Select a suggestion to commit' },
+          { value: 'regenerate', label: 'Regenerate suggestions' },
+          { value: 'cancel', label: 'Cancel' },
         ],
       });
 
-      if (isCancel(action) || action === "cancel") {
-        outro("Cancelled.");
+      if (isCancel(action) || action === 'cancel') {
+        outro('Cancelled.');
         return;
       }
 
-      if (action === "regenerate") {
+      if (action === 'regenerate') {
         continue;
       }
 
       const suggestionOptions = suggestions.map((s) => ({
         value: s.index,
-        label: s.message.length > 60 ? s.message.slice(0, 57) + "..." : s.message,
+        label: s.message.length > 60 ? s.message.slice(0, 57) + '...' : s.message,
       }));
 
       const selectedIndex = await select({
-        message: "Select a commit message:",
+        message: 'Select a commit message:',
         options: suggestionOptions,
       });
 
       if (isCancel(selectedIndex)) {
-        outro("Cancelled.");
+        outro('Cancelled.');
         return;
       }
 
       const selected = suggestions.find((s) => s.index === selectedIndex);
       if (!selected) {
-        outro(pc.red("Invalid selection."));
+        outro(pc.red('Invalid selection.'));
         return;
       }
 
-      if (options.commit !== false) {
+      if (shouldCommit) {
         await acceptAndCommit(selected, config, diffResult.diff);
       }
       break;
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
+      const message = err instanceof Error ? err.message : 'Unknown error';
       outro(pc.red(message));
       return;
     }
   }
 }
 
-async function acceptAndCommit(
-  selected: Suggestion,
-  config: Config,
-  diff: string,
-  auto = false,
-): Promise<void> {
-  console.log(`\n  ${pc.green("Selected:")} ${pc.bold(selected.message)}`);
+async function acceptAndCommit(selected: Suggestion, config: Config, diff: string, auto = false): Promise<void> {
+  console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
   if (selected.body) {
     console.log(`  ${pc.dim(selected.body)}`);
   }
@@ -385,11 +340,9 @@ async function acceptAndCommit(
   if (auto) {
     try {
       const result = commit(selected.message, selected.body);
-      console.log(
-        `${pc.green("✓ Commit created")} ${pc.bold(result.hash)} ${result.summary}`,
-      );
+      console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
+      const msg = err instanceof Error ? err.message : 'Unknown error';
       outro(pc.red(`Commit failed: ${msg}`));
       process.exit(1);
     }
@@ -397,28 +350,26 @@ async function acceptAndCommit(
     try {
       await appendEntry({
         timestamp: new Date().toISOString(),
-        message: selected.body
-          ? `${selected.message}\n\n${selected.body}`
-          : selected.message,
+        message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
         diff,
         model: config.model,
         provider: config.provider,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      outro(pc.yellow(`Warning: failed to write history entry: ${msg}`));
+      console.warn(pc.yellow(`Warning: failed to write history entry: ${msg}`));
     }
 
-    outro(pc.green("Commit completed."));
+    outro(pc.green('Commit completed.'));
     return;
   }
 
   const edit = await confirm({
-    message: "Edit message before committing?",
+    message: 'Edit message before committing?',
     initialValue: false,
   });
   if (isCancel(edit)) {
-    outro("Cancelled.");
+    outro('Cancelled.');
     return;
   }
 
@@ -427,42 +378,47 @@ async function acceptAndCommit(
 
   if (edit) {
     const editedMessage = await text({
-      message: "Edit commit message:",
+      message: 'Edit commit message:',
       initialValue: selected.message,
     });
     if (isCancel(editedMessage)) {
-      outro("Cancelled.");
+      outro('Cancelled.');
       return;
     }
     finalMessage = editedMessage;
 
     const editedBody = await text({
-      message: "Edit body (optional):",
-      initialValue: selected.body ?? "",
+      message: 'Edit body (optional):',
+      initialValue: selected.body ?? '',
     });
     if (isCancel(editedBody)) {
-      outro("Cancelled.");
+      outro('Cancelled.');
       return;
     }
     finalBody = editedBody || undefined;
   }
 
   const confirmCommit = await confirm({
-    message: "Commit with this message?",
+    message: 'Commit with this message?',
     initialValue: true,
   });
 
   if (isCancel(confirmCommit) || !confirmCommit) {
-    outro("Commit skipped.");
+    outro('Commit skipped.');
+    return;
+  }
+
+  let result;
+
+  try {
+    result = commit(finalMessage, finalBody);
+    console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
+  } catch (err) {
+    outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
     return;
   }
 
   try {
-    const result = commit(finalMessage, finalBody);
-    console.log(
-      `${pc.green("✓ Commit created")} ${pc.bold(result.hash)} ${result.summary}`,
-    );
-
     await appendEntry({
       timestamp: new Date().toISOString(),
       message: finalBody ? `${finalMessage}\n\n${finalBody}` : finalMessage,
@@ -470,13 +426,10 @@ async function acceptAndCommit(
       model: config.model,
       provider: config.provider,
     });
-
-    outro(pc.green("Commit completed."));
   } catch (err) {
-    outro(
-      pc.red(
-        `Commit failed: ${err instanceof Error ? err.message : "Unknown error"}`,
-      ),
-    );
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(pc.yellow(`Warning: failed to write history entry: ${msg}`));
   }
+
+  outro(pc.green('Commit completed.'));
 }
