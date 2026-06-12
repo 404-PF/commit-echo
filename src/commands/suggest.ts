@@ -355,7 +355,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      outro(pc.yellow(`Warning: failed to write history entry: ${msg}`));
+      console.warn(pc.yellow(`Warning: failed to write history entry: ${msg}`));
     }
 
     outro(pc.green('Commit completed.'));
