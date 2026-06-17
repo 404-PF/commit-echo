@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { getConfigDir } from '../dist/config/store.js';
-import { loadEntries } from '../dist/history/store.js';
+import { countEntries, loadEntries } from '../dist/history/store.js';
 
 function writeHistory(lines) {
   const configDir = getConfigDir();
@@ -135,4 +135,19 @@ test('loadEntries warns and returns empty entries when all lines are corrupted',
     assert.match(warnings[0], /ignored 2 corrupted commit history entries/);
     assert.match(warnings[0], /line 1, 2/);
   });
+});
+
+test('countEntries counts raw non-empty history rows, including malformed JSON lines', async () => {
+  await withIsolatedHistory(
+    [
+      validEntry('fix: keep first valid entry', '2026-06-01T00:00:00Z'),
+      '',
+      '{invalid line',
+      validEntry('feat: keep latest valid entry', '2026-06-01T00:00:01Z'),
+    ],
+    async () => {
+      // countEntries reports stored JSONL rows; parsing validity is handled by loadEntries.
+      assert.equal(await countEntries(), 3);
+    },
+  );
 });
