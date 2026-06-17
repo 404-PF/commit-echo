@@ -8,6 +8,7 @@ import { loadOrPromptConfig } from '../config/store.js';
 
 import {
   checkGitRepo,
+  hasCommits,
   getStagedDiff,
   getUnstagedDiff,
   getBranchName,
@@ -115,6 +116,13 @@ export async function suggestCommand(
     checkGitRepo();
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Not a git repository.'));
+    return;
+  }
+
+  if (!hasCommits()) {
+    outro(
+      pc.yellow('This repository has no commits yet. commit-echo needs at least one commit to analyze your style.'),
+    );
     return;
   }
 

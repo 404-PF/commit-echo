@@ -26,6 +26,19 @@ export function checkGitRepo(): void {
   }
 }
 
+export function hasCommits(): boolean {
+  try {
+    const count = execSync('git rev-list --count HEAD', {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    }).trim();
+
+    return Number.parseInt(count, 10) > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function getStagedDiff(): DiffResult {
   const diff = execSync('git diff --cached', {
     encoding: 'utf-8',
@@ -102,4 +115,3 @@ export function getLastCommitMessage(): string {
     return '';
   }
 }
-
