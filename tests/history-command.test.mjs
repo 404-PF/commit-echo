@@ -27,8 +27,8 @@ function envFor(homeDir) {
   };
 }
 
-async function runHistory(homeDir) {
-  return execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'history'], {
+async function runHistory(homeDir, args = []) {
+  return execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'history', ...args], {
     env: envFor(homeDir),
   });
 }
@@ -105,6 +105,34 @@ test('history command reports empty history after configuration exists', async (
   });
 });
 
+test('history --json returns empty JSON when configuration is missing', async () => {
+  await withTempHome(async (homeDir) => {
+    const { stdout, stderr } = await runHistory(homeDir, ['--json']);
+
+    assert.equal(stderr, '');
+    assert.deepEqual(JSON.parse(stdout), {
+      profile: null,
+      recentCommits: [],
+      totalCommits: 0,
+    });
+  });
+});
+
+test('history --json returns empty JSON when no history exists', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    const { stdout, stderr } = await runHistory(homeDir, ['--json']);
+
+    assert.equal(stderr, '');
+    assert.deepEqual(JSON.parse(stdout), {
+      profile: null,
+      recentCommits: [],
+      totalCommits: 0,
+    });
+  });
+});
+
 test('history command renders the style profile and recent commit messages', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
@@ -125,5 +153,26 @@ test('history command renders the style profile and recent commit messages', asy
     assert.notEqual(firstMessageIndex, -1);
     assert.notEqual(secondMessageIndex, -1);
     assert.ok(firstMessageIndex < secondMessageIndex);
+  });
+});
+
+test('history --json returns profile and recent commits without human formatting', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+    writeHistory(homeDir, [
+      'fix: keep history output stable',
+      'feat: render recent commits\n\nDescribe the rendered state.',
+    ]);
+
+    const { stdout, stderr } = await runHistory(homeDir, ['--json']);
+    const data = JSON.parse(stdout);
+
+    assert.equal(stderr, '');
+    assert.doesNotMatch(stdout, /\x1b\[/);
+    assert.equal(data.totalCommits, 2);
+    assert.equal(data.profile.totalCommits, 2);
+    assert.equal(data.recentCommits.length, 2);
+    assert.equal(data.recentCommits[0].message, 'fix: keep history output stable');
+    assert.equal(data.recentCommits[1].message, 'feat: render recent commits\n\nDescribe the rendered state.');
   });
 });
