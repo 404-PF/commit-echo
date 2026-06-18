@@ -113,3 +113,14 @@ test('suggest --yes allows unstaged changes for noninteractive dry runs', async 
   assert.doesNotMatch(result.stdout, /No staged changes found\. Use unstaged changes/);
   assert.equal(result.stderr, '');
 });
+
+test('suggest --auto allows unstaged changes for noninteractive dry runs', async (t) => {
+  const fixture = await setupFixture(t, 'commit-echo-unstaged-auto-');
+  const result = await runSuggest(['--auto', '--dry-run'], fixture);
+
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /Dry run: no LLM API call will be made\./);
+  assert.match(result.stdout, /unstaged update/);
+  assert.doesNotMatch(result.stdout, /No staged changes found\. Use unstaged changes/);
+  assert.equal(result.stderr, '');
+});
