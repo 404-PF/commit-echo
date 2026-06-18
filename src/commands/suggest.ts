@@ -144,11 +144,31 @@ export async function suggestCommand(
     diffResult = getStagedDiff();
 
     if (!diffResult.hasChanges) {
-      diffResult = getUnstagedDiff();
-      if (!diffResult.hasChanges) {
+      const unstagedDiff = getUnstagedDiff();
+      if (!unstagedDiff.hasChanges) {
         outro(pc.yellow('No changes detected in your working directory.'));
         return;
       }
+
+      if (!options.autoCommit) {
+        let useUnstaged: boolean | symbol;
+        try {
+          useUnstaged = await confirm({
+            message: 'No staged changes found. Use unstaged changes for suggestions?',
+            initialValue: false,
+          });
+        } catch {
+          outro(pc.yellow('Cancelled. Stage changes with `git add` and try again.'));
+          return;
+        }
+
+        if (isCancel(useUnstaged) || !useUnstaged) {
+          outro(pc.yellow('Cancelled. Stage changes with `git add` and try again.'));
+          return;
+        }
+      }
+
+      diffResult = unstagedDiff;
     }
   } catch (err) {
     outro(pc.red(`Failed to read git diff: ${err instanceof Error ? err.message : String(err)}`));
