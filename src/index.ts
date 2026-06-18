@@ -40,6 +40,7 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
+  ${pc.cyan('commit-echo history --json')} Output learned history data as JSON
   ${pc.cyan('commit-echo batch')}     Process all git repos in current directory
   ${pc.cyan('commit-echo batch --recursive')} Search subdirectories for repos
   ${pc.cyan('commit-echo batch --yes')} Auto-commit repos with staged changes
@@ -87,7 +88,13 @@ program
     });
   });
 
-program.command('history').description('View learned style profile and recent commit history').action(historyCommand);
+program
+  .command('history')
+  .description('View learned style profile and recent commit history')
+  .option('--json', 'Output the style profile and recent commits as JSON')
+  .action(async (options) => {
+    await historyCommand({ json: Boolean(options.json) });
+  });
 
 program
   .command('batch')
