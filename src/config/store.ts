@@ -7,6 +7,20 @@ import type { Config } from '../types.js';
 const DEFAULT_HISTORY_SIZE = 50;
 const DEFAULT_MAX_DIFF_SIZE = 4000;
 
+// Missing size settings keep defaults; malformed explicit values are rejected
+// so runtime prompt and diff paths never receive unsafe limits.
+function readPositiveIntegerConfigValue(
+  value: unknown,
+  name: 'historySize' | 'maxDiffSize',
+  defaultValue: number,
+  configPath: string,
+): number {
+  if (value === undefined) return defaultValue;
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) return value;
+
+  throw new Error(`Invalid ${name} in config file: ${configPath}. Expected a positive integer.`);
+}
+
 export function getConfigDir(): string {
   const home = homedir();
   const os = platform();
@@ -54,8 +68,8 @@ export async function loadConfig(): Promise<Config> {
     model: parsed.model ?? '',
     baseUrl: parsed.baseUrl,
     apiKey: parsed.apiKey,
-    historySize: parsed.historySize ?? DEFAULT_HISTORY_SIZE,
-    maxDiffSize: parsed.maxDiffSize ?? DEFAULT_MAX_DIFF_SIZE,
+    historySize: readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath),
+    maxDiffSize: readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath),
     systemPromptTemplate: parsed.systemPromptTemplate,
     userPromptTemplate: parsed.userPromptTemplate,
   };
