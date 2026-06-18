@@ -19,6 +19,7 @@ import {
   getRepoRoot,
   getStagedDiff,
   getUnstagedDiff,
+  hasCommits,
 } from "../dist/git/diff.js";
 
 function createTempDir() {
@@ -80,6 +81,32 @@ test("checkGitRepo throws outside a git repo", () => {
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("hasCommits returns false in an empty git repo", () => {
+  const repoDir = initRepo();
+
+  try {
+    withCwd(repoDir, () => {
+      assert.equal(hasCommits(), false);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("hasCommits returns true after the first commit", () => {
+  const repoDir = initRepo();
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+
+    withCwd(repoDir, () => {
+      assert.equal(hasCommits(), true);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
   }
 });
 
