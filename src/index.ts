@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { initCommand } from './commands/init.js';
 import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
+import { configCommand } from './commands/config.js';
 import { batchCommand } from './commands/batch.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
 import { runPostCommitHook, runPrepareCommitMsgHook } from './git/hook.js';
@@ -37,6 +38,7 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo')}           Suggest and commit staged changes
   ${pc.cyan('commit-echo --yes')}       Auto-select and commit first suggestion
   ${pc.cyan('commit-echo init')}      Run interactive setup wizard
+  ${pc.cyan('commit-echo config')}    View current configuration
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
@@ -61,6 +63,8 @@ program
     await initCommand({ installHook: Boolean(options.installHook) });
   });
 
+program.command('config').description('View current configuration').action(configCommand);
+
 program
   .command('suggest')
   .description('Generate commit suggestions (use --commit to create a commit)')
@@ -76,9 +80,7 @@ program
     const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
     await suggestCommand({
       commit: options.commit,
-      autoCommit: Boolean(
-        options.yes || options.auto || globalOpts.yes || globalOpts.auto,
-      ),
+      autoCommit: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
       verbose: Boolean(options.verbose),
       model: options.model,
       stream: Boolean(options.stream),
