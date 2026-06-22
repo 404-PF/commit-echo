@@ -6,7 +6,9 @@ export type AnthropicSseState = {
 
 export const SSE_STREAM_END = Symbol('SSE_STREAM_END');
 
-export type SseLineParser = (line: string) => ProviderStreamChunk | typeof SSE_STREAM_END | null;
+export type SseLineParser = (
+  line: string,
+) => ProviderStreamChunk | ProviderStreamChunk[] | typeof SSE_STREAM_END | null;
 
 /**
  * Read an SSE response body, split into lines, and yield parsed chunks.
@@ -43,6 +45,12 @@ export async function* streamSseResponse(
           await reader.cancel();
           cancelled = true;
           return;
+        }
+        if (Array.isArray(result)) {
+          for (const chunk of result) {
+            yield chunk;
+          }
+          continue;
         }
         if (result) yield result;
       }
