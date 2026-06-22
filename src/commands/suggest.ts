@@ -98,6 +98,7 @@ export async function suggestCommand(
     commit?: boolean;
     autoCommit?: boolean;
     verbose?: boolean;
+    showDiff?: boolean;
     model?: string;
     stream?: boolean;
     dryRun?: boolean;
@@ -176,9 +177,9 @@ export async function suggestCommand(
   }
 
   const profile = await buildProfile(config.historySize);
+  const { diff: truncatedDiff, info: truncation } = truncateDiff(diffResult.diff, config.maxDiffSize);
 
   if (options.dryRun) {
-    const { diff: truncatedDiff, info: truncation } = truncateDiff(diffResult.diff, config.maxDiffSize);
     const vars = {
       diff: truncatedDiff,
       profile: formatProfile(profile),
@@ -197,6 +198,16 @@ export async function suggestCommand(
     );
     outro(pc.green('Dry run complete.'));
     return;
+  }
+
+  if (options.showDiff) {
+    console.log(pc.bold('Diff being analyzed:'));
+    console.log(pc.dim(truncatedDiff));
+    console.log('');
+    if (truncation.wasTruncated) {
+      console.log(pc.dim('The diff above is truncated to match maxDiffSize.'));
+      console.log('');
+    }
   }
 
   let apiKey: string;

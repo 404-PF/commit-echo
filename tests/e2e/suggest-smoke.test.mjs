@@ -445,6 +445,139 @@ test('suggest --model overrides configured model for one invocation and -m is an
   assert.equal(requests.at(-1).model, 'claude-3-5-sonnet');
 });
 
+test('suggest --show-diff prints the truncated staged diff before generating suggestions', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-staged-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      requests.push(JSON.parse(body));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        model: 'fixture-model',
+        choices: [{ message: { content: '1. feat: inspect staged diff' } }],
+      }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(repo, 'README.md'),
+    ['# fixture', '', ...Array.from({ length: 40 }, (_, i) => `line ${i}`)].join('\n') + '\n',
+    'utf8',
+  );
+  execFileSync('git', ['add', 'README.md'], { cwd: repo });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: '__custom__',
+      model: 'fixture-model',
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'test-key',
+      historySize: 5,
+      maxDiffSize: 120,
+    }, null, 2),
+    'utf8',
+  );
+
+  const env = {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    FORCE_COLOR: '0',
+  };
+
+  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env });
+  const stdout = stripAnsi(result.stdout);
+  const stderr = stripAnsi(result.stderr);
+
+  assert.equal(result.code, 0);
+  assert.match(stdout, /Diff being analyzed:/);
+  assert.match(stdout, /diff --git a\/README\.md b\/README\.md/);
+  assert.match(stdout, /\[\.\.\.truncated 1 file\.\.\.\]/);
+  assert.ok(stdout.indexOf('Diff being analyzed:') < stdout.indexOf('Suggestions generated:'));
+  assert.match(stdout, /Selected:\s+feat: inspect staged diff/);
+  assert.match(stderr, /Diff truncated:/);
+  assert.match(requests.at(-1).messages[1].content, /\[\.\.\.truncated 1 file\.\.\.\]/);
+});
+
+test('suggest --show-diff works with unstaged changes in auto mode', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-unstaged-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      requests.push(JSON.parse(body));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        model: 'fixture-model',
+        choices: [{ message: { content: '1. feat: inspect unstaged diff' } }],
+      }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  execFileSync('git', ['restore', '--staged', 'README.md'], { cwd: repo });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify({
+      provider: '__custom__',
+      model: 'fixture-model',
+      baseUrl: `http://127.0.0.1:${port}`,
+      apiKey: 'test-key',
+      historySize: 5,
+    }, null, 2),
+    'utf8',
+  );
+
+  const env = {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    FORCE_COLOR: '0',
+  };
+
+  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env });
+  const stdout = stripAnsi(result.stdout);
+
+  assert.equal(result.code, 0);
+  assert.equal(result.stderr, '');
+  assert.match(stdout, /Diff being analyzed:/);
+  assert.match(stdout, /diff --git a\/README\.md b\/README\.md/);
+  assert.match(stdout, /\+updated/);
+  assert.doesNotMatch(stdout, /Use unstaged changes for suggestions/);
+  assert.match(stdout, /Selected:\s+feat: inspect unstaged diff/);
+  assert.match(requests.at(-1).messages[1].content, /\+updated/);
+});
+
 test('suggest --stream prints incremental SSE output', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-'));
   const { home, repo, configDir } = await setupRepo(root);
