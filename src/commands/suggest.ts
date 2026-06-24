@@ -385,7 +385,9 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(pc.yellow(`Warning: failed to write history entry: ${msg}`));
+      console.warn(
+        pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`),
+      );
     }
 
     outro(pc.green('Commit completed.'));
@@ -456,7 +458,9 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(pc.yellow(`Warning: failed to write history entry: ${msg}`));
+    console.warn(
+      pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`),
+    );
   }
 
   outro(pc.green('Commit completed.'));

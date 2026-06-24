@@ -292,26 +292,9 @@ export async function batchCommand(
         continue;
       }
 
+      let commitResult;
       try {
-        const commitResult = gitCommit(repoPath, first.message, first.body);
-        await appendEntry({
-          timestamp: new Date().toISOString(),
-          message: first.body
-            ? `${first.message}\n\n${first.body}`
-            : first.message,
-          diff,
-          model: config.model,
-          provider: config.provider,
-        });
-        console.log(
-          `    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`,
-        );
-        results.push({
-          repo: repoPath,
-          repoName,
-          status: 'success',
-          message: first.message,
-        });
+        commitResult = gitCommit(repoPath, first.message, first.body);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.log(`    ${pc.red(`✖ Commit failed: ${msg}`)}`);
@@ -321,7 +304,36 @@ export async function batchCommand(
           status: 'failed',
           message: msg,
         });
+        console.log('');
+        continue;
       }
+
+      try {
+        await appendEntry({
+          timestamp: new Date().toISOString(),
+          message: first.body
+            ? `${first.message}\n\n${first.body}`
+            : first.message,
+          diff,
+          model: config.model,
+          provider: config.provider,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          pc.yellow(`⚠ Commit succeeded (${commitResult.hash}) but failed to record in history: ${msg}`),
+        );
+      }
+
+      console.log(
+        `    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`,
+      );
+      results.push({
+        repo: repoPath,
+        repoName,
+        status: 'success',
+        message: first.message,
+      });
     } else if (suggestions.length > 0) {
       // Interactive mode: prompt per repo
       const proceed = await confirm({
@@ -404,30 +416,13 @@ export async function batchCommand(
           ? selected.body
           : customBody;
 
+      let commitResult;
       try {
-        const commitResult = gitCommit(
+        commitResult = gitCommit(
           repoPath,
           selected.message,
           finalBody,
         );
-        await appendEntry({
-          timestamp: new Date().toISOString(),
-          message: finalBody
-            ? `${selected.message}\n\n${finalBody}`
-            : selected.message,
-          diff,
-          model: config.model,
-          provider: config.provider,
-        });
-        console.log(
-          `    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`,
-        );
-        results.push({
-          repo: repoPath,
-          repoName,
-          status: 'success',
-          message: selected.message,
-        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.log(`    ${pc.red(`✖ Commit failed: ${msg}`)}`);
@@ -437,7 +432,36 @@ export async function batchCommand(
           status: 'failed',
           message: msg,
         });
+        console.log('');
+        continue;
       }
+
+      try {
+        await appendEntry({
+          timestamp: new Date().toISOString(),
+          message: finalBody
+            ? `${selected.message}\n\n${finalBody}`
+            : selected.message,
+          diff,
+          model: config.model,
+          provider: config.provider,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          pc.yellow(`⚠ Commit succeeded (${commitResult.hash}) but failed to record in history: ${msg}`),
+        );
+      }
+
+      console.log(
+        `    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`,
+      );
+      results.push({
+        repo: repoPath,
+        repoName,
+        status: 'success',
+        message: selected.message,
+      });
     } else {
       console.log(
         `    ${pc.yellow('↻ No suggestions generated, skipping')}`,
