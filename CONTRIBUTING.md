@@ -22,6 +22,14 @@
 - Run `npm run build` to compile – no separate dev server needed.
 - Before opening a PR, ensure the project builds cleanly.
 
+## Testing
+
+- Run `npm test` to run all the test cases.
+- Project uses Node.js's built-in node:test framework for testing.
+- Test files are located in `tests/` and `tests/e2e/`.
+- E2E tests spin up a local HTTP server and create real Git repositories during execution. As a result, they may take longer to run than unit tests. 
+
+
 ## Project Structure
 
 ```
