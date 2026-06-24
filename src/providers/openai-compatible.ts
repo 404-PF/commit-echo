@@ -89,8 +89,16 @@ export class OpenAICompatibleProvider implements Provider {
       const parsed = parseOpenAiSseLine(line);
       if (parsed.error) throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
       if (parsed.done) return SSE_STREAM_END;
-      if (parsed.model) return { kind: 'model', model: parsed.model };
-      if (parsed.text) return { kind: 'text', text: parsed.text };
+      const chunks: ProviderStreamChunk[] = [];
+      if (parsed.model) {
+        chunks.push({ kind: 'model', model: parsed.model });
+      }
+      if (parsed.text) {
+        chunks.push({ kind: 'text', text: parsed.text });
+      }
+      if (chunks.length > 0) {
+        return chunks;
+      }
       return null;
     });
   }
