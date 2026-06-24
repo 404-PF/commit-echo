@@ -5,7 +5,7 @@ import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
-
+import { maskApiKey } from '../dist/commands/config.js';
 const execFileAsync = promisify(execFile);
 
 /** Resolves the platform-specific commit-echo config directory for an isolated home. */
@@ -120,4 +120,31 @@ test('config command reports when no API key is stored in config', async () => {
 
     assert.match(output, /API key:\s+not stored in config/);
   });
+});
+test('maskApiKey returns fallback message for undefined', () => {
+  assert.equal(maskApiKey(undefined), 'not stored in config');
+});
+
+test('maskApiKey returns fallback message for empty string', () => {
+  assert.equal(maskApiKey(''), 'not stored in config');
+});
+
+test('maskApiKey masks a 1-character key', () => {
+  assert.equal(maskApiKey('a'), 'a••••');
+});
+
+test('maskApiKey masks a 2-character key', () => {
+  assert.equal(maskApiKey('ab'), 'ab••••');
+});
+
+test('maskApiKey masks a 3-character key', () => {
+  assert.equal(maskApiKey('abc'), 'abc••••');
+});
+
+test('maskApiKey masks a 4-character key', () => {
+  assert.equal(maskApiKey('abcd'), 'abcd••••');
+});
+
+test('maskApiKey masks a long key', () => {
+  assert.equal(maskApiKey('abcdefghijk'), 'abcd••••');
 });
