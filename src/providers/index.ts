@@ -2,6 +2,7 @@ import type { Provider, ChatParams, ChatResult, ProviderStreamChunk } from '../t
 import { OpenAICompatibleProvider } from './openai-compatible.js';
 import { AnthropicProvider } from './anthropic.js';
 import { CohereProvider } from './cohere.js';
+import { ExampleProvider } from './example.js';
 import { BUILTIN_PROVIDERS, getProviderInfo } from './registry.js';
 
 export { BUILTIN_PROVIDERS, getProviderInfo, getProviderNames } from './registry.js';
@@ -36,6 +37,7 @@ export function createProvider(configProvider: string): Provider {
   assertKnownProvider(configProvider);
   if (configProvider === 'anthropic') return new AnthropicProvider();
   if (configProvider === 'cohere') return new CohereProvider();
+  if (configProvider === 'example') return new ExampleProvider();
   return new OpenAICompatibleProvider();
 }
 
