@@ -292,7 +292,7 @@ export async function batchCommand(
         continue;
       }
 
-      let commitResult;
+      let commitResult: { hash: string; summary: string };
       try {
         commitResult = gitCommit(repoPath, first.message, first.body);
       } catch (err) {
@@ -416,7 +416,7 @@ export async function batchCommand(
           ? selected.body
           : customBody;
 
-      let commitResult;
+      let commitResult: { hash: string; summary: string };
       try {
         commitResult = gitCommit(
           repoPath,
