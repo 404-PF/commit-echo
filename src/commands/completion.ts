@@ -19,13 +19,22 @@ _commit_echo()
     return 0
   fi
 
-  # If we're the second word, complete subcommands
-  if [[ "\${COMP_CWORD}" -eq 1 ]]; then
+  # Find the first non-option word as the subcommand
+  local subcmd=""
+  local i
+  for ((i=1; i<COMP_CWORD; i++)); do
+    if [[ "\${COMP_WORDS[i]}" != -* ]]; then
+      subcmd="\${COMP_WORDS[i]}"
+      break
+    fi
+  done
+
+  # If no subcommand found yet, complete subcommands
+  if [[ -z "\${subcmd}" ]]; then
     COMPREPLY=( $(compgen -W "\${commands}" -- "\${cur}") )
     return 0
   fi
 
-  local subcmd="\${COMP_WORDS[1]}"
   case "\${subcmd}" in
     suggest)
       local suggest_opts="--commit --yes --verbose --model --stream --dry-run --no-commit --auto --help"
@@ -172,7 +181,10 @@ function __commit_echo_complete_options
         '--help\\tDisplay help'
     case completion
       printf '%s\\t%s\\n' \\
-        '--help\\tDisplay help'
+        '--help\\tDisplay help' \\
+        'bash\\tBash completion script' \\
+        'zsh\\tZsh completion script' \\
+        'fish\\tFish completion script'
   end
 end
 
@@ -214,6 +226,13 @@ function __commit_echo_completions
       '--version\\tOutput the version' \\
       '--help\\tDisplay help'
     # Subcommand options
+    __commit_echo_complete_options
+    return
+  end
+
+  # If we have a subcommand, check if it has non-option completions
+  set -l subcmd $cmd[2]
+  if test "$subcmd" = "completion"
     __commit_echo_complete_options
     return
   end
