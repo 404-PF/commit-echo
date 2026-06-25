@@ -134,8 +134,11 @@ Set the API key for the provider you plan to use before running the setup wizard
 | `ollama` | Ollama | `OLLAMA_API_KEY` | No / optional for local Ollama |
 | `together` | Together AI | `TOGETHER_API_KEY` | Yes |
 | `fireworks` | Fireworks AI | `FIREWORKS_API_KEY` | Yes |
+| `example` | Example (no API key) | — | No |
 
 > **Note:** Ollama uses the local server at `http://localhost:11434/v1` and normally does not require an API key; the env var is only relevant if your local setup expects one.
+>
+> **Tip:** The `example` provider returns canned responses and requires no API key. It is useful for local testing and trying out `commit-echo` without connecting to an LLM. Set `provider` to `example` in your config to use it.
 
 Example (macOS / Linux):
 

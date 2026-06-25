@@ -91,6 +91,15 @@ export const BUILTIN_PROVIDERS: ProviderInfo[] = [
     docsUrl: 'https://docs.fireworks.ai',
     needsApiKey: true,
   },
+  {
+    key: 'example',
+    name: 'Example (no API key)',
+    baseUrl: '',
+    apiKeyEnv: '',
+    website: '',
+    docsUrl: '',
+    needsApiKey: false,
+  },
 ];
 
 export function getProviderInfo(key: string): ProviderInfo | undefined {
