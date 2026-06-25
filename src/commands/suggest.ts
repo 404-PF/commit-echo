@@ -219,7 +219,7 @@ export async function suggestCommand(
   }
   while (true) {
     let suggestions: Suggestion[];
-    let truncation: TruncationInfo | undefined;
+    let generatedTruncation: TruncationInfo | undefined;
     let model: string;
 
     if (options.stream) {
@@ -238,7 +238,7 @@ export async function suggestCommand(
       try {
         for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
           if (event.kind === 'meta') {
-            truncation = event.truncation;
+            generatedTruncation = event.truncation;
             continue;
           }
 
@@ -278,7 +278,7 @@ export async function suggestCommand(
       try {
         const result = await generateSuggestions(config, diffResult.diff, profile, apiKey);
         suggestions = result.suggestions;
-        truncation = result.truncation;
+        generatedTruncation = result.truncation;
         model = result.model;
         genSpinner.stop(pc.green('Suggestions generated:'));
       } catch (err) {
@@ -290,11 +290,11 @@ export async function suggestCommand(
     }
 
     if (options.verbose) {
-      showVerboseInfo(model, profile, truncation);
+      showVerboseInfo(model, profile, generatedTruncation);
     }
 
-    if (truncation) {
-      showTruncationWarning(truncation);
+    if (generatedTruncation) {
+      showTruncationWarning(generatedTruncation);
     }
 
     if (!options.stream) {
