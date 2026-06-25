@@ -10,15 +10,33 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function withTempConfig(run) {
+const COMMIT_ECHO_ENV_VARS = [
+  'COMMIT_ECHO_PROVIDER',
+  'COMMIT_ECHO_MODEL',
+  'COMMIT_ECHO_BASE_URL',
+  'COMMIT_ECHO_API_KEY',
+  'COMMIT_ECHO_HISTORY_SIZE',
+  'COMMIT_ECHO_MAX_DIFF_SIZE',
+];
+
+async function withTempConfig(run, envOverrides = {}) {
   const originalHome = process.env.HOME;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const originalAppData = process.env.APPDATA;
+  const originalEnvVars = {};
+  for (const key of COMMIT_ECHO_ENV_VARS) {
+    originalEnvVars[key] = process.env[key];
+  }
+
   const home = await mkdtemp(`${tmpdir()}/commit-echo-config-`);
 
   process.env.HOME = home;
   process.env.APPDATA = home;
   delete process.env.XDG_CONFIG_HOME;
+
+  for (const [key, value] of Object.entries(envOverrides)) {
+    process.env[key] = value;
+  }
 
   try {
     const configPath = getConfigPath();
@@ -41,6 +59,14 @@ async function withTempConfig(run) {
       delete process.env.XDG_CONFIG_HOME;
     } else {
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    }
+
+    for (const key of COMMIT_ECHO_ENV_VARS) {
+      if (originalEnvVars[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = originalEnvVars[key];
+      }
     }
 
     await rm(home, { recursive: true, force: true });
@@ -126,4 +152,133 @@ test('loadConfig rejects invalid size values', async () => {
       });
     });
   }
+});
+
+// --- Environment variable override tests ---
+
+test('env vars override config file values for string options', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+      baseUrl: 'https://api.openai.com',
+      apiKey: 'file-api-key',
+    });
+
+    const config = await loadConfig();
+
+    assert.equal(config.provider, 'anthropic');
+    assert.equal(config.model, 'claude-sonnet-4-20250514');
+    assert.equal(config.baseUrl, 'https://custom.api.com');
+    assert.equal(config.apiKey, 'env-api-key-123');
+  }, {
+    COMMIT_ECHO_PROVIDER: 'anthropic',
+    COMMIT_ECHO_MODEL: 'claude-sonnet-4-20250514',
+    COMMIT_ECHO_BASE_URL: 'https://custom.api.com',
+    COMMIT_ECHO_API_KEY: 'env-api-key-123',
+  });
+});
+
+test('env vars override config file values for numeric options', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+      historySize: 12,
+      maxDiffSize: 8000,
+    });
+
+    const config = await loadConfig();
+
+    assert.equal(config.historySize, 99);
+    assert.equal(config.maxDiffSize, 100000);
+  }, {
+    COMMIT_ECHO_HISTORY_SIZE: '99',
+    COMMIT_ECHO_MAX_DIFF_SIZE: '100000',
+  });
+});
+
+test('env vars fall back to config file values when unset', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+      historySize: 25,
+      maxDiffSize: 6000,
+    });
+
+    const config = await loadConfig();
+
+    assert.equal(config.provider, 'openai');
+    assert.equal(config.model, 'gpt-4.1');
+    assert.equal(config.historySize, 25);
+    assert.equal(config.maxDiffSize, 6000);
+  });
+});
+
+test('env vars fall back to defaults when neither env var nor config file provides value', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    const config = await loadConfig();
+
+    assert.equal(config.historySize, 50);
+    assert.equal(config.maxDiffSize, 4000);
+  });
+});
+
+test('invalid COMMIT_ECHO_HISTORY_SIZE env var throws', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    await assert.rejects(loadConfig(), (error) => {
+      assert.equal(error instanceof Error, true);
+      assert.match(error.message, /COMMIT_ECHO_HISTORY_SIZE/);
+      assert.match(error.message, /Expected a positive integer/);
+      return true;
+    });
+  }, {
+    COMMIT_ECHO_HISTORY_SIZE: 'abc',
+  });
+});
+
+test('invalid COMMIT_ECHO_MAX_DIFF_SIZE env var throws', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    await assert.rejects(loadConfig(), (error) => {
+      assert.equal(error instanceof Error, true);
+      assert.match(error.message, /COMMIT_ECHO_MAX_DIFF_SIZE/);
+      assert.match(error.message, /Expected a positive integer/);
+      return true;
+    });
+  }, {
+    COMMIT_ECHO_MAX_DIFF_SIZE: '-5',
+  });
+});
+
+test('env var zero for numeric option throws', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    await assert.rejects(loadConfig(), (error) => {
+      assert.equal(error instanceof Error, true);
+      assert.match(error.message, /COMMIT_ECHO_HISTORY_SIZE/);
+      return true;
+    });
+  }, {
+    COMMIT_ECHO_HISTORY_SIZE: '0',
+  });
 });
