@@ -186,7 +186,7 @@ export async function* generateSuggestionsStream(
 }
 
 export async function testConnection(config: Config): Promise<string> {
-  const apiKey = resolveApiKey(config);
+  const apiKey = assertApiKeyAvailable(config);
 
   const result = await complete(config.provider, config.baseUrl, {
     model: config.model,
