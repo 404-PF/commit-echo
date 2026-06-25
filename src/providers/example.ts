@@ -17,9 +17,9 @@ export class ExampleProvider implements Provider {
 
   async *completeStream(params: ChatParams): AsyncIterable<ProviderStreamChunk> {
     const text = `chore: example streamed commit from ${params.model}\n\nThis is a streamed canned response.`;
-    
+
     yield { kind: 'model', model: params.model };
-    
+
     // Simulate streaming by yielding characters in chunks
     const chunkSize = 5;
     for (let i = 0; i < text.length; i += chunkSize) {
