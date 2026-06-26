@@ -7,6 +7,16 @@ import type { Config } from '../types.js';
 const DEFAULT_HISTORY_SIZE = 50;
 const DEFAULT_MAX_DIFF_SIZE = 4000;
 
+/** Environment variable names for configuration overrides. */
+export const CONFIG_ENV_VARS = [
+  'COMMIT_ECHO_PROVIDER',
+  'COMMIT_ECHO_MODEL',
+  'COMMIT_ECHO_BASE_URL',
+  'COMMIT_ECHO_API_KEY',
+  'COMMIT_ECHO_HISTORY_SIZE',
+  'COMMIT_ECHO_MAX_DIFF_SIZE',
+] as const;
+
 /**
  * Read a positive integer from an environment variable.
  * Returns the parsed integer if valid, undefined if unset, or throws if invalid.

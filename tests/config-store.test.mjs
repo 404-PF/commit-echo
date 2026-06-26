@@ -4,27 +4,18 @@ import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import test from 'node:test';
 
-import { getConfigPath, loadConfig } from '../dist/config/store.js';
+import { getConfigPath, loadConfig, CONFIG_ENV_VARS } from '../dist/config/store.js';
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-
-const COMMIT_ECHO_ENV_VARS = [
-  'COMMIT_ECHO_PROVIDER',
-  'COMMIT_ECHO_MODEL',
-  'COMMIT_ECHO_BASE_URL',
-  'COMMIT_ECHO_API_KEY',
-  'COMMIT_ECHO_HISTORY_SIZE',
-  'COMMIT_ECHO_MAX_DIFF_SIZE',
-];
 
 async function withTempConfig(run, envOverrides = {}) {
   const originalHome = process.env.HOME;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
   const originalAppData = process.env.APPDATA;
   const originalEnvVars = {};
-  for (const key of COMMIT_ECHO_ENV_VARS) {
+  for (const key of CONFIG_ENV_VARS) {
     originalEnvVars[key] = process.env[key];
   }
 
@@ -61,7 +52,7 @@ async function withTempConfig(run, envOverrides = {}) {
       process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
     }
 
-    for (const key of COMMIT_ECHO_ENV_VARS) {
+    for (const key of CONFIG_ENV_VARS) {
       if (originalEnvVars[key] === undefined) {
         delete process.env[key];
       } else {
