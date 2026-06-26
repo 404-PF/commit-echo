@@ -84,25 +84,16 @@ export function getGitDiff(cwd: string, staged: boolean): string {
   try {
     return execSync(cmd, { cwd, encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }).trim();
   } catch (err) {
-    throw new Error(
-      `Failed to get diff: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new Error(`Failed to get diff: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
 /**
  * Run `git commit` inside a specific repository directory.
  */
-export function gitCommit(
-  cwd: string,
-  message: string,
-  body?: string,
-): { hash: string; summary: string } {
+export function gitCommit(cwd: string, message: string, body?: string): { hash: string; summary: string } {
   const fullMessage = body ? `${message}\n\n${body}` : message;
-  const tmpFile = join(
-    tmpdir(),
-    `commit-echo-batch-${process.pid}-${Date.now()}.txt`,
-  );
+  const tmpFile = join(tmpdir(), `commit-echo-batch-${process.pid}-${Date.now()}.txt`);
 
   try {
     writeFileSync(tmpFile, fullMessage, 'utf-8');
@@ -114,17 +105,12 @@ export function gitCommit(
 
     if (result.error) throw result.error;
     if (result.status !== 0) {
-      const detail = [result.stderr, result.stdout]
-        .filter(Boolean)
-        .join('\n')
-        .trim();
+      const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
       throw new Error(detail || `git commit exited with code ${result.status}`);
     }
 
     const summary = result.stdout.trim().split('\n').find(Boolean) ?? '';
-    const match = summary.match(
-      /\[.*?([a-f0-9]{7,})\]\s+(.+)$/i,
-    );
+    const match = summary.match(/\[.*?([a-f0-9]{7,})\]\s+(.+)$/i);
 
     return {
       hash: match?.[1] ?? '',
@@ -173,9 +159,7 @@ export async function batchCommand(
     return;
   }
 
-  console.log(
-    `\n  Found ${pc.bold(String(repos.length))} repo(s) — checking for changes...\n`,
-  );
+  console.log(`\n  Found ${pc.bold(String(repos.length))} repo(s) — checking for changes...\n`);
 
   // Load configuration once (shared across all repos)
   let config: Config;
@@ -218,9 +202,7 @@ export async function batchCommand(
         });
         continue;
       }
-      console.log(
-        `    ${pc.yellow('ℹ Unstaged changes only (stage with `git add` first), skipping')}\n`,
-      );
+      console.log(`    ${pc.yellow('ℹ Unstaged changes only (stage with `git add` first), skipping')}\n`);
       results.push({
         repo: repoPath,
         repoName,
@@ -259,9 +241,7 @@ export async function batchCommand(
       suggestions = result.suggestions;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.log(
-        `    ${pc.red(`✖ Failed to generate suggestions: ${msg}`)}\n`,
-      );
+      console.log(`    ${pc.red(`✖ Failed to generate suggestions: ${msg}`)}\n`);
       results.push({
         repo: repoPath,
         repoName,
@@ -279,9 +259,7 @@ export async function batchCommand(
       // Unattended mode: auto-select first suggestion and commit
       const first = suggestions[0];
       if (!first) {
-        console.log(
-          `    ${pc.yellow('↻ No suggestions generated, skipping')}`,
-        );
+        console.log(`    ${pc.yellow('↻ No suggestions generated, skipping')}`);
         results.push({
           repo: repoPath,
           repoName,
@@ -311,23 +289,17 @@ export async function batchCommand(
       try {
         await appendEntry({
           timestamp: new Date().toISOString(),
-          message: first.body
-            ? `${first.message}\n\n${first.body}`
-            : first.message,
+          message: first.body ? `${first.message}\n\n${first.body}` : first.message,
           diff,
           model: config.model,
           provider: config.provider,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.warn(
-          pc.yellow(`⚠ Commit succeeded (${commitResult.hash}) but failed to record in history: ${msg}`),
-        );
+        console.warn(pc.yellow(`⚠ Commit succeeded (${commitResult.hash}) but failed to record in history: ${msg}`));
       }
 
-      console.log(
-        `    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`,
-      );
+      console.log(`    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`);
       results.push({
         repo: repoPath,
         repoName,
@@ -368,10 +340,7 @@ export async function batchCommand(
       // Let user select which suggestion to use
       const suggestionOptions = suggestions.map((s) => ({
         value: s.index,
-        label:
-          s.message.length > 60
-            ? s.message.slice(0, 57) + '...'
-            : s.message,
+        label: s.message.length > 60 ? s.message.slice(0, 57) + '...' : s.message,
       }));
 
       const selectedIndex = await select({
@@ -391,9 +360,7 @@ export async function batchCommand(
         continue;
       }
 
-      const selected = suggestions.find(
-        (s) => s.index === selectedIndex,
-      );
+      const selected = suggestions.find((s) => s.index === selectedIndex);
       if (!selected) {
         console.log(`    ${pc.red('✖ Invalid selection')}`);
         results.push({
@@ -411,18 +378,11 @@ export async function batchCommand(
         message: `Optional body for ${repoName}:`,
         initialValue: selected.body ?? '',
       });
-      const finalBody =
-        isCancel(customBody) || !customBody
-          ? selected.body
-          : customBody;
+      const finalBody = isCancel(customBody) || !customBody ? selected.body : customBody;
 
       let commitResult: { hash: string; summary: string };
       try {
-        commitResult = gitCommit(
-          repoPath,
-          selected.message,
-          finalBody,
-        );
+        commitResult = gitCommit(repoPath, selected.message, finalBody);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.log(`    ${pc.red(`✖ Commit failed: ${msg}`)}`);
@@ -439,23 +399,17 @@ export async function batchCommand(
       try {
         await appendEntry({
           timestamp: new Date().toISOString(),
-          message: finalBody
-            ? `${selected.message}\n\n${finalBody}`
-            : selected.message,
+          message: finalBody ? `${selected.message}\n\n${finalBody}` : selected.message,
           diff,
           model: config.model,
           provider: config.provider,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.warn(
-          pc.yellow(`⚠ Commit succeeded (${commitResult.hash}) but failed to record in history: ${msg}`),
-        );
+        console.warn(pc.yellow(`⚠ Commit succeeded (${commitResult.hash}) but failed to record in history: ${msg}`));
       }
 
-      console.log(
-        `    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`,
-      );
+      console.log(`    ${pc.green(`✓ ${pc.bold(commitResult.hash)} ${commitResult.summary}`)}`);
       results.push({
         repo: repoPath,
         repoName,
@@ -463,9 +417,7 @@ export async function batchCommand(
         message: selected.message,
       });
     } else {
-      console.log(
-        `    ${pc.yellow('↻ No suggestions generated, skipping')}`,
-      );
+      console.log(`    ${pc.yellow('↻ No suggestions generated, skipping')}`);
       results.push({
         repo: repoPath,
         repoName,
@@ -486,15 +438,8 @@ export async function batchCommand(
   console.log(pc.bold('📋  Batch Summary\n'));
 
   for (const r of results) {
-    const icon =
-      r.status === 'success'
-        ? pc.green('✓')
-        : r.status === 'failed'
-          ? pc.red('✖')
-          : pc.yellow('–');
-    const msg = r.message
-      ? ` — ${r.message.length > 60 ? r.message.slice(0, 57) + '...' : r.message}`
-      : '';
+    const icon = r.status === 'success' ? pc.green('✓') : r.status === 'failed' ? pc.red('✖') : pc.yellow('–');
+    const msg = r.message ? ` — ${r.message.length > 60 ? r.message.slice(0, 57) + '...' : r.message}` : '';
     console.log(`  ${icon} ${r.repoName}${pc.dim(msg)}`);
   }
 

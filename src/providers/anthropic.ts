@@ -2,10 +2,7 @@ import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../t
 import { fetchWithTimeout } from './request.js';
 import { parseAnthropicSseLine, streamSseResponse } from './sse.js';
 
-function buildAnthropicRequestBody(
-  params: ChatParams,
-  options: { stream?: boolean } = {},
-): Record<string, unknown> {
+function buildAnthropicRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
   const { model, messages, temperature = 0.7, maxTokens = 1024 } = params;
 
   const systemMessages = messages.filter((m) => m.role === 'system');
@@ -100,9 +97,7 @@ export class AnthropicProvider implements Provider {
     }
 
     const sseState = { currentEvent: '' };
-    yield* streamSseResponse(response, (line) =>
-      parseAnthropicSseLine(line, sseState),
-    );
+    yield* streamSseResponse(response, (line) => parseAnthropicSseLine(line, sseState));
   }
 
   async fetchModels(_baseUrl: string, _apiKey: string): Promise<string[]> {
