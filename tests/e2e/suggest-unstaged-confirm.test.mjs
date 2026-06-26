@@ -100,7 +100,8 @@ test('suggest does not use unstaged changes without confirmation', async (t) => 
   assert.match(result.stdout, /Cancelled\. Stage changes with `git add` and try again\./);
   assert.doesNotMatch(result.stdout, /Dry run: no LLM API call will be made\./);
   assert.doesNotMatch(result.stdout, /Failed to read git diff/);
-  assert.equal(result.stderr, '');
+  // Ignore Git CRLF warnings on Windows
+  assert.equal(result.stderr.replace(/warning:.*CRLF.*\n/g, ''), '');
 });
 
 test('suggest --yes allows unstaged changes for noninteractive dry runs', async (t) => {
@@ -111,7 +112,8 @@ test('suggest --yes allows unstaged changes for noninteractive dry runs', async 
   assert.match(result.stdout, /Dry run: no LLM API call will be made\./);
   assert.match(result.stdout, /unstaged update/);
   assert.doesNotMatch(result.stdout, /No staged changes found\. Use unstaged changes/);
-  assert.equal(result.stderr, '');
+  // Ignore Git CRLF warnings on Windows
+  assert.equal(result.stderr.replace(/warning:.*CRLF.*\n/g, ''), '');
 });
 
 test('suggest --auto allows unstaged changes for noninteractive dry runs', async (t) => {
@@ -122,5 +124,6 @@ test('suggest --auto allows unstaged changes for noninteractive dry runs', async
   assert.match(result.stdout, /Dry run: no LLM API call will be made\./);
   assert.match(result.stdout, /unstaged update/);
   assert.doesNotMatch(result.stdout, /No staged changes found\. Use unstaged changes/);
-  assert.equal(result.stderr, '');
+  // Ignore Git CRLF warnings on Windows
+  assert.equal(result.stderr.replace(/warning:.*CRLF.*\n/g, ''), '');
 });

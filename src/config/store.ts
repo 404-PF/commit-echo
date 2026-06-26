@@ -7,6 +7,33 @@ import type { Config } from '../types.js';
 const DEFAULT_HISTORY_SIZE = 50;
 const DEFAULT_MAX_DIFF_SIZE = 4000;
 
+/** Environment variable names for configuration overrides. Keep in sync with `loadConfig()`. */
+export const CONFIG_ENV_VARS = [
+  'COMMIT_ECHO_PROVIDER',
+  'COMMIT_ECHO_MODEL',
+  'COMMIT_ECHO_BASE_URL',
+  'COMMIT_ECHO_API_KEY',
+  'COMMIT_ECHO_HISTORY_SIZE',
+  'COMMIT_ECHO_MAX_DIFF_SIZE',
+] as const;
+
+/**
+ * Read a positive integer from an environment variable.
+ * Returns the parsed integer if valid, undefined if unset, or throws if invalid.
+ */
+function readPositiveIntegerEnvVar(
+  envVar: string,
+): number | undefined {
+  const raw = process.env[envVar];
+  if (raw === undefined) return undefined;
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${envVar} environment variable. Expected a positive integer, got: ${raw}`);
+  }
+  return parsed;
+}
+
 // Missing size settings keep defaults; malformed explicit values are rejected
 // so runtime prompt and diff paths never receive unsafe limits.
 function readPositiveIntegerConfigValue(
@@ -63,13 +90,21 @@ export async function loadConfig(): Promise<Config> {
     throw error;
   }
 
+  // Resolve numeric config values with env var overrides.
+  // Env vars take precedence over config file values.
+  const envHistorySize = readPositiveIntegerEnvVar('COMMIT_ECHO_HISTORY_SIZE');
+  const envMaxDiffSize = readPositiveIntegerEnvVar('COMMIT_ECHO_MAX_DIFF_SIZE');
+
+  const historySize = envHistorySize ?? readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath);
+  const maxDiffSize = envMaxDiffSize ?? readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
+
   return {
-    provider: parsed.provider ?? '',
-    model: parsed.model ?? '',
-    baseUrl: parsed.baseUrl,
-    apiKey: parsed.apiKey,
-    historySize: readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath),
-    maxDiffSize: readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath),
+    provider: (process.env['COMMIT_ECHO_PROVIDER'] ?? parsed.provider ?? '').trim(),
+    model: (process.env['COMMIT_ECHO_MODEL'] ?? parsed.model ?? '').trim(),
+    baseUrl: (process.env['COMMIT_ECHO_BASE_URL'] ?? parsed.baseUrl)?.trim(),
+    apiKey: (process.env['COMMIT_ECHO_API_KEY'] ?? parsed.apiKey)?.trim(),
+    historySize,
+    maxDiffSize,
     systemPromptTemplate: parsed.systemPromptTemplate,
     userPromptTemplate: parsed.userPromptTemplate,
   };
