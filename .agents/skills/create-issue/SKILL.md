@@ -1,76 +1,166 @@
 ---
 name: create-issue
-description: Use this skill when asked to create a GitHub issue. Provides a structured workflow for gathering issue details, template support, duplicate detection, and creating issues via the gh CLI.
+description: 'Create a GitHub issue with proper structure and metadata. Use when the user asks to create an issue, open a ticket, report a bug, or request a feature. Supports labels, assignees, milestones, and templates.'
+user-invocable: true
+argument-hint: '[optional: issue title or description]'
 ---
 
 # Create Issue
 
-Use this skill when the user asks to create a GitHub issue.
+Create a well-structured GitHub issue with appropriate metadata.
 
-## Workflow
+## When to Use
+- User asks to "create an issue", "open a ticket", or "report a bug"
+- User wants to track a task, bug, or feature request
+- After discovering a problem that needs documentation
 
-1. **Determine issue details** — If not already provided, diagnose the codebase to infer a sensible title, body (description), labels, and issue type (Bug, Feature, Task). Propose the generated values to the user.
-2. **Check for issue templates** — Look for template files in the repo:
-   - `.github/ISSUE_TEMPLATE/` (multiple templates)
-   - `.github/ISSUE_TEMPLATE.md` (single template)
-   - If templates exist, list them and ask the user which to use (or "none"). If the user selects a template, load its YAML frontmatter to pre-fill title, labels, assignee, and type.
-3. **Gather additional metadata** — Ask the user about optional fields:
-   - **Project**: Whether to add to a GitHub project board (`gh project list` to show available projects)
-   - **Milestone**: Whether to set a milestone (`gh milestone list` to show available milestones)
-   - **Assignee**: Whether to self-assign or assign to another user
-4. **Confirm details** — Display a summary of the issue (title, body preview, labels, type, project, milestone, assignee) and ask the user to confirm before proceeding.
-5. **Duplicate check** — Run multiple search strategies to find potential duplicates:
-   ```bash
-   gh issue list --search "<title>" --state open --limit 5 --json title,url,state
-   gh issue list --search "<keywords from title>" --state open --limit 5 --json title,url,state
-   ```
-   Review matching issues. If potential duplicates are found, display them (title, URL, state) and ask the user whether to proceed or cancel. Never skip the duplicate check.
-6. **Create the issue** — If no duplicates (or user chooses to proceed), create the issue using `gh issue create` with all gathered information and return the issue URL.
+## Procedure
 
-## Commands
+### 1. Determine Repository Context
+- Try to infer the repository from `git remote -v`
+- If no remote or multiple remotes exist, ask the user for the target `owner/repo`
 
-```bash
-# List available issue templates
-find .github/ISSUE_TEMPLATE -name '*.md' -o -name '*.yml' -o -name '*.yaml' 2>/dev/null
+### 2. Gather Issue Details
 
-# Read a specific template
-cat .github/ISSUE_TEMPLATE/<template-file>
+**Auto-detect issue type** from the title/description using these heuristics:
+| Keywords | Type |
+|----------|------|
+| `fail`, `error`, `crash`, `broken`, `doesn't work`, `bug`, `wrong`, `regression` | Bug |
+| `add`, `support`, `implement`, `feature`, `new`, `enhance`, `improve`, `request` | Feature |
+| `fix typo`, `update docs`, `refactor`, `clean up`, `rename`, `move`, `migrate` | Task |
 
-# List available projects
-gh project list --owner "<owner>" --limit 20 --json title,id,number
+If the type is ambiguous, ask the user to confirm. If confident, proceed without asking.
 
-# List available milestones
-gh milestone list --owner "<owner>" --repo "<repo>" --json title,number --state open
+**Infer from context** (don't ask if already known):
+- **Title**: Use the provided argument or derive from description
+- **Description**: Expand on the title with relevant details
+- **Labels**: Query existing repository labels and pick matching ones automatically (see Step 3)
 
-# List available issue types (if repo supports them)
-gh issue type list
+**Only ask if missing** (don't prompt for optional fields the user didn't mention):
+- Assignee(s)
+- Milestone
+- Priority
+- Additional context or details
 
-# Search for existing issues matching the title (loose match)
-gh issue list --search "<title>" --state open --limit 5 --json title,url,state
+### 3. Structure the Issue Body
 
-# Search for existing issues matching keywords
-gh issue list --search "<keywords>" --state open --limit 5 --json title,url,state
+Use this template based on issue type:
 
-# Create the issue (only after duplicate check passes)
-gh issue create \
-  --title "<title>" \
-  --body "<body>" \
-  --label "<labels>" \
-  --type "<issue_type>" \
-  --assignee "<assignee>" \
-  --milestone "<milestone>" \
-  --project "<project>"
+**Bug Report:**
+```markdown
+## Description
+[Clear description of the bug]
+
+## Steps to Reproduce
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+
+## Expected Behavior
+[What should happen]
+
+## Actual Behavior
+[What actually happens]
+
+## Environment
+- OS: [e.g., Windows 11, macOS 14]
+- Browser: [if applicable]
+- Version: [e.g., v1.2.3]
+
+## Additional Context
+[Any other relevant information, screenshots, logs]
 ```
 
-## Notes
+**Feature Request:**
+```markdown
+## Description
+[Clear description of the feature]
 
-- If no repo is specified, assume the current one (`gh repo view --json name,owner` to get owner/repo)
-- Labels should be comma-separated if multiple
-- Return the issue URL after creation (the `gh issue create` output includes the URL)
-- Always search for duplicates before creating; never skip the duplicate check
-- Use **multiple search queries** for duplicate detection — search both the exact title and extracted keywords
-- If the repo uses issue forms (`.yml`/`.yaml` templates), read the form schema to understand required fields
-- When no template is used, compose a well-structured body following the conventional issue format:
-  - **Bug**: Steps to reproduce, expected behavior, actual behavior, environment
-  - **Feature**: Problem statement, proposed solution, alternatives considered
-  - **Task**: Description, acceptance criteria, dependencies
+## Problem Statement
+[What problem does this solve?]
+
+## Proposed Solution
+[How should this work?]
+
+## Alternatives Considered
+[Other approaches considered]
+
+## Additional Context
+[Any mockups, examples, or references]
+```
+
+**Task:**
+```markdown
+## Description
+[What needs to be done]
+
+## Acceptance Criteria
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
+- [ ] [Criterion 3]
+
+## Dependencies
+[Any blockers or related issues]
+
+## Timeline
+[Expected completion, if applicable]
+```
+
+### 4. Confirm with User
+Before creating, present a concise summary:
+- Generated title
+- Detected type (if inferred)
+- Labels to be applied
+- Assignees (if any)
+- Milestone (if any)
+
+Ask: **"Create this issue?"**
+
+> **Suggestions are optional.** Only present labels/assignees/milestones that were explicitly requested or automatically inferred. Don't add extra fields the user didn't ask for.
+
+### 5. Create the Issue
+
+Use **GitHub MCP tools** (`mcp_github_mcp_se_issue_write`) to create the issue:
+- `method`: "create"
+- `owner`: Repository owner
+- `repo`: Repository name
+- `title`: Generated title
+- `body`: Generated description
+- `labels`: Array of label names
+- `assignees`: Array of usernames
+- `milestone`: Milestone number (if provided)
+
+If MCP tools are unavailable, fall back to **`gh` CLI**:
+```bash
+gh issue create --title "<title>" --body "<body>" --label "<label1>,<label2>" --assignee "<user1>,<user2>"
+```
+
+### 6. Report Result
+- Display the created issue URL
+- Suggest next steps (e.g., add to project board, link to PR)
+
+## Example Interactions
+
+| User says | Action |
+|-----------|--------|
+| `/create-issue` | Interactive: gather all details step-by-step |
+| `/create-issue Login fails with SSO` | Create bug report with provided title |
+| `/create-issue Add dark mode support` | Create feature request |
+| `/create-issue Fix typo in README` | Create simple task issue |
+
+## Edge Cases
+
+- **No repository context**: Fall back to `git remote -v`; ask only if inference fails
+- **Missing title**: Prompt for a title; infer type automatically
+- **Invalid labels**: Only use existing repository labels — skip labels that don't exist rather than creating new ones
+- **Issue already exists**: Search for similar open issues first, suggest linking if found
+- **Rate limits**: Handle GitHub API rate limits gracefully, suggest waiting or using CLI
+
+## Integration with Other Skills
+
+This skill works well with:
+- `checkout-branch`: After creating an issue, **optionally** suggest creating a branch with `/checkout-branch <issue-number>`
+- `commit`: **Optionally** mention referencing the issue with `Closes #<number>` in commits
+- `create-pr`: **Optionally** suggest linking a PR to close the issue
+
+> Keep all integration suggestions brief and non-intrusive. Only mention them once, not repeatedly.
