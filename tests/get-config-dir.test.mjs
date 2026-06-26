@@ -2,21 +2,14 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const getConfigDirPath = join(process.cwd(), 'dist', 'config', 'store.js');
-const getConfigDirUrl = pathToFileURL(getConfigDirPath).href;
+const __dirname = join(fileURLToPath(import.meta.url), '..');
+const getConfigDirUrl = pathToFileURL(join(__dirname, '..', 'dist', 'config', 'store.js')).href;
 
-/**
- * Run getConfigDir in a subprocess with the given os stubs.
- * The subprocess uses createRequire to get a mutable reference to node:os,
- * patches platform/homedir, then dynamically imports store.js.
- * This works because Node.js ESM and CJS share the same built-in module cache.
- */
 function getConfigDirInSubprocess({ platform: platformValue, home, appData, xdgConfigHome } = {}) {
   const env = { ...process.env };
 
-  // Control the subprocess environment
   delete env.APPDATA;
   delete env.XDG_CONFIG_HOME;
   if (appData !== undefined) env.APPDATA = appData;
@@ -55,7 +48,6 @@ test('getConfigDir falls through to ~/.config/commit-echo on win32 when APPDATA 
     platform: 'win32',
     home: 'C:\\Users\\test',
   });
-  // APPDATA is unset, XDG is unset, falls through to home fallback
   assert.equal(dir, join('C:\\Users\\test', '.config', 'commit-echo'));
 });
 
