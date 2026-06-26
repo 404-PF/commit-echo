@@ -82,7 +82,7 @@ If you want `git commit` to prefill the first suggestion automatically, run `com
 
 ### Environment Variable Overrides
 
-All configuration options can be overridden with `COMMIT_ECHO_*` environment variables. Environment variables take precedence over values in `config.json`, which is useful for CI pipelines, testing, and switching between projects without editing the config file.
+All scalar configuration options can be overridden with `COMMIT_ECHO_*` environment variables. Environment variables take precedence over values in `config.json`, which is useful for CI pipelines, testing, and switching between projects without editing the config file. (Prompt templates are not overridable via environment variables.)
 
 | Config Option | Environment Variable |
 |---|---|

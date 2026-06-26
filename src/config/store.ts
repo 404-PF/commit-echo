@@ -7,7 +7,7 @@ import type { Config } from '../types.js';
 const DEFAULT_HISTORY_SIZE = 50;
 const DEFAULT_MAX_DIFF_SIZE = 4000;
 
-/** Environment variable names for configuration overrides. */
+/** Environment variable names for configuration overrides. Keep in sync with `loadConfig()`. */
 export const CONFIG_ENV_VARS = [
   'COMMIT_ECHO_PROVIDER',
   'COMMIT_ECHO_MODEL',
@@ -99,10 +99,10 @@ export async function loadConfig(): Promise<Config> {
   const maxDiffSize = envMaxDiffSize ?? readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
 
   return {
-    provider: process.env['COMMIT_ECHO_PROVIDER'] ?? parsed.provider ?? '',
-    model: process.env['COMMIT_ECHO_MODEL'] ?? parsed.model ?? '',
-    baseUrl: process.env['COMMIT_ECHO_BASE_URL'] ?? parsed.baseUrl,
-    apiKey: process.env['COMMIT_ECHO_API_KEY'] ?? parsed.apiKey,
+    provider: (process.env['COMMIT_ECHO_PROVIDER'] ?? parsed.provider ?? '').trim(),
+    model: (process.env['COMMIT_ECHO_MODEL'] ?? parsed.model ?? '').trim(),
+    baseUrl: (process.env['COMMIT_ECHO_BASE_URL'] ?? parsed.baseUrl)?.trim(),
+    apiKey: (process.env['COMMIT_ECHO_API_KEY'] ?? parsed.apiKey)?.trim(),
     historySize,
     maxDiffSize,
     systemPromptTemplate: parsed.systemPromptTemplate,
