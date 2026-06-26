@@ -13,7 +13,6 @@ const DEFAULT_MAX_DIFF_SIZE = 4000;
  */
 function readPositiveIntegerEnvVar(
   envVar: string,
-  name: string,
 ): number | undefined {
   const raw = process.env[envVar];
   if (raw === undefined) return undefined;
@@ -83,8 +82,8 @@ export async function loadConfig(): Promise<Config> {
 
   // Resolve numeric config values with env var overrides.
   // Env vars take precedence over config file values.
-  const envHistorySize = readPositiveIntegerEnvVar('COMMIT_ECHO_HISTORY_SIZE', 'historySize');
-  const envMaxDiffSize = readPositiveIntegerEnvVar('COMMIT_ECHO_MAX_DIFF_SIZE', 'maxDiffSize');
+  const envHistorySize = readPositiveIntegerEnvVar('COMMIT_ECHO_HISTORY_SIZE');
+  const envMaxDiffSize = readPositiveIntegerEnvVar('COMMIT_ECHO_MAX_DIFF_SIZE');
 
   const historySize = envHistorySize ?? readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath);
   const maxDiffSize = envMaxDiffSize ?? readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
