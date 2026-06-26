@@ -80,6 +80,28 @@ If you want `git commit` to prefill the first suggestion automatically, run `com
 | `historySize` | `50` | Number of recent commits to learn style from |
 | `maxDiffSize` | `4000` | Maximum diff size (in characters) sent to the LLM. Diffs exceeding this limit are intelligently truncated — file headers are preserved while line-level content is dropped from overflow files. Adjust upward for large refactors or generated-file changes. |
 
+### Environment Variable Overrides
+
+All configuration options can be overridden with `COMMIT_ECHO_*` environment variables. Environment variables take precedence over values in `config.json`, which is useful for CI pipelines, testing, and switching between projects without editing the config file.
+
+| Config Option | Environment Variable |
+|---|---|
+| `provider` | `COMMIT_ECHO_PROVIDER` |
+| `model` | `COMMIT_ECHO_MODEL` |
+| `baseUrl` | `COMMIT_ECHO_BASE_URL` |
+| `apiKey` | `COMMIT_ECHO_API_KEY` |
+| `historySize` | `COMMIT_ECHO_HISTORY_SIZE` |
+| `maxDiffSize` | `COMMIT_ECHO_MAX_DIFF_SIZE` |
+
+Example (macOS / Linux):
+
+```bash
+export COMMIT_ECHO_PROVIDER=anthropic
+export COMMIT_ECHO_MODEL=claude-sonnet-4-20250514
+export COMMIT_ECHO_API_KEY=sk-ant-...
+commit-echo suggest
+```
+
 ### Adjusting `maxDiffSize`
 
 `maxDiffSize` controls how many diff characters are sent to the LLM. When a staged diff is larger than the limit, `commit-echo` preserves file headers and trims overflow file bodies before generating suggestions. The status output reports this as truncation, so raise the value when important context is being omitted.
