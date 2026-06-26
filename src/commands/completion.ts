@@ -14,11 +14,6 @@ _commit_echo()
   # Global options
   global_opts="--yes --auto --no-color --help --version"
 
-  if [[ "\${cur}" == -* ]]; then
-    COMPREPLY=( $(compgen -W "\${global_opts}" -- "\${cur}") )
-    return 0
-  fi
-
   # Find the first non-option word as the subcommand
   local subcmd=""
   local i
@@ -29,44 +24,42 @@ _commit_echo()
     fi
   done
 
-  # If no subcommand found yet, complete subcommands
+  # If no subcommand found yet, complete subcommands (or flags before any subcmd)
   if [[ -z "\${subcmd}" ]]; then
-    COMPREPLY=( $(compgen -W "\${commands}" -- "\${cur}") )
+    if [[ "\${cur}" == -* ]]; then
+      COMPREPLY=( $(compgen -W "\${global_opts}" -- "\${cur}") )
+    else
+      COMPREPLY=( $(compgen -W "\${commands}" -- "\${cur}") )
+    fi
+    return 0
+  fi
+
+  # If current token is a flag, merge global opts with subcommand opts
+  if [[ "\${cur}" == -* ]]; then
+    local merged_opts="\${global_opts}"
+    case "\${subcmd}" in
+      suggest)
+        merged_opts="\${merged_opts} --commit --verbose --model --stream --dry-run --no-commit"
+        ;;
+      history)
+        merged_opts="\${merged_opts} --json"
+        ;;
+      batch)
+        merged_opts="\${merged_opts} --recursive"
+        ;;
+      init)
+        merged_opts="\${merged_opts} --install-hook"
+        ;;
+      completion)
+        ;;
+    esac
+    COMPREPLY=( $(compgen -W "\${merged_opts}" -- "\${cur}") )
     return 0
   fi
 
   case "\${subcmd}" in
-    suggest)
-      local suggest_opts="--commit --yes --verbose --model --stream --dry-run --no-commit --auto --help"
-      if [[ "\${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "\${suggest_opts}" -- "\${cur}") )
-      fi
-      ;;
-    history)
-      local history_opts="--json --help"
-      if [[ "\${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "\${history_opts}" -- "\${cur}") )
-      fi
-      ;;
-    batch)
-      local batch_opts="--recursive --yes --auto --help"
-      if [[ "\${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "\${batch_opts}" -- "\${cur}") )
-      fi
-      ;;
-    init)
-      local init_opts="--install-hook --help"
-      if [[ "\${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "\${init_opts}" -- "\${cur}") )
-      fi
-      ;;
     completion)
-      local completion_opts="--help"
-      if [[ "\${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "\${completion_opts}" -- "\${cur}") )
-      else
-        COMPREPLY=( $(compgen -W "bash zsh fish" -- "\${cur}") )
-      fi
+      COMPREPLY=( $(compgen -W "bash zsh fish" -- "\${cur}") )
       ;;
   esac
 
@@ -104,7 +97,16 @@ _commit_echo() {
       _describe 'command' commands
       ;;
     args)
-      case \$words[2] in
+      # Derive the first non-option argument as the subcommand
+      local subcmd=''
+      local w
+      for w in \$words[2,-1]; do
+        case \$w in
+          -*) ;;
+          *) subcmd=\$w; break ;;
+        esac
+      done
+      case \$subcmd in
         suggest)
           _arguments \\
             '--commit[Commit the selected suggestion]' \\
