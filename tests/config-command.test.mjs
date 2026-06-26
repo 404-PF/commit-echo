@@ -91,6 +91,7 @@ test('config command displays the current configuration with a masked API key', 
     assert.match(output, /Model:\s+test-model/);
     assert.match(output, /Endpoint:\s+https:\/\/api\.openai\.com\/v1/);
     assert.match(output, /History size:\s+12/);
+    assert.match(output, /Max diff size:\s+4000/);
     assert.match(output, /API key:\s+sk-t••••/);
     assert.doesNotMatch(output, /sk-test-secret-value/);
   });
