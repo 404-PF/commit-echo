@@ -104,7 +104,7 @@ _commit_echo() {
       _describe 'command' commands
       ;;
     args)
-      case \$words[1] in
+      case \$words[2] in
         suggest)
           _arguments \\
             '--commit[Commit the selected suggestion]' \\
@@ -152,7 +152,14 @@ const FISH_SCRIPT = `# fish completion for commit-echo                          
 # Helper: complete options for a subcommand
 function __commit_echo_complete_options
   set -l cmd (commandline -opc)
-  set -l subcmd $cmd[2]
+  # Find the first non-option token as the subcommand
+  set -l subcmd ""
+  for token in $cmd[2..-1]
+    if not string match -q -- '-*' $token
+      set subcmd $token
+      break
+    end
+  end
   switch $subcmd
     case suggest
       printf '%s\\t%s\\n' \\
@@ -231,7 +238,14 @@ function __commit_echo_completions
   end
 
   # If we have a subcommand, check if it has non-option completions
-  set -l subcmd $cmd[2]
+  # Find the first non-option token as the subcommand
+  set -l subcmd ""
+  for token in $cmd[2..-1]
+    if not string match -q -- '-*' $token
+      set subcmd $token
+      break
+    end
+  end
   if test "$subcmd" = "completion"
     __commit_echo_complete_options
     return
