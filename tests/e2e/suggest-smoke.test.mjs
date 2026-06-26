@@ -52,7 +52,9 @@ function runSuggestUntil(args, { cwd, env, text }) {
         }
       }
     });
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
     child.on('error', (err) => {
       settled = true;
       clearTimeout(timeout);
@@ -159,10 +161,12 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
       const parsed = JSON.parse(body);
       requests.push(parsed);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        model: parsed.model,
-        choices: [{ message: { content: '1. feat: add smoke test coverage\n2. docs: refresh quickstart examples' } }],
-      }));
+      res.end(
+        JSON.stringify({
+          model: parsed.model,
+          choices: [{ message: { content: '1. feat: add smoke test coverage\n2. docs: refresh quickstart examples' } }],
+        }),
+      );
       return;
     }
 
@@ -177,20 +181,30 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: '__custom__',
-      model: 'fixture-model',
-      baseUrl: `http://127.0.0.1:${port}`,
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   await writeFile(
     join(configDir, 'history.jsonl'),
-    JSON.stringify({ timestamp: new Date().toISOString(), message: 'feat: add fixture history', diff: '', model: 'fixture-model', provider: '__custom__' }) + '\n',
-    'utf8'
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      message: 'feat: add fixture history',
+      diff: '',
+      model: 'fixture-model',
+      provider: '__custom__',
+    }) + '\n',
+    'utf8',
   );
 
   const child = spawn('node', [join(process.cwd(), 'dist/index.js'), 'suggest'], {
@@ -349,13 +363,17 @@ test('suggest reports no changes before checking for an API key', async (t) => {
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: 'openai',
-      model: 'gpt-4.1',
-      historySize: 5,
-      maxDiffSize: 4000,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: 'openai',
+        model: 'gpt-4.1',
+        historySize: 5,
+        maxDiffSize: 4000,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   t.after(async () => {
@@ -377,8 +395,12 @@ test('suggest reports no changes before checking for an API key', async (t) => {
 
   let stdout = '';
   let stderr = '';
-  child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-  child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
 
   const result = await onceExit(child);
 
@@ -401,10 +423,12 @@ test('suggest --model overrides configured model for one invocation and -m is an
       const parsed = JSON.parse(body);
       requests.push(parsed);
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        model: parsed.model,
-        choices: [{ message: { content: '1. feat: add override flag\n2. test: cover model alias' } }],
-      }));
+      res.end(
+        JSON.stringify({
+          model: parsed.model,
+          choices: [{ message: { content: '1. feat: add override flag\n2. test: cover model alias' } }],
+        }),
+      );
       return;
     }
 
@@ -419,14 +443,18 @@ test('suggest --model overrides configured model for one invocation and -m is an
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: '__custom__',
-      model: 'configured-model',
-      baseUrl: `http://127.0.0.1:${port}`,
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'configured-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   const env = {
@@ -437,7 +465,11 @@ test('suggest --model overrides configured model for one invocation and -m is an
     FORCE_COLOR: '0',
   };
 
-  const longFlag = await runSuggestUntil(['suggest', '--yes', '--verbose', '--model', 'gpt-4o'], { cwd: repo, env, text: 'Model: gpt-4o' });
+  const longFlag = await runSuggestUntil(['suggest', '--yes', '--verbose', '--model', 'gpt-4o'], {
+    cwd: repo,
+    env,
+    text: 'Model: gpt-4o',
+  });
   assert.equal(requests.at(-1).model, 'gpt-4o');
   assert.match(longFlag.stdout, /Model: gpt-4o/);
 
@@ -457,10 +489,12 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
       for await (const chunk of req) body += chunk;
       requests.push(JSON.parse(body));
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        model: 'fixture-model',
-        choices: [{ message: { content: '1. feat: inspect staged diff' } }],
-      }));
+      res.end(
+        JSON.stringify({
+          model: 'fixture-model',
+          choices: [{ message: { content: '1. feat: inspect staged diff' } }],
+        }),
+      );
       return;
     }
 
@@ -482,14 +516,18 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: '__custom__',
-      model: 'fixture-model',
-      baseUrl: `http://127.0.0.1:${port}`,
-      apiKey: 'test-key',
-      historySize: 5,
-      maxDiffSize: 120,
-    }, null, 2),
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+        maxDiffSize: 120,
+      },
+      null,
+      2,
+    ),
     'utf8',
   );
 
@@ -527,10 +565,12 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
       for await (const chunk of req) body += chunk;
       requests.push(JSON.parse(body));
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        model: 'fixture-model',
-        choices: [{ message: { content: '1. feat: inspect unstaged diff' } }],
-      }));
+      res.end(
+        JSON.stringify({
+          model: 'fixture-model',
+          choices: [{ message: { content: '1. feat: inspect unstaged diff' } }],
+        }),
+      );
       return;
     }
 
@@ -547,13 +587,17 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: '__custom__',
-      model: 'fixture-model',
-      baseUrl: `http://127.0.0.1:${port}`,
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
     'utf8',
   );
 
@@ -578,6 +622,90 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
   assert.match(requests.at(-1).messages[1].content, /\+updated/);
 });
 
+test('suggest --show-diff uses the truncated diff for streamed suggestions', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-stream-'));
+  const { home, repo, configDir } = await setupRepo(root);
+
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+
+      if (parsed.stream) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: {"choices":[{"delta":{"content":"1. feat: streamed diff preview"}}]}\n\n');
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'expected streaming request' }));
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeFile(
+    join(repo, 'README.md'),
+    ['# fixture', '', ...Array.from({ length: 40 }, (_, i) => `stream line ${i}`)].join('\n') + '\n',
+    'utf8',
+  );
+  execFileSync('git', ['add', 'README.md'], { cwd: repo });
+
+  await writeFile(
+    join(configDir, 'config.json'),
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+        maxDiffSize: 120,
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  const env = {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    FORCE_COLOR: '0',
+  };
+
+  const result = await runCli(['suggest', '--show-diff', '--stream', '--yes'], { cwd: repo, env });
+  const stdout = stripAnsi(result.stdout);
+  const stderr = stripAnsi(result.stderr);
+  const request = requests.at(-1);
+
+  assert.equal(result.code, 0);
+  assert.match(stdout, /Diff being analyzed:/);
+  assert.match(stdout, /diff --git a\/README\.md b\/README\.md/);
+  assert.match(stdout, /\[\.\.\.truncated 1 file\.\.\.\]/);
+  assert.ok(stdout.indexOf('Diff being analyzed:') < stdout.indexOf('Streaming suggestions'));
+  assert.match(stdout, /feat: streamed diff preview/);
+  assert.match(stdout, /Selected:\s+feat: streamed diff preview/);
+  assert.match(stderr, /Diff truncated:/);
+  assert.equal(request?.stream, true);
+  assert.match(request.messages[1].content, /\[\.\.\.truncated 1 file\.\.\.\]/);
+});
+
 test('suggest --stream prints incremental SSE output', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-'));
   const { home, repo, configDir } = await setupRepo(root);
@@ -600,10 +728,12 @@ test('suggest --stream prints incremental SSE output', async (t) => {
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        model: parsed.model,
-        choices: [{ message: { content: '1. feat: fallback suggestion' } }],
-      }));
+      res.end(
+        JSON.stringify({
+          model: parsed.model,
+          choices: [{ message: { content: '1. feat: fallback suggestion' } }],
+        }),
+      );
       return;
     }
 
@@ -618,30 +748,31 @@ test('suggest --stream prints incremental SSE output', async (t) => {
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: '__custom__',
-      model: 'fixture-model',
-      baseUrl: `http://127.0.0.1:${port}`,
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
-  const { stdout } = await runSuggestUntil(
-    ['suggest', '--stream'],
-    {
-      cwd: repo,
-      env: {
-        ...process.env,
-        HOME: home,
-        XDG_CONFIG_HOME: join(home, '.config'),
-        APPDATA: join(home, 'AppData', 'Roaming'),
-        FORCE_COLOR: '0',
-      },
-      text: 'feat: streamed suggestion',
+  const { stdout } = await runSuggestUntil(['suggest', '--stream'], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
+      FORCE_COLOR: '0',
     },
-  );
+    text: 'feat: streamed suggestion',
+  });
 
   assert.match(stdout, /Streaming suggestions/);
   assert.match(stdout, /feat: streamed suggestion/);
@@ -677,10 +808,12 @@ test('suggest --stream prints incremental Anthropic SSE output', async (t) => {
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        model: parsed.model,
-        content: [{ type: 'text', text: '1. feat: anthropic fallback suggestion' }],
-      }));
+      res.end(
+        JSON.stringify({
+          model: parsed.model,
+          content: [{ type: 'text', text: '1. feat: anthropic fallback suggestion' }],
+        }),
+      );
       return;
     }
 
@@ -695,30 +828,31 @@ test('suggest --stream prints incremental Anthropic SSE output', async (t) => {
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: 'anthropic',
-      model: 'claude-sonnet-4-20250514',
-      baseUrl: `http://127.0.0.1:${port}/v1`,
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-20250514',
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
-  const { stdout } = await runSuggestUntil(
-    ['suggest', '--stream'],
-    {
-      cwd: repo,
-      env: {
-        ...process.env,
-        HOME: home,
-        XDG_CONFIG_HOME: join(home, '.config'),
-        APPDATA: join(home, 'AppData', 'Roaming'),
-        FORCE_COLOR: '0',
-      },
-      text: 'feat: anthropic streamed suggestion',
+  const { stdout } = await runSuggestUntil(['suggest', '--stream'], {
+    cwd: repo,
+    env: {
+      ...process.env,
+      HOME: home,
+      XDG_CONFIG_HOME: join(home, '.config'),
+      APPDATA: join(home, 'AppData', 'Roaming'),
+      FORCE_COLOR: '0',
     },
-  );
+    text: 'feat: anthropic streamed suggestion',
+  });
 
   assert.match(stdout, /Streaming suggestions/);
   assert.match(stdout, /feat: anthropic streamed suggestion/);
@@ -747,10 +881,12 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
       }
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        model: parsed.model,
-        choices: [{ message: { content: '1. feat: fallback suggestion' } }],
-      }));
+      res.end(
+        JSON.stringify({
+          model: parsed.model,
+          choices: [{ message: { content: '1. feat: fallback suggestion' } }],
+        }),
+      );
       return;
     }
 
@@ -765,14 +901,18 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: '__custom__',
-      model: 'fixture-model',
-      baseUrl: `http://127.0.0.1:${port}`,
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--stream', '--yes'], {
@@ -807,13 +947,17 @@ test('suggest --stream fails fast for unsupported providers', async (t) => {
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: 'cohere',
-      model: 'command-r',
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: 'cohere',
+        model: 'command-r',
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   t.after(async () => {
@@ -871,14 +1015,18 @@ test('suggest --stream reports parse failure for unparseable streamed output', a
 
   await writeFile(
     join(configDir, 'config.json'),
-    JSON.stringify({
-      provider: '__custom__',
-      model: 'fixture-model',
-      baseUrl: `http://127.0.0.1:${port}`,
-      apiKey: 'test-key',
-      historySize: 5,
-    }, null, 2),
-    'utf8'
+    JSON.stringify(
+      {
+        provider: '__custom__',
+        model: 'fixture-model',
+        baseUrl: `http://127.0.0.1:${port}`,
+        apiKey: 'test-key',
+        historySize: 5,
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--stream'], {
