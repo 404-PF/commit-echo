@@ -32,6 +32,7 @@ node dist/index.js   # Smoke test the CLI
 - `commit-echo init` — Interactive setup wizard
 - `commit-echo suggest` — Generate suggestions without committing
 - `commit-echo history` — View learned style profile
+- `commit-echo completion` — Generate shell completion scripts (bash, zsh, fish)
 
 ## Skills
 

@@ -1,5 +1,9 @@
 import pc from 'picocolors';
 
+// NOTE: The completion scripts below hardcode subcommand names and option flags.
+// If you add a new subcommand or change options, update ALL three shell scripts
+// (BASH_SCRIPT, ZSH_SCRIPT, FISH_SCRIPT) to stay in sync.
+
 const BASH_SCRIPT = `#!/usr/bin/env bash
 # bash completion for commit-echo                          -*- shell-script -*-
 
