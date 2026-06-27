@@ -8,6 +8,8 @@ const VALID_SHELLS: SupportedShell[] = ['bash', 'zsh', 'fish'];
 interface SubcommandOption {
   /** Long flag, including any leading dashes (e.g. `--model`). */
   flag: string;
+  /** Optional short alias, including leading dashes (e.g. `-m`). */
+  short?: string;
   /** Human-readable description shown in completion tooltips. */
   description: string;
   /** When set, the option consumes the next token; completion is suppressed for that slot. */
@@ -48,11 +50,11 @@ const SUBCOMMANDS: readonly Subcommand[] = [
     description: 'Generate commit suggestions',
     options: [
       { flag: '--commit', description: 'Commit the selected suggestion' },
-      { flag: '--yes', description: 'Automatically select the first suggestion and skip prompts' },
-      { flag: '--verbose', description: 'Print diagnostic information about the suggestion request' },
-      { flag: '--model', description: 'Override the configured LLM model', value: 'model' },
+      { flag: '--yes', short: '-y', description: 'Automatically select the first suggestion and skip prompts' },
+      { flag: '--verbose', short: '-v', description: 'Print diagnostic information about the suggestion request' },
+      { flag: '--model', short: '-m', description: 'Override the configured LLM model', value: 'model' },
       { flag: '--stream', description: 'Stream suggestions as they are generated' },
-      { flag: '--dry-run', description: 'Show the LLM input without generating suggestions' },
+      { flag: '--dry-run', short: '-n', description: 'Show the LLM input without generating suggestions' },
       { flag: '--no-commit', description: 'Deprecated alias' },
       { flag: '--auto', description: 'Alias for --yes' },
       { flag: '--help', description: 'Display help for suggest' },
@@ -70,8 +72,8 @@ const SUBCOMMANDS: readonly Subcommand[] = [
     name: 'batch',
     description: 'Process multiple git repositories in batch mode',
     options: [
-      { flag: '--recursive', description: 'Recursively search subdirectories for git repos' },
-      { flag: '--yes', description: 'Automatically accept the first suggestion and commit without prompts' },
+      { flag: '--recursive', short: '-r', description: 'Recursively search subdirectories for git repos' },
+      { flag: '--yes', short: '-y', description: 'Automatically accept the first suggestion and commit without prompts' },
       { flag: '--auto', description: 'Alias for --yes' },
       { flag: '--help', description: 'Display help for batch' },
     ],
@@ -100,25 +102,34 @@ function findSubcommand(name: string): Subcommand | undefined {
   return SUBCOMMANDS.find((s) => s.name === name);
 }
 
+/** Returns all flag forms (short + long) for an option, long form first. */
+function allFlags(o: SubcommandOption): string[] {
+  return o.short ? [o.flag, o.short] : [o.flag];
+}
+
 /* ---------------------------------------------------------------------------
  * Bash script generation
  * ------------------------------------------------------------------------- */
 
 function generateBashScript(): string {
   const subcommandList = [...SUBCOMMAND_NAMES].join(' ');
-  const globalOpts = GLOBAL_OPTIONS.map((o) => o.flag).join(' ');
+  const globalOpts = GLOBAL_OPTIONS.map((o) => allFlags(o).join(' ')).join(' ');
 
-  // Per-subcommand option cases for `merged_opts`
+  // Per-subcommand option cases for `merged_opts` (long + short forms).
   const optionCases = SUBCOMMANDS.filter((s) => s.options.length > 0)
     .map(
       (s) =>
-        `      ${s.name})\n        merged_opts="\${merged_opts} ${s.options.map((o) => o.flag).join(' ')}"\n        ;;`,
+        `      ${s.name})\n        merged_opts="\${merged_opts} ${s.options.map((o) => allFlags(o).join(' ')).join(' ')}"\n        ;;`,
     )
     .join('\n');
 
   // Flags that consume a value; skip completion after one of these.
   // Rendered as a `case` pattern list so we don't depend on extglob.
-  const valueFlagCases = [...VALUE_TAKING_FLAGS].map((f) => `    ${f}) return 0 ;;`).join('\n');
+  // Also match the glued form: `--model=gpt-4` (anything after `=` is the value).
+  const valueFlagCases = [...VALUE_TAKING_FLAGS]
+    .flatMap((f) => [`${f}) return 0 ;;`, `${f}=*) return 0 ;;`])
+    .map((line) => `    ${line}`)
+    .join('\n');
 
   return `#!/usr/bin/env bash
 # bash completion for commit-echo                          -*- shell-script -*-
@@ -145,6 +156,7 @@ _commit_echo()
 
   # If the previous token is a flag that takes a value, don't complete.
   # Using case (not extglob) so the script works regardless of extglob state.
+  # Also handles the glued --flag=value form.
   if [[ \${COMP_CWORD} -gt 1 ]]; then
     case "\${COMP_WORDS[COMP_CWORD-1]}" in
 ${valueFlagCases}
@@ -191,8 +203,12 @@ complete -F _commit_echo commit-echo
 function generateZshScript(): string {
   // Subcommand list rendered as `name:description` pairs for `_describe`.
   const commands = SUBCOMMANDS.map((s) => `    '${s.name}:${s.description}'`).join(' \\\n');
-  // Global flags available before any subcommand.
-  const globalArgs = GLOBAL_OPTIONS.map((o) => `    '${o.flag}[${o.description}]' \\`).join('\n');
+  // Global flags available before any subcommand. Zsh supports multiple specs
+  // per option, so short and long forms can be listed together: `-y[...]:--yes`.
+  const globalArgs = GLOBAL_OPTIONS.map((o) => {
+    const spec = o.short ? `'${o.short}[${o.description}]:--${o.flag.slice(2)}' \\` : '';
+    return `    '${o.flag}[${o.description}]' ${spec}\\`;
+  }).join('\n');
 
   // Per-subcommand _arguments block (emitted into the `args` state below).
   const subcommandBlocks = SUBCOMMANDS.map((s) => {
@@ -205,10 +221,11 @@ function generateZshScript(): string {
     }
     const optionLines = s.options
       .map((o) => {
-        if (o.value) {
-          return `            '${o.flag}[${o.description}]:${o.value}:' \\`;
+        const valuePart = o.value ? `:${o.value}:` : '';
+        if (o.short) {
+          return `            '${o.short}[${o.description}]:--${o.flag.slice(2)}${valuePart}' \\\n            '${o.flag}[${o.description}]${valuePart}' \\`;
         }
-        return `            '${o.flag}[${o.description}]' \\`;
+        return `            '${o.flag}[${o.description}]${valuePart}' \\`;
       })
       .join('\n');
     return `        ${s.name})
@@ -283,16 +300,30 @@ function generateFishScript(): string {
         'fish\\tFish completion script'`;
     }
     const optionLines = s.options
-      .map((o) => `        '${o.flag}\\t${o.description}' \\`)
+      .map((o) => {
+        const shortLine = o.short ? `\n        '${o.short}\\t${o.description}' \\` : '';
+        return `        '${o.flag}\\t${o.description}' \\${shortLine}`;
+      })
       .join('\n');
     return `    case ${s.name}
       printf '%s\\n' \\
 ${optionLines}`;
   }).join('\n');
 
-  const globalFishOpts = GLOBAL_OPTIONS.map((o) => `        '${o.flag}\\t${o.description}' \\`).join('\n');
+  const globalFishOpts = GLOBAL_OPTIONS.map((o) => {
+    const shortLine = o.short ? `\n        '${o.short}\\t${o.description}' \\` : '';
+    return `        '${o.flag}\\t${o.description}' \\${shortLine}`;
+  }).join('\n');
 
-  const valueFlags = [...VALUE_TAKING_FLAGS].map((f) => `'${f}'`).join(' ');
+  // Value-taking flags, with their short forms (if any) and the glued
+  // --flag=value form. We also include each short form (e.g. '-m') so that
+  // 'commit-echo suggest -m <TAB>' doesn't try to complete the model value.
+  const valueFlagPatterns = [...VALUE_TAKING_FLAGS].flatMap((f) => {
+    const opt = SUBCOMMANDS.flatMap((s) => s.options).find((o) => o.flag === f);
+    const forms = opt?.short ? [opt.short, f] : [f];
+    return forms.flatMap((form) => [form, `${form}=*`]);
+  });
+  const valueFlags = valueFlagPatterns.map((f) => `'${f}'`).join(' ');
 
   return `# fish completion for commit-echo                           -*- shell-script -*-
 
@@ -380,6 +411,11 @@ function getCompletionScript(shell: SupportedShell): string {
   }
 }
 
+/** Type guard: returns true if `s` is a supported shell name. */
+function isSupportedShell(s: string): s is SupportedShell {
+  return (VALID_SHELLS as readonly string[]).includes(s);
+}
+
 /**
  * Returns true if color output should be enabled.
  *
@@ -408,8 +444,10 @@ function printHelp(useColor: boolean): void {
   console.log(`  ${green('zsh')}    - Zsh completion script`);
   console.log(`  ${green('fish')}   - Fish completion script\n`);
   console.log(cyan('Examples:'));
-  console.log(`  ${dim('# Bash')}`);
-  console.log('  commit-echo completion bash >> ~/.bashrc\n');
+  console.log(`  ${dim('# Bash (system-wide, recommended)')}`);
+  console.log('  sudo commit-echo completion bash > /etc/bash_completion.d/commit-echo\n');
+  console.log(`  ${dim('# Bash (per-user, requires bash-completion on PATH)')}`);
+  console.log('  commit-echo completion bash > ~/.local/share/bash-completion/completions/commit-echo\n');
   console.log(`  ${dim('# Zsh')}`);
   console.log('  commit-echo completion zsh > ~/.zfunc/_commit-echo\n');
   console.log(`  ${dim('# Fish')}`);
@@ -427,11 +465,11 @@ export function completionCommand(shell?: string): void {
 
   const normalized = shell.toLowerCase();
 
-  if (!VALID_SHELLS.includes(normalized as SupportedShell)) {
+  if (!isSupportedShell(normalized)) {
     const error = `Unsupported shell: "${shell}". Supported shells: ${VALID_SHELLS.join(', ')}`;
     console.error(useColor ? pc.red(error) : error);
     process.exit(1);
   }
 
-  process.stdout.write(getCompletionScript(normalized as SupportedShell));
+  process.stdout.write(getCompletionScript(normalized));
 }

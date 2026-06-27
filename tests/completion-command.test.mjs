@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { unlink, writeFile } from 'node:fs/promises';
 import test from 'node:test';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const execFilePromisified = promisify(execFile);
 
 async function runCompletion(args = []) {
   return execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'completion', ...args], {
@@ -95,10 +97,14 @@ test('completion bash script includes global options', async () => {
 
 test('completion zsh script includes suggest subcommand options', async () => {
   const { stdout } = await runCompletion(['zsh']);
-  assert.match(stdout, /--commit/);
-  assert.match(stdout, /--stream/);
-  assert.match(stdout, /--dry-run/);
-  assert.match(stdout, /--verbose/);
+  // All nine options registered for `suggest` (long forms) must be present
+  // so that tab-completion covers every flag the CLI accepts.
+  const expected = ['--commit', '--yes', '--verbose', '--model', '--stream', '--dry-run', '--no-commit', '--auto', '--help'];
+  for (const opt of expected) {
+    assert.match(stdout, new RegExp(`'${opt}\\[`), `Expected zsh script to include option: ${opt}`);
+  }
+  // And the value-taking marker for --model
+  assert.match(stdout, /'--model\[[^\]]+\]:model:'/);
 });
 
 test('completion fish script includes global options', async () => {
@@ -112,6 +118,40 @@ test('completion --help shows command usage', async () => {
   const { stdout } = await runCompletion(['--help']);
   assert.match(stdout, /Usage: commit-echo completion/);
   assert.match(stdout, /Target shell: bash, zsh, or fish/);
+});
+
+test('completion bash script includes short flag aliases', async () => {
+  const { stdout } = await runCompletion(['bash']);
+  // Short aliases for suggest: -y, -v, -m, -n
+  assert.match(stdout, /-y/);
+  assert.match(stdout, /-v/);
+  assert.match(stdout, /-m/);
+  // Short alias for batch: -r
+  assert.match(stdout, /-r/);
+});
+
+test('completion zsh script includes short flag aliases', async () => {
+  const { stdout } = await runCompletion(['zsh']);
+  // Zsh emits short forms like `'-y[desc]:--yes'` so a separate spec mirrors
+  // the long flag without re-stating the description.
+  assert.match(stdout, /'-y\[/);
+  assert.match(stdout, /-y\[[^\]]+\]:--yes'/);
+  assert.match(stdout, /'-m\[/);
+  assert.match(stdout, /-m\[[^\]]+\]:--model:model:'/);
+});
+
+test('completion fish script includes short flag aliases', async () => {
+  const { stdout } = await runCompletion(['fish']);
+  // Fish prints both forms as separate `printf` lines under the subcommand case.
+  assert.match(stdout, /'-y\\t/);
+  assert.match(stdout, /'-v\\t/);
+  assert.match(stdout, /'-m\\t/);
+});
+
+test('completion bash script handles --flag=value glued form', async () => {
+  const { stdout } = await runCompletion(['bash']);
+  // After a value-taking flag in `--flag=value` form, completion should also bail out.
+  assert.match(stdout, /--model=\*\) return 0/);
 });
 
 test('completion bash script guards value-taking flags like --model', async () => {
@@ -128,7 +168,10 @@ test('completion zsh script marks --model as value-taking', async () => {
 
 test('completion fish script guards value-taking flags like --model', async () => {
   const { stdout } = await runCompletion(['fish']);
-  assert.match(stdout, /case '--model'/);
+  // The fish script guards both the long and short forms, plus the glued --flag=value form.
+  assert.match(stdout, /case '.*--model'.*'--model=\*'/);
+  assert.match(stdout, /'-m'/);
+  assert.match(stdout, /'-m=\*'/);
 });
 
 test('completion error path does not emit ANSI when --no-color is set', async () => {
@@ -146,13 +189,10 @@ test('completion error path does not emit ANSI when --no-color is set', async ()
 test('NO_COLOR disables color even when set to an empty string (no-color.org spec)', async () => {
   // no-color.org: "Any form of the NO_COLOR environment variable ... will
   // disable color." An explicitly empty value still counts.
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const exec = promisify(execFile);
   const ansiPattern = /\u001b\[[0-9;]*m/;
 
   try {
-    await exec(process.execPath, ['dist/index.js', '--no-color', 'completion', 'powershell'], {
+    await execFilePromisified(process.execPath, ['dist/index.js', '--no-color', 'completion', 'powershell'], {
       env: { ...process.env, NO_COLOR: '' },
     });
     assert.fail('Expected process to exit with error');
@@ -164,11 +204,6 @@ test('NO_COLOR disables color even when set to an empty string (no-color.org spe
 });
 
 test('completion bash script is syntactically valid bash', async () => {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const { writeFile, unlink } = await import('node:fs/promises');
-  const exec = promisify(execFile);
-
   const { stdout } = await runCompletion(['bash']);
   // Use a relative path in cwd — Git Bash on Windows mangles absolute Windows
   // paths (backslashes get stripped). The cwd of the test runner is the repo
@@ -177,22 +212,17 @@ test('completion bash script is syntactically valid bash', async () => {
   try {
     await writeFile(scriptPath, stdout, 'utf8');
     // `bash -n` parses the script without executing it
-    await exec('bash', ['-n', scriptPath]);
+    await execFilePromisified('bash', ['-n', scriptPath]);
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
 });
 
 test('completion zsh script is syntactically valid zsh (if zsh is available)', async () => {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const { writeFile, unlink } = await import('node:fs/promises');
-  const exec = promisify(execFile);
-
   // Skip on platforms without zsh
   let probe;
   try {
-    probe = await exec('zsh', ['-c', 'exit 0']);
+    probe = await execFilePromisified('zsh', ['-c', 'exit 0']);
   } catch {
     return; // zsh not installed — skip silently
   }
@@ -202,21 +232,16 @@ test('completion zsh script is syntactically valid zsh (if zsh is available)', a
   const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.zsh`;
   try {
     await writeFile(scriptPath, stdout, 'utf8');
-    await exec('zsh', ['-n', scriptPath]);
+    await execFilePromisified('zsh', ['-n', scriptPath]);
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
 });
 
 test('completion fish script is syntactically valid fish (if fish is available)', async () => {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const { writeFile, unlink } = await import('node:fs/promises');
-  const exec = promisify(execFile);
-
   // Skip on platforms without fish
   try {
-    await exec('fish', ['-c', 'exit 0']);
+    await execFilePromisified('fish', ['-c', 'exit 0']);
   } catch {
     return; // fish not installed — skip silently
   }
@@ -225,7 +250,7 @@ test('completion fish script is syntactically valid fish (if fish is available)'
   const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.fish`;
   try {
     await writeFile(scriptPath, stdout, 'utf8');
-    await exec('fish', ['-n', scriptPath]);
+    await execFilePromisified('fish', ['-n', scriptPath]);
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
