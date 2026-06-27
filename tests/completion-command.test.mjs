@@ -143,6 +143,26 @@ test('completion error path does not emit ANSI when --no-color is set', async ()
   }
 });
 
+test('NO_COLOR disables color even when set to an empty string (no-color.org spec)', async () => {
+  // no-color.org: "Any form of the NO_COLOR environment variable ... will
+  // disable color." An explicitly empty value still counts.
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const exec = promisify(execFile);
+  const ansiPattern = /\u001b\[[0-9;]*m/;
+
+  try {
+    await exec(process.execPath, ['dist/index.js', '--no-color', 'completion', 'powershell'], {
+      env: { ...process.env, NO_COLOR: '' },
+    });
+    assert.fail('Expected process to exit with error');
+  } catch (err) {
+    const stderr = (err.stderr || '').toString();
+    assert.match(stderr, /Unsupported shell/);
+    assert.doesNotMatch(stderr, ansiPattern, 'Expected no ANSI codes with NO_COLOR=""');
+  }
+});
+
 test('completion bash script is syntactically valid bash', async () => {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');

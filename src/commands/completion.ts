@@ -189,10 +189,12 @@ complete -F _commit_echo commit-echo
  * ------------------------------------------------------------------------- */
 
 function generateZshScript(): string {
+  // Subcommand list rendered as `name:description` pairs for `_describe`.
   const commands = SUBCOMMANDS.map((s) => `    '${s.name}:${s.description}'`).join(' \\\n');
+  // Global flags available before any subcommand.
   const globalArgs = GLOBAL_OPTIONS.map((o) => `    '${o.flag}[${o.description}]' \\`).join('\n');
 
-  // Per-subcommand _arguments block
+  // Per-subcommand _arguments block (emitted into the `args` state below).
   const subcommandBlocks = SUBCOMMANDS.map((s) => {
     if (s.name === 'completion') {
       return `        completion)
@@ -224,6 +226,9 @@ _commit_echo() {
 ${commands}
   )
 
+  # Two-state completion machine:
+  #   - command state: offer the top-level subcommand list.
+  #   - args state: dispatch into the per-subcommand _arguments block.
   _arguments -C \\
 ${globalArgs}
     '1:command:->command' \\
@@ -375,11 +380,17 @@ function getCompletionScript(shell: SupportedShell): string {
   }
 }
 
-/** Returns true if color output should be enabled. */
-function shouldUseColor(programArgs: readonly string[]): boolean {
-  if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== '') return false;
-  if (process.env.FORCE_COLOR !== undefined && process.env.FORCE_COLOR !== '') return true;
-  return !programArgs.includes('--no-color');
+/**
+ * Returns true if color output should be enabled.
+ *
+ * Follows the de-facto CLI convention: `NO_COLOR` (any value, including empty)
+ * disables color per https://no-color.org/; `FORCE_COLOR` (any value) forces
+ * it on; otherwise, the `--no-color` CLI flag is honored.
+ */
+function shouldUseColor(argv: readonly string[]): boolean {
+  if (process.env.NO_COLOR !== undefined) return false;
+  if (process.env.FORCE_COLOR !== undefined) return true;
+  return !argv.includes('--no-color');
 }
 
 /** Prints a help message showing available shell targets. */
