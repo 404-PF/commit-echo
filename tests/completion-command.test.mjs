@@ -116,8 +116,9 @@ test('completion --help shows command usage', async () => {
 
 test('completion bash script guards value-taking flags like --model', async () => {
   const { stdout } = await runCompletion(['bash']);
-  // Bash extglob @(--model) should bail out of completion after --model
-  assert.match(stdout, /COMP_WORDS\[COMP_CWORD-1\]\}["']? == @\(--model/);
+  // The bash script uses a `case` statement (not extglob) to bail out after --model
+  assert.match(stdout, /case "\$\{COMP_WORDS\[COMP_CWORD-1\]\}"/);
+  assert.match(stdout, /--model\) return 0/);
 });
 
 test('completion zsh script marks --model as value-taking', async () => {
@@ -157,6 +158,54 @@ test('completion bash script is syntactically valid bash', async () => {
     await writeFile(scriptPath, stdout, 'utf8');
     // `bash -n` parses the script without executing it
     await exec('bash', ['-n', scriptPath]);
+  } finally {
+    await unlink(scriptPath).catch(() => {});
+  }
+});
+
+test('completion zsh script is syntactically valid zsh (if zsh is available)', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { writeFile, unlink } = await import('node:fs/promises');
+  const exec = promisify(execFile);
+
+  // Skip on platforms without zsh
+  let probe;
+  try {
+    probe = await exec('zsh', ['-c', 'exit 0']);
+  } catch {
+    return; // zsh not installed — skip silently
+  }
+  if (probe.stderr) return;
+
+  const { stdout } = await runCompletion(['zsh']);
+  const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.zsh`;
+  try {
+    await writeFile(scriptPath, stdout, 'utf8');
+    await exec('zsh', ['-n', scriptPath]);
+  } finally {
+    await unlink(scriptPath).catch(() => {});
+  }
+});
+
+test('completion fish script is syntactically valid fish (if fish is available)', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { writeFile, unlink } = await import('node:fs/promises');
+  const exec = promisify(execFile);
+
+  // Skip on platforms without fish
+  try {
+    await exec('fish', ['-c', 'exit 0']);
+  } catch {
+    return; // fish not installed — skip silently
+  }
+
+  const { stdout } = await runCompletion(['fish']);
+  const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.fish`;
+  try {
+    await writeFile(scriptPath, stdout, 'utf8');
+    await exec('fish', ['-n', scriptPath]);
   } finally {
     await unlink(scriptPath).catch(() => {});
   }

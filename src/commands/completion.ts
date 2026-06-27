@@ -24,6 +24,10 @@ interface Subcommand {
  * Single source of truth for completion metadata. The three shell scripts are
  * generated from this structure, so adding a subcommand or option only requires
  * editing one place.
+ *
+ * Note: the `hook` subcommand is registered on the root program (see
+ * src/index.ts) with `{ hidden: true }` because it is invoked by Git, not
+ * humans. It is intentionally omitted from completion so users do not see it.
  */
 const SUBCOMMANDS: readonly Subcommand[] = [
   {
@@ -101,7 +105,7 @@ function findSubcommand(name: string): Subcommand | undefined {
  * ------------------------------------------------------------------------- */
 
 function generateBashScript(): string {
-  const subcommandList = [...SUBCOMMAND_NAMES, 'help'].join(' ');
+  const subcommandList = [...SUBCOMMAND_NAMES].join(' ');
   const globalOpts = GLOBAL_OPTIONS.map((o) => o.flag).join(' ');
 
   // Per-subcommand option cases for `merged_opts`
@@ -113,7 +117,8 @@ function generateBashScript(): string {
     .join('\n');
 
   // Flags that consume a value; skip completion after one of these.
-  const valueFlags = [...VALUE_TAKING_FLAGS].join('|');
+  // Rendered as a `case` pattern list so we don't depend on extglob.
+  const valueFlagCases = [...VALUE_TAKING_FLAGS].map((f) => `    ${f}) return 0 ;;`).join('\n');
 
   return `#!/usr/bin/env bash
 # bash completion for commit-echo                          -*- shell-script -*-
@@ -138,9 +143,12 @@ _commit_echo()
     fi
   done
 
-  # If the previous token is a flag that takes a value, don't complete
-  if [[ \${COMP_CWORD} -gt 1 ]] && [[ "\${COMP_WORDS[COMP_CWORD-1]}" == @(${valueFlags}) ]]; then
-    return 0
+  # If the previous token is a flag that takes a value, don't complete.
+  # Using case (not extglob) so the script works regardless of extglob state.
+  if [[ \${COMP_CWORD} -gt 1 ]]; then
+    case "\${COMP_WORDS[COMP_CWORD-1]}" in
+${valueFlagCases}
+    esac
   fi
 
   # If no subcommand found yet, complete subcommands (or flags before any subcmd)
@@ -214,7 +222,6 @@ _commit_echo() {
   local -a commands
   commands=(
 ${commands}
-    'help:Display help'
   )
 
   _arguments -C \\
@@ -252,12 +259,13 @@ compdef _commit_echo commit-echo
  * ------------------------------------------------------------------------- */
 
 function generateFishScript(): string {
-  const subcommandList = [...SUBCOMMAND_NAMES, 'help']
+  const subcommandList = [...SUBCOMMAND_NAMES]
     .map((n) => {
       const sub = findSubcommand(n);
-      const desc = sub?.description ?? 'Display help';
-      return `    '${n}\\t${desc}' \\`;
+      if (!sub) return null;
+      return `    '${sub.name}\\t${sub.description}' \\`;
     })
+    .filter((line): line is string => line !== null)
     .join('\n');
 
   const optionCases = SUBCOMMANDS.map((s) => {
