@@ -5,10 +5,9 @@ const BASH_SCRIPT = `#!/usr/bin/env bash
 
 _commit_echo()
 {
-  local cur prev commands
+  local cur commands
   COMPREPLY=()
   cur="\${COMP_WORDS[COMP_CWORD]}"
-  prev="\${COMP_WORDS[COMP_CWORD-1]}"
   commands="init config suggest history batch completion help"
 
   # Global options
@@ -301,12 +300,12 @@ export function completionCommand(shell?: string): void {
     return;
   }
 
-  const normalized = shell.toLowerCase() as SupportedShell;
+  const normalized = shell.toLowerCase();
 
-  if (!VALID_SHELLS.includes(normalized)) {
+  if (!VALID_SHELLS.includes(normalized as SupportedShell)) {
     console.error(pc.red(`Unsupported shell: "${shell}". Supported shells: ${VALID_SHELLS.join(', ')}`));
     process.exit(1);
   }
 
-  process.stdout.write(getCompletionScript(normalized));
+  process.stdout.write(getCompletionScript(normalized as SupportedShell));
 }
