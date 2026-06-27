@@ -2,10 +2,7 @@ import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../t
 import { fetchWithTimeout } from './request.js';
 import { parseOpenAiSseLine, streamSseResponse, SSE_STREAM_END } from './sse.js';
 
-function buildOpenAiRequestBody(
-  params: ChatParams,
-  options: { stream?: boolean } = {},
-): Record<string, unknown> {
+function buildOpenAiRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
   const { model, messages, temperature = 0.7, maxTokens = 1024 } = params;
 
   const body: Record<string, unknown> = {

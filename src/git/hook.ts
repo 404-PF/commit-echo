@@ -140,9 +140,8 @@ async function installManagedHook(hookName: string, cliPath: string): Promise<st
 }
 
 export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
-  const resolvedCliPath = cliPath === process.argv[1]
-    ? fileURLToPath(new URL('../index.js', import.meta.url))
-    : cliPath;
+  const resolvedCliPath =
+    cliPath === process.argv[1] ? fileURLToPath(new URL('../index.js', import.meta.url)) : cliPath;
 
   checkGitRepo();
   await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath);
@@ -171,7 +170,7 @@ export async function runPrepareCommitMsgHook(
     writePendingEntryFile: async (content) => writeFile(resolvePendingEntryPath(), content, 'utf-8'),
     removePendingEntryFile: async () => rm(resolvePendingEntryPath(), { force: true }),
     warn: (message) => console.warn(message),
-  }
+  },
 ): Promise<void> {
   if (shouldSkipPrepareCommitMsgHook(args.source)) {
     await clearPendingEntryFile(deps.removePendingEntryFile);
@@ -225,7 +224,7 @@ export async function runPostCommitHook(
     },
     removePendingEntryFile: async () => rm(resolvePendingEntryPath(), { force: true }),
     warn: (message) => console.warn(message),
-  }
+  },
 ): Promise<void> {
   try {
     deps.checkGitRepo();

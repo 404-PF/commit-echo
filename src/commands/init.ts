@@ -219,7 +219,9 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
         const hookPath = await installPrepareCommitMsgHook();
         console.log(pc.green(`Installed prepare-commit-msg hook at ${hookPath}`));
       } catch (err) {
-        console.warn(pc.yellow(`Could not install prepare-commit-msg hook: ${err instanceof Error ? err.message : String(err)}`));
+        console.warn(
+          pc.yellow(`Could not install prepare-commit-msg hook: ${err instanceof Error ? err.message : String(err)}`),
+        );
       }
     }
   };

@@ -16,6 +16,7 @@ import {
   checkGitRepo,
   commit,
   getBranchName,
+  getLastCommitMessage,
   getRepoRoot,
   getStagedDiff,
   getUnstagedDiff,
@@ -302,5 +303,38 @@ test("getBranchName returns unknown when git command fails", () => {
     });
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("getLastCommitMessage returns the last commit message in a repo with commits", () => {
+  const repoDir = initRepo();
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    git(["commit", "--allow-empty", "-m", "second commit"], repoDir);
+
+    withCwd(repoDir, () => {
+      assert.equal(getLastCommitMessage(), "second commit");
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("getLastCommitMessage returns empty string when there are no commits or in a non-git repo", () => {
+  const repoDir = initRepo();
+  const nonGitDir = createTempDir();
+
+  try {
+    withCwd(repoDir, () => {
+      assert.equal(getLastCommitMessage(), "");
+    });
+
+    withCwd(nonGitDir, () => {
+      assert.equal(getLastCommitMessage(), "");
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(nonGitDir, { recursive: true, force: true });
   }
 });

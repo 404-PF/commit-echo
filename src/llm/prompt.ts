@@ -76,7 +76,10 @@ export interface TemplateVars {
  * Unknown variables are left as-is.
  */
 export function substituteTemplateVars(template: string, vars: TemplateVars): string {
-  return template.replace(/\{\{(diff|profile|branch|message)\}\}/g, (_match, key: keyof TemplateVars) => vars[key] ?? '');
+  return template.replace(
+    /\{\{(diff|profile|branch|message)\}\}/g,
+    (_match, key: keyof TemplateVars) => vars[key] ?? '',
+  );
 }
 
 /**

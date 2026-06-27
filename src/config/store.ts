@@ -21,9 +21,7 @@ export const CONFIG_ENV_VARS = [
  * Read a positive integer from an environment variable.
  * Returns the parsed integer if valid, undefined if unset, or throws if invalid.
  */
-function readPositiveIntegerEnvVar(
-  envVar: string,
-): number | undefined {
+function readPositiveIntegerEnvVar(envVar: string): number | undefined {
   const raw = process.env[envVar];
   if (raw === undefined) return undefined;
 
@@ -95,8 +93,12 @@ export async function loadConfig(): Promise<Config> {
   const envHistorySize = readPositiveIntegerEnvVar('COMMIT_ECHO_HISTORY_SIZE');
   const envMaxDiffSize = readPositiveIntegerEnvVar('COMMIT_ECHO_MAX_DIFF_SIZE');
 
-  const historySize = envHistorySize ?? readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath);
-  const maxDiffSize = envMaxDiffSize ?? readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
+  const historySize =
+    envHistorySize ??
+    readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath);
+  const maxDiffSize =
+    envMaxDiffSize ??
+    readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
 
   return {
     provider: (process.env['COMMIT_ECHO_PROVIDER'] ?? parsed.provider ?? '').trim(),
