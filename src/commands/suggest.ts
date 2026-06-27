@@ -177,9 +177,10 @@ export async function suggestCommand(
   }
 
   const profile = await buildProfile(config.historySize);
-  const { diff: truncatedDiff, info: truncation } = truncateDiff(diffResult.diff, config.maxDiffSize);
+  const preview = options.dryRun || options.showDiff ? truncateDiff(diffResult.diff, config.maxDiffSize) : undefined;
 
   if (options.dryRun) {
+    const { diff: truncatedDiff, info: truncation } = preview!;
     const vars = {
       diff: truncatedDiff,
       profile: formatProfile(profile),
@@ -201,6 +202,7 @@ export async function suggestCommand(
   }
 
   if (options.showDiff) {
+    const { diff: truncatedDiff, info: truncation } = preview!;
     console.log(pc.bold('Diff being analyzed:'));
     console.log(pc.dim(truncatedDiff));
     console.log('');
@@ -210,6 +212,7 @@ export async function suggestCommand(
     }
   }
 
+  const analysisDiff = options.showDiff ? preview!.diff : diffResult.diff;
   let apiKey: string;
   try {
     apiKey = assertApiKeyAvailable(config);
@@ -236,7 +239,7 @@ export async function suggestCommand(
       model = config.model;
       let accumulated = '';
       try {
-        for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
+        for await (const event of generateSuggestionsStream(config, analysisDiff, profile, apiKey, streamProvider)) {
           if (event.kind === 'meta') {
             generatedTruncation = event.truncation;
             continue;
@@ -276,7 +279,7 @@ export async function suggestCommand(
       genSpinner.start('Generating commit suggestions...');
 
       try {
-        const result = await generateSuggestions(config, diffResult.diff, profile, apiKey);
+        const result = await generateSuggestions(config, analysisDiff, profile, apiKey);
         suggestions = result.suggestions;
         generatedTruncation = result.truncation;
         model = result.model;
