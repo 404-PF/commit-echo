@@ -41,7 +41,7 @@ test('completion bash script includes all subcommands', async () => {
   const { stdout } = await runCompletion(['bash']);
   const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
   for (const subcmd of expectedSubcommands) {
-    assert.match(stdout, new RegExp(subcmd));
+    assert.ok(stdout.includes(subcmd), `Expected stdout to contain subcommand: ${subcmd}`);
   }
 });
 
@@ -49,7 +49,7 @@ test('completion zsh script includes all subcommands', async () => {
   const { stdout } = await runCompletion(['zsh']);
   const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
   for (const subcmd of expectedSubcommands) {
-    assert.match(stdout, new RegExp(subcmd));
+    assert.ok(stdout.includes(subcmd), `Expected stdout to contain subcommand: ${subcmd}`);
   }
 });
 
@@ -57,7 +57,7 @@ test('completion fish script includes all subcommands', async () => {
   const { stdout } = await runCompletion(['fish']);
   const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
   for (const subcmd of expectedSubcommands) {
-    assert.match(stdout, new RegExp(subcmd));
+    assert.ok(stdout.includes(subcmd), `Expected stdout to contain subcommand: ${subcmd}`);
   }
 });
 

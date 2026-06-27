@@ -84,6 +84,7 @@ _commit_echo() {
     'history:View learned style profile and recent commit history'
     'batch:Process multiple git repositories in batch mode'
     'completion:Generate shell completion scripts'
+    'help:Display help'
   )
 
   _arguments -C \\
@@ -103,7 +104,7 @@ _commit_echo() {
       # Derive the first non-option argument as the subcommand
       local subcmd=''
       local w
-      for w in \$words[2,-1]; do
+      for w in \$words[1,-1]; do
         case \$w in
           -*) ;;
           *) subcmd=\$w; break ;;
@@ -149,7 +150,7 @@ _commit_echo() {
   esac
 }
 
-_compdef _commit_echo commit-echo
+compdef _commit_echo commit-echo
 `;
 
 const FISH_SCRIPT = `# fish completion for commit-echo                           -*- shell-script -*-
@@ -167,7 +168,7 @@ function __commit_echo_complete_options
   end
   switch $subcmd
     case suggest
-      printf '%s\\t%s\\n' \\
+      printf '%s\\n' \\
         '--commit\\tCommit the selected suggestion' \\
         '--yes\\tAutomatically select the first suggestion' \\
         '--verbose\\tPrint diagnostic information' \\
@@ -178,21 +179,21 @@ function __commit_echo_complete_options
         '--auto\\tAlias for --yes' \\
         '--help\\tDisplay help'
     case history
-      printf '%s\\t%s\\n' \\
+      printf '%s\\n' \\
         '--json\\tOutput the style profile and recent commits as JSON' \\
         '--help\\tDisplay help'
     case batch
-      printf '%s\\t%s\\n' \\
+      printf '%s\\n' \\
         '--recursive\\tRecursively search subdirectories for git repos' \\
         '--yes\\tAutomatically accept the first suggestion and commit without prompts' \\
         '--auto\\tAlias for --yes' \\
         '--help\\tDisplay help'
     case init
-      printf '%s\\t%s\\n' \\
+      printf '%s\\n' \\
         '--install-hook\\tInstall a prepare-commit-msg hook' \\
         '--help\\tDisplay help'
     case completion
-      printf '%s\\t%s\\n' \\
+      printf '%s\\n' \\
         '--help\\tDisplay help' \\
         'bash\\tBash completion script' \\
         'zsh\\tZsh completion script' \\
@@ -201,7 +202,7 @@ function __commit_echo_complete_options
 end
 
 function __commit_echo_subcommands
-  printf '%s\\t%s\\n' \\
+  printf '%s\\n' \\
     'init\\tRun interactive setup wizard' \\
     'config\\tView current configuration' \\
     'suggest\\tGenerate commit suggestions' \\
@@ -231,7 +232,7 @@ function __commit_echo_completions
   set -l token (commandline -ct)
   if string match -q -- '-*' $token
     # Global options
-    printf '%s\\t%s\\n' \\
+    printf '%s\\n' \\
       '--yes\\tAutomatically accept the first suggestion' \\
       '--auto\\tAlias for --yes' \\
       '--no-color\\tDisable colored output' \\
@@ -256,8 +257,10 @@ function __commit_echo_completions
     return
   end
 
-  # Otherwise, suggest subcommands
-  __commit_echo_subcommands
+  # Otherwise, suggest subcommands (only if no subcommand selected yet)
+  if test -z "$subcmd"
+    __commit_echo_subcommands
+  end
 end
 
 complete -c commit-echo -f -a '(__commit_echo_completions)'
