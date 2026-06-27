@@ -107,3 +107,57 @@ test('completion fish script includes global options', async () => {
   assert.match(stdout, /--auto/);
   assert.match(stdout, /--no-color/);
 });
+
+test('completion --help shows command usage', async () => {
+  const { stdout } = await runCompletion(['--help']);
+  assert.match(stdout, /Usage: commit-echo completion/);
+  assert.match(stdout, /Target shell: bash, zsh, or fish/);
+});
+
+test('completion bash script guards value-taking flags like --model', async () => {
+  const { stdout } = await runCompletion(['bash']);
+  // Bash extglob @(--model) should bail out of completion after --model
+  assert.match(stdout, /COMP_WORDS\[COMP_CWORD-1\]\}["']? == @\(--model/);
+});
+
+test('completion zsh script marks --model as value-taking', async () => {
+  const { stdout } = await runCompletion(['zsh']);
+  assert.match(stdout, /'--model\[[^\]]+\]:model:'/);
+});
+
+test('completion fish script guards value-taking flags like --model', async () => {
+  const { stdout } = await runCompletion(['fish']);
+  assert.match(stdout, /case '--model'/);
+});
+
+test('completion error path does not emit ANSI when --no-color is set', async () => {
+  const ansiPattern = /\u001b\[[0-9;]*m/;
+  try {
+    await runCompletion(['powershell']);
+    assert.fail('Expected process to exit with error');
+  } catch (err) {
+    const stderr = (err.stderr || '').toString();
+    assert.match(stderr, /Unsupported shell/);
+    assert.doesNotMatch(stderr, ansiPattern, 'Expected no ANSI codes with --no-color');
+  }
+});
+
+test('completion bash script is syntactically valid bash', async () => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { writeFile, unlink } = await import('node:fs/promises');
+  const exec = promisify(execFile);
+
+  const { stdout } = await runCompletion(['bash']);
+  // Use a relative path in cwd — Git Bash on Windows mangles absolute Windows
+  // paths (backslashes get stripped). The cwd of the test runner is the repo
+  // root, which is safe because we always clean up.
+  const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.sh`;
+  try {
+    await writeFile(scriptPath, stdout, 'utf8');
+    // `bash -n` parses the script without executing it
+    await exec('bash', ['-n', scriptPath]);
+  } finally {
+    await unlink(scriptPath).catch(() => {});
+  }
+});

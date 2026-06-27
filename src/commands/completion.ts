@@ -1,10 +1,121 @@
 import pc from 'picocolors';
 
-// NOTE: The completion scripts below hardcode subcommand names and option flags.
-// If you add a new subcommand or change options, update ALL three shell scripts
-// (BASH_SCRIPT, ZSH_SCRIPT, FISH_SCRIPT) to stay in sync.
+export type SupportedShell = 'bash' | 'zsh' | 'fish';
 
-const BASH_SCRIPT = `#!/usr/bin/env bash
+const VALID_SHELLS: SupportedShell[] = ['bash', 'zsh', 'fish'];
+
+/** A single subcommand option. `value` is set for options that take an argument. */
+interface SubcommandOption {
+  /** Long flag, including any leading dashes (e.g. `--model`). */
+  flag: string;
+  /** Human-readable description shown in completion tooltips. */
+  description: string;
+  /** When set, the option consumes the next token; completion is suppressed for that slot. */
+  value?: string;
+}
+
+interface Subcommand {
+  name: string;
+  description: string;
+  options: SubcommandOption[];
+}
+
+/**
+ * Single source of truth for completion metadata. The three shell scripts are
+ * generated from this structure, so adding a subcommand or option only requires
+ * editing one place.
+ */
+const SUBCOMMANDS: readonly Subcommand[] = [
+  {
+    name: 'init',
+    description: 'Run interactive setup wizard',
+    options: [
+      { flag: '--install-hook', description: 'Install a prepare-commit-msg hook in the current repository' },
+      { flag: '--help', description: 'Display help for init' },
+    ],
+  },
+  {
+    name: 'config',
+    description: 'View current configuration',
+    options: [{ flag: '--help', description: 'Display help for config' }],
+  },
+  {
+    name: 'suggest',
+    description: 'Generate commit suggestions',
+    options: [
+      { flag: '--commit', description: 'Commit the selected suggestion' },
+      { flag: '--yes', description: 'Automatically select the first suggestion and skip prompts' },
+      { flag: '--verbose', description: 'Print diagnostic information about the suggestion request' },
+      { flag: '--model', description: 'Override the configured LLM model', value: 'model' },
+      { flag: '--stream', description: 'Stream suggestions as they are generated' },
+      { flag: '--dry-run', description: 'Show the LLM input without generating suggestions' },
+      { flag: '--no-commit', description: 'Deprecated alias' },
+      { flag: '--auto', description: 'Alias for --yes' },
+      { flag: '--help', description: 'Display help for suggest' },
+    ],
+  },
+  {
+    name: 'history',
+    description: 'View learned style profile and recent commit history',
+    options: [
+      { flag: '--json', description: 'Output the style profile and recent commits as JSON' },
+      { flag: '--help', description: 'Display help for history' },
+    ],
+  },
+  {
+    name: 'batch',
+    description: 'Process multiple git repositories in batch mode',
+    options: [
+      { flag: '--recursive', description: 'Recursively search subdirectories for git repos' },
+      { flag: '--yes', description: 'Automatically accept the first suggestion and commit without prompts' },
+      { flag: '--auto', description: 'Alias for --yes' },
+      { flag: '--help', description: 'Display help for batch' },
+    ],
+  },
+  {
+    name: 'completion',
+    description: 'Generate shell completion scripts',
+    options: [{ flag: '--help', description: 'Display help for completion' }],
+  },
+] as const;
+
+const GLOBAL_OPTIONS: readonly SubcommandOption[] = [
+  { flag: '--yes', description: 'Automatically accept the first suggestion and commit without prompts' },
+  { flag: '--auto', description: 'Alias for --yes' },
+  { flag: '--no-color', description: 'Disable colored output' },
+  { flag: '--version', description: 'Output the version' },
+  { flag: '--help', description: 'Display help' },
+];
+
+const SUBCOMMAND_NAMES: readonly string[] = SUBCOMMANDS.map((s) => s.name);
+const VALUE_TAKING_FLAGS: ReadonlySet<string> = new Set(
+  SUBCOMMANDS.flatMap((s) => s.options.filter((o) => o.value).map((o) => o.flag)),
+);
+
+function findSubcommand(name: string): Subcommand | undefined {
+  return SUBCOMMANDS.find((s) => s.name === name);
+}
+
+/* ---------------------------------------------------------------------------
+ * Bash script generation
+ * ------------------------------------------------------------------------- */
+
+function generateBashScript(): string {
+  const subcommandList = [...SUBCOMMAND_NAMES, 'help'].join(' ');
+  const globalOpts = GLOBAL_OPTIONS.map((o) => o.flag).join(' ');
+
+  // Per-subcommand option cases for `merged_opts`
+  const optionCases = SUBCOMMANDS.filter((s) => s.options.length > 0)
+    .map(
+      (s) =>
+        `      ${s.name})\n        merged_opts="\${merged_opts} ${s.options.map((o) => o.flag).join(' ')}"\n        ;;`,
+    )
+    .join('\n');
+
+  // Flags that consume a value; skip completion after one of these.
+  const valueFlags = [...VALUE_TAKING_FLAGS].join('|');
+
+  return `#!/usr/bin/env bash
 # bash completion for commit-echo                          -*- shell-script -*-
 
 _commit_echo()
@@ -12,10 +123,10 @@ _commit_echo()
   local cur commands
   COMPREPLY=()
   cur="\${COMP_WORDS[COMP_CWORD]}"
-  commands="init config suggest history batch completion help"
+  commands="${subcommandList}"
 
   # Global options
-  global_opts="--yes --auto --no-color --help --version"
+  global_opts="${globalOpts}"
 
   # Find the first non-option word as the subcommand
   local subcmd=""
@@ -26,6 +137,11 @@ _commit_echo()
       break
     fi
   done
+
+  # If the previous token is a flag that takes a value, don't complete
+  if [[ \${COMP_CWORD} -gt 1 ]] && [[ "\${COMP_WORDS[COMP_CWORD-1]}" == @(${valueFlags}) ]]; then
+    return 0
+  fi
 
   # If no subcommand found yet, complete subcommands (or flags before any subcmd)
   if [[ -z "\${subcmd}" ]]; then
@@ -41,20 +157,7 @@ _commit_echo()
   if [[ "\${cur}" == -* ]]; then
     local merged_opts="\${global_opts}"
     case "\${subcmd}" in
-      suggest)
-        merged_opts="\${merged_opts} --commit --verbose --model --stream --dry-run --no-commit"
-        ;;
-      history)
-        merged_opts="\${merged_opts} --json"
-        ;;
-      batch)
-        merged_opts="\${merged_opts} --recursive"
-        ;;
-      init)
-        merged_opts="\${merged_opts} --install-hook"
-        ;;
-      completion)
-        ;;
+${optionCases}
     esac
     COMPREPLY=( $(compgen -W "\${merged_opts}" -- "\${cur}") )
     return 0
@@ -71,28 +174,51 @@ _commit_echo()
 
 complete -F _commit_echo commit-echo
 `;
+}
 
-const ZSH_SCRIPT = `#compdef commit-echo
+/* ---------------------------------------------------------------------------
+ * Zsh script generation
+ * ------------------------------------------------------------------------- */
+
+function generateZshScript(): string {
+  const commands = SUBCOMMANDS.map((s) => `    '${s.name}:${s.description}'`).join(' \\\n');
+  const globalArgs = GLOBAL_OPTIONS.map((o) => `    '${o.flag}[${o.description}]' \\`).join('\n');
+
+  // Per-subcommand _arguments block
+  const subcommandBlocks = SUBCOMMANDS.map((s) => {
+    if (s.name === 'completion') {
+      return `        completion)
+          _arguments \\
+            '--help[Display help for completion]' \\
+            '1:shell:(bash zsh fish)'
+          ;;`;
+    }
+    const optionLines = s.options
+      .map((o) => {
+        if (o.value) {
+          return `            '${o.flag}[${o.description}]:${o.value}:' \\`;
+        }
+        return `            '${o.flag}[${o.description}]' \\`;
+      })
+      .join('\n');
+    return `        ${s.name})
+          _arguments \\
+${optionLines}
+          ;;`;
+  }).join('\n');
+
+  return `#compdef commit-echo
 # zsh completion for commit-echo                           -*- shell-script -*-
 
 _commit_echo() {
   local -a commands
   commands=(
-    'init:Run interactive setup wizard'
-    'config:View current configuration'
-    'suggest:Generate commit suggestions'
-    'history:View learned style profile and recent commit history'
-    'batch:Process multiple git repositories in batch mode'
-    'completion:Generate shell completion scripts'
+${commands}
     'help:Display help'
   )
 
   _arguments -C \\
-    '--yes[Automatically accept the first suggestion and commit without prompts]' \\
-    '--auto[Alias for --yes]' \\
-    '--no-color[Disable colored output]' \\
-    '--version[Output the version]' \\
-    '--help[Display help]' \\
+${globalArgs}
     '1:command:->command' \\
     '*::args:->args'
 
@@ -111,40 +237,7 @@ _commit_echo() {
         esac
       done
       case \$subcmd in
-        suggest)
-          _arguments \\
-            '--commit[Commit the selected suggestion]' \\
-            '--yes[Automatically select the first suggestion and skip prompts]' \\
-            '--verbose[Print diagnostic information about the suggestion request]' \\
-            '--model[Override the configured LLM model]:model:' \\
-            '--stream[Stream suggestions as they are generated]' \\
-            '--dry-run[Show the LLM input without generating suggestions]' \\
-            '--no-commit[Deprecated alias]' \\
-            '--auto[Alias for --yes]' \\
-            '--help[Display help for suggest]'
-          ;;
-        history)
-          _arguments \\
-            '--json[Output the style profile and recent commits as JSON]' \\
-            '--help[Display help for history]'
-          ;;
-        batch)
-          _arguments \\
-            '--recursive[Recursively search subdirectories for git repos]' \\
-            '--yes[Automatically accept the first suggestion and commit without prompts]' \\
-            '--auto[Alias for --yes]' \\
-            '--help[Display help for batch]'
-          ;;
-        init)
-          _arguments \\
-            '--install-hook[Install a prepare-commit-msg hook in the current repository]' \\
-            '--help[Display help for init]'
-          ;;
-        completion)
-          _arguments \\
-            '--help[Display help for completion]' \\
-            '1:shell:(bash zsh fish)'
-          ;;
+${subcommandBlocks}
       esac
       ;;
   esac
@@ -152,8 +245,43 @@ _commit_echo() {
 
 compdef _commit_echo commit-echo
 `;
+}
 
-const FISH_SCRIPT = `# fish completion for commit-echo                           -*- shell-script -*-
+/* ---------------------------------------------------------------------------
+ * Fish script generation
+ * ------------------------------------------------------------------------- */
+
+function generateFishScript(): string {
+  const subcommandList = [...SUBCOMMAND_NAMES, 'help']
+    .map((n) => {
+      const sub = findSubcommand(n);
+      const desc = sub?.description ?? 'Display help';
+      return `    '${n}\\t${desc}' \\`;
+    })
+    .join('\n');
+
+  const optionCases = SUBCOMMANDS.map((s) => {
+    if (s.name === 'completion') {
+      return `    case completion
+      printf '%s\\n' \\
+        '--help\\tDisplay help' \\
+        'bash\\tBash completion script' \\
+        'zsh\\tZsh completion script' \\
+        'fish\\tFish completion script'`;
+    }
+    const optionLines = s.options
+      .map((o) => `        '${o.flag}\\t${o.description}' \\`)
+      .join('\n');
+    return `    case ${s.name}
+      printf '%s\\n' \\
+${optionLines}`;
+  }).join('\n');
+
+  const globalFishOpts = GLOBAL_OPTIONS.map((o) => `        '${o.flag}\\t${o.description}' \\`).join('\n');
+
+  const valueFlags = [...VALUE_TAKING_FLAGS].map((f) => `'${f}'`).join(' ');
+
+  return `# fish completion for commit-echo                           -*- shell-script -*-
 
 # Helper: complete options for a subcommand
 function __commit_echo_complete_options
@@ -167,49 +295,13 @@ function __commit_echo_complete_options
     end
   end
   switch $subcmd
-    case suggest
-      printf '%s\\n' \\
-        '--commit\\tCommit the selected suggestion' \\
-        '--yes\\tAutomatically select the first suggestion' \\
-        '--verbose\\tPrint diagnostic information' \\
-        '--model\\tOverride the configured LLM model' \\
-        '--stream\\tStream suggestions as they are generated' \\
-        '--dry-run\\tShow the LLM input without generating suggestions' \\
-        '--no-commit\\tDeprecated alias' \\
-        '--auto\\tAlias for --yes' \\
-        '--help\\tDisplay help'
-    case history
-      printf '%s\\n' \\
-        '--json\\tOutput the style profile and recent commits as JSON' \\
-        '--help\\tDisplay help'
-    case batch
-      printf '%s\\n' \\
-        '--recursive\\tRecursively search subdirectories for git repos' \\
-        '--yes\\tAutomatically accept the first suggestion and commit without prompts' \\
-        '--auto\\tAlias for --yes' \\
-        '--help\\tDisplay help'
-    case init
-      printf '%s\\n' \\
-        '--install-hook\\tInstall a prepare-commit-msg hook' \\
-        '--help\\tDisplay help'
-    case completion
-      printf '%s\\n' \\
-        '--help\\tDisplay help' \\
-        'bash\\tBash completion script' \\
-        'zsh\\tZsh completion script' \\
-        'fish\\tFish completion script'
+${optionCases}
   end
 end
 
 function __commit_echo_subcommands
   printf '%s\\n' \\
-    'init\\tRun interactive setup wizard' \\
-    'config\\tView current configuration' \\
-    'suggest\\tGenerate commit suggestions' \\
-    'history\\tView learned style profile and history' \\
-    'batch\\tProcess multiple git repositories' \\
-    'completion\\tGenerate shell completion scripts' \\
-    'help\\tDisplay help'
+${subcommandList}
 end
 
 function __commit_echo_completions
@@ -224,7 +316,7 @@ function __commit_echo_completions
 
   # If the previous token is a flag with a value (like --model), don't complete
   switch $cmd[-1]
-    case '--model'
+    case ${valueFlags}
       return
   end
 
@@ -233,11 +325,7 @@ function __commit_echo_completions
   if string match -q -- '-*' $token
     # Global options
     printf '%s\\n' \\
-      '--yes\\tAutomatically accept the first suggestion' \\
-      '--auto\\tAlias for --yes' \\
-      '--no-color\\tDisable colored output' \\
-      '--version\\tOutput the version' \\
-      '--help\\tDisplay help'
+${globalFishOpts}
     # Subcommand options
     __commit_echo_complete_options
     return
@@ -265,52 +353,64 @@ end
 
 complete -c commit-echo -f -a '(__commit_echo_completions)'
 `;
-
-export type SupportedShell = 'bash' | 'zsh' | 'fish';
-
-const VALID_SHELLS: SupportedShell[] = ['bash', 'zsh', 'fish'];
+}
 
 /** Returns the completion script for the given shell. */
 function getCompletionScript(shell: SupportedShell): string {
   switch (shell) {
     case 'bash':
-      return BASH_SCRIPT;
+      return generateBashScript();
     case 'zsh':
-      return ZSH_SCRIPT;
+      return generateZshScript();
     case 'fish':
-      return FISH_SCRIPT;
+      return generateFishScript();
   }
 }
 
+/** Returns true if color output should be enabled. */
+function shouldUseColor(programArgs: readonly string[]): boolean {
+  if (process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== '') return false;
+  if (process.env.FORCE_COLOR !== undefined && process.env.FORCE_COLOR !== '') return true;
+  return !programArgs.includes('--no-color');
+}
+
 /** Prints a help message showing available shell targets. */
-function printHelp(): void {
-  console.log(pc.bold('Generate shell completion scripts for commit-echo.\n'));
-  console.log(pc.cyan('Usage:'));
+function printHelp(useColor: boolean): void {
+  const bold = useColor ? pc.bold : (s: string) => s;
+  const cyan = useColor ? pc.cyan : (s: string) => s;
+  const green = useColor ? pc.green : (s: string) => s;
+  const dim = useColor ? pc.dim : (s: string) => s;
+
+  console.log(bold('Generate shell completion scripts for commit-echo.\n'));
+  console.log(cyan('Usage:'));
   console.log('  commit-echo completion <shell>\n');
-  console.log(pc.cyan('Supported shells:'));
-  console.log(`  ${pc.green('bash')}   - Bash completion script`);
-  console.log(`  ${pc.green('zsh')}    - Zsh completion script`);
-  console.log(`  ${pc.green('fish')}   - Fish completion script\n`);
-  console.log(pc.cyan('Examples:'));
-  console.log(`  ${pc.dim('# Bash')}`);
+  console.log(cyan('Supported shells:'));
+  console.log(`  ${green('bash')}   - Bash completion script`);
+  console.log(`  ${green('zsh')}    - Zsh completion script`);
+  console.log(`  ${green('fish')}   - Fish completion script\n`);
+  console.log(cyan('Examples:'));
+  console.log(`  ${dim('# Bash')}`);
   console.log('  commit-echo completion bash >> ~/.bashrc\n');
-  console.log(`  ${pc.dim('# Zsh')}`);
+  console.log(`  ${dim('# Zsh')}`);
   console.log('  commit-echo completion zsh > ~/.zfunc/_commit-echo\n');
-  console.log(`  ${pc.dim('# Fish')}`);
+  console.log(`  ${dim('# Fish')}`);
   console.log('  commit-echo completion fish > ~/.config/fish/completions/commit-echo.fish');
 }
 
 /** The completion command action: outputs the requested shell script. */
 export function completionCommand(shell?: string): void {
+  const useColor = shouldUseColor(process.argv);
+
   if (!shell) {
-    printHelp();
+    printHelp(useColor);
     return;
   }
 
   const normalized = shell.toLowerCase();
 
   if (!VALID_SHELLS.includes(normalized as SupportedShell)) {
-    console.error(pc.red(`Unsupported shell: "${shell}". Supported shells: ${VALID_SHELLS.join(', ')}`));
+    const error = `Unsupported shell: "${shell}". Supported shells: ${VALID_SHELLS.join(', ')}`;
+    console.error(useColor ? pc.red(error) : error);
     process.exit(1);
   }
 
