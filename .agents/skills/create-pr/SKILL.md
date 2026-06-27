@@ -1,96 +1,94 @@
 ---
 name: create-pr
-description: Use this skill when asked to create a GitHub pull request. Provides a structured workflow for gathering PR details, building a description from templates and commit logs, and creating the PR via the gh CLI.
+description: 'Create a GitHub pull request from the current branch. Use when the user asks to create a PR, open a pull request, or submit a PR for review. Assumes branch is pushed. Auto-generates title and description from commit history.'
+user-invocable: true
+argument-hint: 'Optional: base branch name (defaults to main)'
 ---
 
 # Create Pull Request
 
-Use this skill when the user asks to create a pull request.
+## When to Use
+- User asks to "create a PR", "open a pull request", or "submit for review"
+- User wants to submit changes for team review
+- After completing work on a feature branch
 
-## Workflow
+## Prerequisites
+- Current branch must have at least one commit ahead of the base branch
+- Branch will be auto-pushed to remote if not already pushed
 
-1. **Identify branches** — Determine the source (head) and target (base) branches:
-   - Default head: current branch (`git branch --show-current`)
-   - Default base: repo's default branch (`gh repo view --json defaultBranch --jq .defaultBranch`)
-   - Confirm with the user if they differ from defaults
+## Procedure
 
-2. **Check for PR template** — Look for template files to pre-fill the body:
-   - `.github/PULL_REQUEST_TEMPLATE.md` (single template)
-   - `.github/PULL_REQUEST_TEMPLATE/` (multiple templates — list and ask which to use)
-   - If found, load the template as the initial body and pre-fill any checklist items
+### 1. Determine Branch Context
+- Identify the current branch name
+- Identify the base branch (default: `main`, or use the argument if provided)
+- Verify there are commits ahead of the base branch
+- If branch has no upstream or has unpushed commits, push automatically (`git push -u origin <branch>`)
 
-3. **Gather PR metadata** — Ask the user about:
-   - **Title**: Concise summary of changes (infer from branch name and commits if not provided)
-   - **Body**: Description of changes. Use the following strategy if body is not explicitly provided:
-     a. Load PR template (if exists) as base
-     b. Run `git log <base>..<head> --oneline --no-decorate` to collect commits
-     c. Run `git log <base>..<head> --format="%s%n%b---"` to get full commit messages including bodies
-     d. Compose a summary from the commit log, filling in the template
-   - **Labels**: Suggest labels based on conventional commit prefixes (feat → enhancement, fix → bug, etc.)
-   - **Reviewers**: Ask if specific reviewers should be requested
-   - **Assignees**: Ask if the PR should be assigned to someone
-   - **Linked issues**: Detect references like "Closes #N", "Fixes #N" in branch name or recent commits
-   - **Draft**: Ask if this should be a draft PR (not ready for review)
+### 2. Analyze Commits
+- Run `git log --oneline base..current` to get all commits on the feature branch
+- Group commits by type (feat, fix, refactor, docs, test, chore, etc.)
+- Identify the primary change/feature being introduced
 
-4. **Confirm details** — Display a summary (base, head, title, body preview, labels, reviewers, assignees, linked issues, draft status) and ask the user to confirm before proceeding.
+### 3. Generate PR Metadata
 
-5. **Pre-submit checks** — Optionally verify:
-   - The project builds (e.g., `npm run build`)
-   - Tests pass (e.g., `npm test`)
-   - No uncommitted changes (`git status --porcelain`)
-   - The branch is up to date with base (`git merge-base --is-ancestor <base> <head>`)
+**Title** (max 72 characters):
+- Use the first line of the most significant commit, or synthesize from commit grouping
+- Follow Conventional Commits format when commits use it: `type(scope): description`
 
-6. **Create the PR** — Use `gh pr create` with all gathered information and return the PR URL.
+**Description body** (Markdown):
+```markdown
+## Summary
+[1-2 sentence description of what this PR accomplishes]
 
-## Commands
+## Changes
+- **feat**: [list of feature commits]
+- **fix**: [list of bug fix commits]
+- **refactor**: [list of refactors]
+- [other categories as needed]
 
-```bash
-# Get current branch name
-git branch --show-current
+## Testing
+[How to test these changes, if evident from commits or code]
 
-# Get repo's default branch
-gh repo view --json defaultBranch --jq .defaultBranch
-
-# List PR templates
-find .github/PULL_REQUEST_TEMPLATE -name '*.md' 2>/dev/null
-test -f .github/PULL_REQUEST_TEMPLATE.md && echo "found"
-
-# Read a specific PR template
-cat .github/PULL_REQUEST_TEMPLATE/<template-file>
-
-# Get commit log between base and head (condensed)
-git log <base>..<head> --oneline --no-decorate
-
-# Get commit log with full messages (for body composition)
-git log <base>..<head> --format="## %s%n%n%b%n---%n"
-
-# Check if branch is up to date with base
-git merge-base --is-ancestor <base> <head> && echo "up-to-date" || echo "behind"
-
-# Create the PR
-gh pr create \
-  --title "<title>" \
-  --body "<body>" \
-  --base "<base>" \
-  --head "<head>" \
-  --label "<labels>" \
-  --reviewer "<reviewers>" \
-  --assignee "<assignee>" \
-  --project "<project>" \
-  --draft
-
-# Create PR with auto-fill (useful for quick PRs)
-gh pr create --fill --base "<base>" --head "<head>"
+## Related
+[Closes #123, Fixes #456 if commit messages reference issues]
 ```
 
-## Notes
+### 4. Ask User for Confirmation
+Before creating the PR, present:
+- The generated title
+- The generated description
+- Ask: **Draft or Ready for review?**
 
-- If no base is specified, use the repo's default branch
-- If no head is specified, use the current branch
-- The `--fill` flag auto-populates title and body from commits (useful for conventional commits)
-- Pass `--draft` for draft PRs (work in progress, not ready for review)
-- Return the PR URL after creation (the `gh pr create` output includes the URL)
-- When composing the body, structure it with: **Summary** of changes, **Motivation** (why), **Testing** (how verified), and **Checklist** of completed items
-- Link related issues using GitHub keywords: `Closes #N`, `Fixes #N`, `Resolves #N`
-- If the repo has a `.github/CODEOWNERS` file, suggest relevant reviewers from it
-- Use conventional commit prefixes (feat, fix, chore, etc.) to automatically suggest labels
+### 5. Create the Pull Request
+
+Prefer **GitHub MCP tools** (`mcp_github_mcp_se_create_pull_request`) to create the PR. If MCP tools are unavailable or fail, fall back to **`gh` CLI** in the terminal:
+```bash
+gh pr create --base <base> --head <head> --title "<title>" --body "<body>"
+```
+
+Set the following:
+- `title` → generated title
+- `body` → generated description
+- `head` → current branch
+- `base` → target branch
+- `draft` → based on user preference
+
+### 6. Report Result
+- Display the created PR URL
+- Suggest next steps (e.g., request reviewers, add labels)
+
+## Example Usage
+
+User: "create a PR"
+→ Skill detects current branch `feat/user-auth`, base `main`
+→ Analyzes 5 commits, generates title and description
+→ Presents to user for review
+→ Creates PR when confirmed
+
+User: "create a PR targeting develop"
+→ Uses `develop` as the base branch instead of `main`
+
+## Notes
+- If commits are not conventional format, synthesize description from commit diffs
+- For single-commit PRs, use the commit message directly
+- Always verify remote tracking branch exists or offer to push

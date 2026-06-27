@@ -70,9 +70,7 @@ export interface ChatResult {
   model: string;
 }
 
-export type ProviderStreamChunk =
-  | { kind: 'text'; text: string }
-  | { kind: 'model'; model: string };
+export type ProviderStreamChunk = { kind: 'text'; text: string } | { kind: 'model'; model: string };
 
 export interface Provider {
   complete(params: ChatParams): Promise<ChatResult>;

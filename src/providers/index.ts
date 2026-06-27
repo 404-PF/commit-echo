@@ -44,9 +44,7 @@ export function createProvider(configProvider: string): Provider {
 export function getStreamingProvider(configProvider: string): Provider {
   const provider = createProvider(configProvider);
   if (!provider.completeStream) {
-    throw new Error(
-      `Streaming is not supported for the '${configProvider}' provider. Use non-streaming mode.`,
-    );
+    throw new Error(`Streaming is not supported for the '${configProvider}' provider. Use non-streaming mode.`);
   }
   return provider;
 }
