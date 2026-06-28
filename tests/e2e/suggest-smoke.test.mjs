@@ -23,6 +23,20 @@ function stripAnsi(text) {
   return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
+function extractShownDiff(stdout) {
+  const match = stdout.match(
+    /Diff being analyzed:\n([\s\S]*?)\n\n(?:The diff above is truncated|Streaming suggestions|Suggestions generated:)/,
+  );
+  assert.ok(match, `Could not find shown diff in stdout:\n${stdout}`);
+  return match[1];
+}
+
+function extractPromptDiff(content) {
+  const match = content.match(/```diff\n([\s\S]*)\n```\n\nReturn exactly 3 options/);
+  assert.ok(match, `Could not find prompt diff in request:\n${content}`);
+  return match[1];
+}
+
 function runSuggestUntil(args, { cwd, env, text }) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
@@ -551,6 +565,7 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
   assert.match(stdout, /Selected:\s+feat: inspect staged diff/);
   assert.match(stderr, /Diff truncated:/);
   assert.match(requests.at(-1).messages[1].content, /\[\.\.\.truncated 1 file\.\.\.\]/);
+  assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
 });
 
 test('suggest --show-diff works with unstaged changes in auto mode', async (t) => {
@@ -704,6 +719,7 @@ test('suggest --show-diff uses the truncated diff for streamed suggestions', asy
   assert.match(stderr, /Diff truncated:/);
   assert.equal(request?.stream, true);
   assert.match(request.messages[1].content, /\[\.\.\.truncated 1 file\.\.\.\]/);
+  assert.equal(extractPromptDiff(request.messages[1].content), extractShownDiff(stdout));
 });
 
 test('suggest --stream prints incremental SSE output', async (t) => {
