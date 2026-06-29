@@ -5,7 +5,6 @@ import test from 'node:test';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const execFilePromisified = promisify(execFile);
 
 async function runCompletion(args = []) {
   return execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'completion', ...args], {
@@ -192,7 +191,7 @@ test('NO_COLOR disables color even when set to an empty string (no-color.org spe
   const ansiPattern = /\u001b\[[0-9;]*m/;
 
   try {
-    await execFilePromisified(process.execPath, ['dist/index.js', '--no-color', 'completion', 'powershell'], {
+    await execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'completion', 'powershell'], {
       env: { ...process.env, NO_COLOR: '' },
     });
     assert.fail('Expected process to exit with error');
@@ -212,7 +211,7 @@ test('completion bash script is syntactically valid bash', async () => {
   try {
     await writeFile(scriptPath, stdout, 'utf8');
     // `bash -n` parses the script without executing it
-    await execFilePromisified('bash', ['-n', scriptPath]);
+    await execFileAsync('bash', ['-n', scriptPath]);
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
@@ -222,7 +221,7 @@ test('completion zsh script is syntactically valid zsh (if zsh is available)', a
   // Skip on platforms without zsh
   let probe;
   try {
-    probe = await execFilePromisified('zsh', ['-c', 'exit 0']);
+    probe = await execFileAsync('zsh', ['-c', 'exit 0']);
   } catch {
     return; // zsh not installed — skip silently
   }
@@ -232,7 +231,7 @@ test('completion zsh script is syntactically valid zsh (if zsh is available)', a
   const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.zsh`;
   try {
     await writeFile(scriptPath, stdout, 'utf8');
-    await execFilePromisified('zsh', ['-n', scriptPath]);
+    await execFileAsync('zsh', ['-n', scriptPath]);
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
@@ -241,7 +240,7 @@ test('completion zsh script is syntactically valid zsh (if zsh is available)', a
 test('completion fish script is syntactically valid fish (if fish is available)', async () => {
   // Skip on platforms without fish
   try {
-    await execFilePromisified('fish', ['-c', 'exit 0']);
+    await execFileAsync('fish', ['-c', 'exit 0']);
   } catch {
     return; // fish not installed — skip silently
   }
@@ -250,7 +249,7 @@ test('completion fish script is syntactically valid fish (if fish is available)'
   const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.fish`;
   try {
     await writeFile(scriptPath, stdout, 'utf8');
-    await execFilePromisified('fish', ['-n', scriptPath]);
+    await execFileAsync('fish', ['-n', scriptPath]);
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
