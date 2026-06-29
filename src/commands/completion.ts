@@ -106,6 +106,7 @@ const GLOBAL_OPTIONS: readonly SubcommandOption[] = [
 ];
 
 const SUBCOMMAND_NAMES: readonly string[] = SUBCOMMANDS.map((s) => s.name);
+const SHELL_NAMES_LIST: string = VALID_SHELLS.join(' ');
 const VALUE_TAKING_FLAGS: ReadonlySet<string> = new Set(
   SUBCOMMANDS.flatMap((s) => s.options.filter((o) => o.value).map((o) => o.flag)),
 );
@@ -197,7 +198,7 @@ ${optionCases}
 
   case "\${subcmd}" in
     completion)
-      COMPREPLY=( $(compgen -W "bash zsh fish" -- "\${cur}") )
+      COMPREPLY=( $(compgen -W "${SHELL_NAMES_LIST}" -- "\${cur}") )
       ;;
   esac
 
@@ -217,20 +218,14 @@ function generateZshScript(): string {
   const commands = SUBCOMMANDS.map((s) => `    '${s.name}:${s.description}'`).join(' \\\n');
   // Global flags available before any subcommand. Zsh supports multiple specs
   // per option, so short and long forms can be listed together: `-y[...]:--yes`.
-  const globalArgs = GLOBAL_OPTIONS.map((o) => {
-    const spec = o.short ? `'${o.short}[${o.description}]' \\` : '';
-    return `    '${o.flag}[${o.description}]' ${spec}\\`;
-  }).join('\n');
+  const globalArgs = GLOBAL_OPTIONS.flatMap((o) => {
+    const specs = [`    '${o.flag}[${o.description}]'`];
+    if (o.short) specs.push(`    '${o.short}[${o.description}]'`);
+    return specs;
+  }).join(' \\\n');
 
   // Per-subcommand _arguments block (emitted into the `args` state below).
   const subcommandBlocks = SUBCOMMANDS.map((s) => {
-    if (s.name === 'completion') {
-      return `        completion)
-          _arguments \\
-            '--help[Display help for completion]' \\
-            '1:shell:(bash zsh fish)'
-          ;;`;
-    }
     const optionLines = s.options
       .map((o) => {
         const valuePart = o.value ? `:${o.value}:` : '';
@@ -241,9 +236,11 @@ function generateZshScript(): string {
         return `            '${o.flag}[${o.description}]${valuePart}' \\`;
       })
       .join('\n');
+    // The completion subcommand takes a positional shell argument.
+    const positionalArg = s.name === 'completion' ? ` \\\n            '1:shell:(${SHELL_NAMES_LIST})'` : '';
     return `        ${s.name})
           _arguments \\
-${optionLines}
+${optionLines}${positionalArg}
           ;;`;
   }).join('\n');
 
@@ -304,24 +301,21 @@ function generateFishScript(): string {
     .join('\n');
 
   const optionCases = SUBCOMMANDS.map((s) => {
-    if (s.name === 'completion') {
-      return `    case completion
-      printf "%s\\n" \\
-        "--help\\tDisplay help" \\
-        "bash\\tBash completion script" \\
-        "zsh\\tZsh completion script" \\
-        "fish\\tFish completion script"
-      end`;
-    }
     const optionLines = s.options
       .map((o) => {
         const shortLine = o.short ? `\n        "${o.short}\\t${o.description}" \\` : '';
         return `        "${o.flag}\\t${o.description}" \\${shortLine}`;
       })
       .join('\n');
+    // The completion subcommand offers shell names as positional completions.
+    const shellCompletions =
+      s.name === 'completion'
+        ? VALID_SHELLS.map((sh) => `        "${sh}\\t${sh} completion script" \\`).join('\n')
+        : '';
+    const lines = [optionLines, shellCompletions].filter(Boolean).join('\n');
     return `    case ${s.name}
       printf "%s\\n" \\
-${optionLines}`;
+${lines}`;
   }).join('\n');
 
   const globalFishOpts = GLOBAL_OPTIONS.map((o) => {
