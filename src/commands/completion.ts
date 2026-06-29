@@ -120,6 +120,12 @@ function allFlags(o: SubcommandOption): string[] {
   return o.short ? [o.flag, o.short] : [o.flag];
 }
 
+/** Joins lines with ` \\` continuation, omitting the trailing backslash on the last line. */
+function joinContinuationLines(lines: string[]): string {
+  if (lines.length <= 1) return lines.join('');
+  return lines.slice(0, -1).map((l) => `${l} \\`).join('\n') + '\n' + lines[lines.length - 1];
+}
+
 /* ---------------------------------------------------------------------------
  * Bash script generation
  * ------------------------------------------------------------------------- */
@@ -294,37 +300,38 @@ compdef _commit_echo commit-echo
 
 /** Generates a fish completion script using `complete -c` with helper functions for subcommands and options. */
 function generateFishScript(): string {
-  const subcommandList = [...SUBCOMMAND_NAMES]
-    .map((n) => {
-      const sub = findSubcommand(n);
-      if (!sub) return null;
-      return `    "${sub.name}\\t${sub.description}" \\`;
-    })
-    .filter((line): line is string => line !== null)
-    .join('\n');
+  const subcommandListLines = SUBCOMMANDS.map(
+    (s) => `    "${s.name}\\t${s.description}"`,
+  );
+  const subcommandList =
+    subcommandListLines.slice(0, -1).map((l) => `${l} \\`).join('\n') +
+    '\n' +
+    subcommandListLines[subcommandListLines.length - 1];
 
   const optionCases = SUBCOMMANDS.map((s) => {
-    const optionLines = s.options
-      .map((o) => {
-        const shortLine = o.short ? `\n        "${o.short}\\t${o.description}" \\` : '';
-        return `        "${o.flag}\\t${o.description}" \\${shortLine}`;
-      })
-      .join('\n');
+    const rawOptionLines = s.options.flatMap((o) => {
+      const lines = [`        "${o.flag}\\t${o.description}"`];
+      if (o.short) lines.push(`        "${o.short}\\t${o.description}"`);
+      return lines;
+    });
     // The completion subcommand offers shell names as positional completions.
-    const shellCompletions =
-      s.name === 'completion'
-        ? VALID_SHELLS.map((sh) => `        "${sh}\\t${sh} completion script" \\`).join('\n')
-        : '';
-    const lines = [optionLines, shellCompletions].filter(Boolean).join('\n');
+    if (s.name === 'completion') {
+      for (const sh of VALID_SHELLS) {
+        rawOptionLines.push(`        "${sh}\\t${sh} completion script"`);
+      }
+    }
+    const joined = joinContinuationLines(rawOptionLines);
     return `    case ${s.name}
       printf "%s\\n" \\
-${lines}`;
+${joined}`;
   }).join('\n');
 
-  const globalFishOpts = GLOBAL_OPTIONS.map((o) => {
-    const shortLine = o.short ? `\n        "${o.short}\\t${o.description}" \\` : '';
-    return `        "${o.flag}\\t${o.description}" \\${shortLine}`;
-  }).join('\n');
+  const globalFishOptsLines = GLOBAL_OPTIONS.flatMap((o) => {
+    const lines = [`        "${o.flag}\\t${o.description}"`];
+    if (o.short) lines.push(`        "${o.short}\\t${o.description}"`);
+    return lines;
+  });
+  const globalFishOpts = joinContinuationLines(globalFishOptsLines);
 
   // Value-taking flags, with their short forms (if any) and the glued
   // --flag=value form. We also include each short form (e.g. '-m') so that

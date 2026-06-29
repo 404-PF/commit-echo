@@ -113,6 +113,14 @@ test('completion fish script includes global options', async () => {
   assert.match(stdout, /--no-color/);
 });
 
+test('completion fish script includes suggest subcommand options', async () => {
+  const { stdout } = await runCompletion(['fish']);
+  const expected = ['--commit', '--yes', '--verbose', '--model', '--stream', '--dry-run', '--no-commit', '--auto', '--help'];
+  for (const opt of expected) {
+    assert.ok(stdout.includes(`"${opt}\\t`), `Expected fish script to include option: ${opt}`);
+  }
+});
+
 test('completion --help shows command usage', async () => {
   const { stdout } = await runCompletion(['--help']);
   assert.match(stdout, /Usage: commit-echo completion/);
