@@ -66,9 +66,7 @@ export async function suggestCommand(options: { commit?: boolean; autoCommit?: b
   if (options.verbose && profile.totalCommits > 0) {
     console.log(pc.dim(`  Style profile: ${profile.totalCommits} commits analyzed`));
     console.log(pc.dim(`  Avg length: ${profile.avgLength} chars`));
-    if (profile.imperativeRate !== undefined) {
-      console.log(pc.dim(`  Imperative mood rate: ${(profile.imperativeRate * 100).toFixed(0)}%`));
-    }
+    console.log(pc.dim(`  Imperative mood rate: ${(profile.imperativeRate * 100).toFixed(0)}%`));
   }
 
   const genSpinner = spinner();
