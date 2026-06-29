@@ -303,7 +303,8 @@ function generateFishScript(): string {
         "--help\\tDisplay help" \\
         "bash\\tBash completion script" \\
         "zsh\\tZsh completion script" \\
-        "fish\\tFish completion script"`;
+        "fish\\tFish completion script"
+      end`;
     }
     const optionLines = s.options
       .map((o) => {
