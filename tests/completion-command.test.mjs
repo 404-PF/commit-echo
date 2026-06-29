@@ -100,7 +100,7 @@ test('completion zsh script includes suggest subcommand options', async () => {
   // so that tab-completion covers every flag the CLI accepts.
   const expected = ['--commit', '--yes', '--verbose', '--model', '--stream', '--dry-run', '--no-commit', '--auto', '--help'];
   for (const opt of expected) {
-    assert.match(stdout, new RegExp(`'${opt}\\[`), `Expected zsh script to include option: ${opt}`);
+    assert.ok(stdout.includes(`'${opt}[`), `Expected zsh script to include option: ${opt}`);
   }
   // And the value-taking marker for --model
   assert.match(stdout, /'--model\[[^\]]+\]:model:'/);

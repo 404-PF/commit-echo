@@ -211,7 +211,7 @@ function generateZshScript(): string {
   // Global flags available before any subcommand. Zsh supports multiple specs
   // per option, so short and long forms can be listed together: `-y[...]:--yes`.
   const globalArgs = GLOBAL_OPTIONS.map((o) => {
-    const spec = o.short ? `'${o.short}[${o.description}]:--${o.flag.slice(2)}' \\` : '';
+    const spec = o.short ? `'${o.short}[${o.description}]' \\` : '';
     return `    '${o.flag}[${o.description}]' ${spec}\\`;
   }).join('\n');
 
