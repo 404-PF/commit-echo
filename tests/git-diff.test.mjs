@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 
 import { checkGitRepo, getStagedDiff, getUnstagedDiff, commit, getRepoRoot } from '../dist/git/diff.js';
 
@@ -26,7 +26,7 @@ function gitAdd(dir) {
 }
 
 function gitCommit(dir, msg) {
-  execSync(`git commit -m "${msg}"`, { cwd: dir, stdio: 'pipe' });
+  spawnSync('git', ['commit', '-m', msg], { cwd: dir, stdio: 'pipe' });
 }
 
 const originalDir = process.cwd();
