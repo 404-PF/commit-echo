@@ -27,6 +27,13 @@ interface Subcommand {
  * generated from this structure, so adding a subcommand or option only requires
  * editing one place.
  *
+ * **Sync requirement**: this array must mirror the Commander definitions in
+ * `src/index.ts`. When adding or changing a subcommand or option in the CLI,
+ * update this array at the same time. The test
+ * "completion scripts contain all options from every subcommand help" catches
+ * drift by comparing each subcommand's --help output against the generated
+ * scripts.
+ *
  * Note: the `hook` subcommand is registered on the root program (see
  * src/index.ts) with `{ hidden: true }` because it is invoked by Git, not
  * humans. It is intentionally omitted from completion so users do not see it.

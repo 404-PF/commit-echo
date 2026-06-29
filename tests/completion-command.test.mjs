@@ -254,3 +254,40 @@ test('completion fish script is syntactically valid fish (if fish is available)'
     await unlink(scriptPath).catch(() => {});
   }
 });
+
+test('completion scripts contain all options from every subcommand help', async () => {
+  const subcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
+  const allHelpFlags = new Set();
+
+  // Collect --long flags from root help (global options)
+  const { stdout: rootHelp } = await execFileAsync(process.execPath, [
+    'dist/index.js',
+    '--no-color',
+    '--help',
+  ], { env: { ...process.env, NO_COLOR: '1' } });
+  for (const flag of rootHelp.match(/--[\w-]+/g) || []) allHelpFlags.add(flag);
+
+  // Collect --long flags from each subcommand's help
+  for (const subcmd of subcommands) {
+    const { stdout: subHelp } = await execFileAsync(process.execPath, [
+      'dist/index.js',
+      '--no-color',
+      subcmd,
+      '--help',
+    ], { env: { ...process.env, NO_COLOR: '1' } });
+    for (const flag of subHelp.match(/--[\w-]+/g) || []) allHelpFlags.add(flag);
+  }
+
+  // Get completion scripts
+  const { stdout: bashScript } = await runCompletion(['bash']);
+  const { stdout: zshScript } = await runCompletion(['zsh']);
+  const { stdout: fishScript } = await runCompletion(['fish']);
+
+  // Every flag shown in any --help output must appear in all three scripts.
+  // If this test fails, update SUBCOMMANDS in src/commands/completion.ts.
+  for (const flag of allHelpFlags) {
+    assert.ok(bashScript.includes(flag), `Bash completion missing ${flag}`);
+    assert.ok(zshScript.includes(flag), `Zsh completion missing ${flag}`);
+    assert.ok(fishScript.includes(flag), `Fish completion missing ${flag}`);
+  }
+});
