@@ -25,7 +25,7 @@ function stripAnsi(text) {
 
 function extractShownDiff(stdout) {
   const match = stdout.match(
-    /Diff being analyzed:\n([\s\S]*?)\n\n(?:The diff above is truncated|Streaming suggestions|Suggestions generated:)/,
+    /Diff being analyzed:\n([\s\S]*?)\n\n(?:[\u007c\u2022\u25d0\u25d3\u25d1\u25d2\s]*Generating commit suggestions[\s\S]*?Suggestions generated:|The diff above is truncated|Streaming suggestions|Suggestions generated:)/,
   );
   assert.ok(match, `Could not find shown diff in stdout:\n${stdout}`);
   return match[1];
@@ -635,6 +635,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
   assert.doesNotMatch(stdout, /Use unstaged changes for suggestions/);
   assert.match(stdout, /Selected:\s+feat: inspect unstaged diff/);
   assert.match(requests.at(-1).messages[1].content, /\+updated/);
+  assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
 });
 
 test('suggest --show-diff uses the truncated diff for streamed suggestions', async (t) => {
