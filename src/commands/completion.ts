@@ -246,6 +246,12 @@ function generateZshScript(): string {
       .join('\n');
     // The completion subcommand takes a positional shell argument.
     const positionalArg = s.name === 'completion' ? ` \\\n            '1:shell:(${SHELL_NAMES_LIST})'` : '';
+    // Skip _arguments entirely when there are no options and no positional arg.
+    if (!optionLines && !positionalArg) {
+      return `        ${s.name})
+          ;;
+`;
+    }
     return `        ${s.name})
           _arguments \\
 ${optionLines}${positionalArg}

@@ -155,6 +155,20 @@ test('completion fish script includes short flag aliases', async () => {
   assert.match(stdout, /"-m\\t/);
 });
 
+test('completion scripts suggest shell names for the completion subcommand', async () => {
+  // Bash: compgen -W "bash zsh fish" in the completion case
+  const { stdout: bashScript } = await runCompletion(['bash']);
+  assert.match(bashScript, /completion\)[\s\S]*compgen -W.*bash.*zsh.*fish/);
+  // Zsh: '1:shell:(bash zsh fish)' positional arg
+  const { stdout: zshScript } = await runCompletion(['zsh']);
+  assert.match(zshScript, /'1:shell:\(bash zsh fish\)'/);
+  // Fish: printf lines for each shell name in the completion case
+  const { stdout: fishScript } = await runCompletion(['fish']);
+  assert.match(fishScript, /case completion[\s\S]*"bash\\t/);
+  assert.match(fishScript, /case completion[\s\S]*"zsh\\t/);
+  assert.match(fishScript, /case completion[\s\S]*"fish\\t/);
+});
+
 test('completion bash script handles --flag=value glued form', async () => {
   const { stdout } = await runCompletion(['bash']);
   // After a value-taking flag in `--flag=value` form, completion should also bail out.
@@ -270,6 +284,14 @@ test('completion fish script is syntactically valid fish (if fish is available)'
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
+});
+
+test('completion zsh script skips _arguments for subcommands with no options', async () => {
+  const { stdout } = await runCompletion(['zsh']);
+  // The `help` subcommand has no options, so it should not have a dangling
+  // `_arguments \` continuation. Instead it should be a bare `help)\n;;`.
+  assert.match(stdout, /help\)\n\s+;;/);
+  assert.doesNotMatch(stdout, /help\)\n\s+_arguments/);
 });
 
 test('completion scripts contain all options from every subcommand help', async () => {
