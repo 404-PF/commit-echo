@@ -83,6 +83,11 @@ const SUBCOMMANDS: readonly Subcommand[] = [
     description: 'Generate shell completion scripts',
     options: [{ flag: '--help', description: 'Display help for completion' }],
   },
+  {
+    name: 'help',
+    description: 'Display help for a command',
+    options: [],
+  },
 ] as const;
 
 const GLOBAL_OPTIONS: readonly SubcommandOption[] = [

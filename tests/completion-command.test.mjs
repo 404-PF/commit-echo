@@ -40,7 +40,7 @@ test('completion fish outputs a fish completion script', async () => {
 
 test('completion bash script includes all subcommands', async () => {
   const { stdout } = await runCompletion(['bash']);
-  const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
+  const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion', 'help'];
   for (const subcmd of expectedSubcommands) {
     assert.ok(stdout.includes(subcmd), `Expected stdout to contain subcommand: ${subcmd}`);
   }
@@ -48,7 +48,7 @@ test('completion bash script includes all subcommands', async () => {
 
 test('completion zsh script includes all subcommands', async () => {
   const { stdout } = await runCompletion(['zsh']);
-  const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
+  const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion', 'help'];
   for (const subcmd of expectedSubcommands) {
     assert.ok(stdout.includes(subcmd), `Expected stdout to contain subcommand: ${subcmd}`);
   }
@@ -56,7 +56,7 @@ test('completion zsh script includes all subcommands', async () => {
 
 test('completion fish script includes all subcommands', async () => {
   const { stdout } = await runCompletion(['fish']);
-  const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
+  const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion', 'help'];
   for (const subcmd of expectedSubcommands) {
     assert.ok(stdout.includes(subcmd), `Expected stdout to contain subcommand: ${subcmd}`);
   }
