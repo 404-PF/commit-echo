@@ -173,6 +173,15 @@ test('completion fish script guards value-taking flags like --model', async () =
   assert.match(stdout, /'-m=\*'/);
 });
 
+test('completion fish script suggests global options when typing flags before subcommand', async () => {
+  const { stdout } = await runCompletion(['fish']);
+  // When no subcommand is selected and the user types a flag like "--y",
+  // the fish script should suggest global options (--yes, --auto, --no-color)
+  // instead of falling through to suggest subcommands. The script achieves this
+  // by checking for flag tokens in the empty-subcmd branch.
+  assert.match(stdout, /if test -z "\$subcmd"[\s\S]*if string match -q -- '-\*' \$token/);
+});
+
 test('completion error path does not emit ANSI when --no-color is set', async () => {
   const ansiPattern = /\u001b\[[0-9;]*m/;
   try {
@@ -256,6 +265,8 @@ test('completion fish script is syntactically valid fish (if fish is available)'
 });
 
 test('completion scripts contain all options from every subcommand help', async () => {
+  // `hook` is intentionally excluded: it is hidden (invoked by Git, not humans)
+  // and registered with `{ hidden: true }` in Commander, so it has no --help output.
   const subcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion'];
   const allHelpFlags = new Set();
 

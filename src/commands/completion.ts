@@ -124,6 +124,7 @@ function allFlags(o: SubcommandOption): string[] {
  * Bash script generation
  * ------------------------------------------------------------------------- */
 
+/** Generates a bash completion script using `complete -F` with per-subcommand option cases. */
 function generateBashScript(): string {
   const subcommandList = [...SUBCOMMAND_NAMES].join(' ');
   const globalOpts = GLOBAL_OPTIONS.map((o) => allFlags(o).join(' ')).join(' ');
@@ -213,6 +214,7 @@ complete -F _commit_echo commit-echo
  * Zsh script generation
  * ------------------------------------------------------------------------- */
 
+/** Generates a zsh completion script using `#compdef` and `_arguments` with subcommand dispatch. */
 function generateZshScript(): string {
   // Subcommand list rendered as `name:description` pairs for `_describe`.
   const commands = SUBCOMMANDS.map((s) => `    '${s.name}:${s.description}'`).join(' \\\n');
@@ -290,6 +292,7 @@ compdef _commit_echo commit-echo
  * Fish script generation
  * ------------------------------------------------------------------------- */
 
+/** Generates a fish completion script using `complete -c` with helper functions for subcommands and options. */
 function generateFishScript(): string {
   const subcommandList = [...SUBCOMMAND_NAMES]
     .map((n) => {
@@ -373,8 +376,19 @@ function __commit_echo_completions
     end
   end
 
-  # If the current token starts with -, suggest global + subcommand options
+  # If no subcommand selected yet, suggest subcommands or global options
   set -l token (commandline -ct)
+  if test -z "$subcmd"
+    if string match -q -- '-*' $token
+      printf "%s\\n" \\
+${globalFishOpts}
+    else
+      __commit_echo_subcommands
+    end
+    return
+  end
+
+  # If the current token starts with -, suggest global + subcommand options
   if string match -q -- '-*' $token
     # Global options
     printf "%s\\n" \\
@@ -387,12 +401,6 @@ ${globalFishOpts}
   # If we have a subcommand with non-option completions, delegate
   if test "$subcmd" = "completion"
     __commit_echo_complete_options $subcmd
-    return
-  end
-
-  # Otherwise, suggest subcommands (only if no subcommand selected yet)
-  if test -z "$subcmd"
-    __commit_echo_subcommands
   end
 end
 
