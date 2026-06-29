@@ -131,12 +131,12 @@ test('completion bash script includes short flag aliases', async () => {
 
 test('completion zsh script includes short flag aliases', async () => {
   const { stdout } = await runCompletion(['zsh']);
-  // Zsh emits short forms like `'-y[desc]:--yes'` so a separate spec mirrors
-  // the long flag without re-stating the description.
+  // Zsh emits short forms as separate specs: `'-y[desc]'` for boolean flags
+  // and `'-m[desc]:model:'` for value-taking flags.
   assert.match(stdout, /'-y\[/);
-  assert.match(stdout, /-y\[[^\]]+\]:--yes'/);
+  assert.match(stdout, /'-y\[[^\]]+\]'/);
   assert.match(stdout, /'-m\[/);
-  assert.match(stdout, /-m\[[^\]]+\]:--model:model:'/);
+  assert.match(stdout, /'-m\[[^\]]+\]:model:'/);
 });
 
 test('completion fish script includes short flag aliases', async () => {

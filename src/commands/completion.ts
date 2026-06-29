@@ -223,7 +223,8 @@ function generateZshScript(): string {
       .map((o) => {
         const valuePart = o.value ? `:${o.value}:` : '';
         if (o.short) {
-          return `            '${o.short}[${o.description}]:--${o.flag.slice(2)}${valuePart}' \\\n            '${o.flag}[${o.description}]${valuePart}' \\`;
+          const shortValuePart = o.value ? `:${o.value}:` : '';
+          return `            '${o.short}[${o.description}]${shortValuePart}' \\\n            '${o.flag}[${o.description}]${valuePart}' \\`;
         }
         return `            '${o.flag}[${o.description}]${valuePart}' \\`;
       })
@@ -327,17 +328,9 @@ ${optionLines}`;
 
   return `# fish completion for commit-echo                           -*- shell-script -*-
 
-# Helper: complete options for a subcommand
+# Helper: complete options for a given subcommand
 function __commit_echo_complete_options
-  set -l cmd (commandline -opc)
-  # Find the first non-option token as the subcommand
-  set -l subcmd ""
-  for token in $cmd[2..-1]
-    if not string match -q -- '-*' $token
-      set subcmd $token
-      break
-    end
-  end
+  set -l subcmd $argv[1]
   switch $subcmd
 ${optionCases}
   end
@@ -364,18 +357,6 @@ function __commit_echo_completions
       return
   end
 
-  # If the current token starts with -, suggest global + subcommand options
-  set -l token (commandline -ct)
-  if string match -q -- '-*' $token
-    # Global options
-    printf '%s\\n' \\
-${globalFishOpts}
-    # Subcommand options
-    __commit_echo_complete_options
-    return
-  end
-
-  # If we have a subcommand, check if it has non-option completions
   # Find the first non-option token as the subcommand
   set -l subcmd ""
   for token in $cmd[2..-1]
@@ -384,8 +365,21 @@ ${globalFishOpts}
       break
     end
   end
+
+  # If the current token starts with -, suggest global + subcommand options
+  set -l token (commandline -ct)
+  if string match -q -- '-*' $token
+    # Global options
+    printf '%s\\n' \\
+${globalFishOpts}
+    # Subcommand options
+    __commit_echo_complete_options $subcmd
+    return
+  end
+
+  # If we have a subcommand with non-option completions, delegate
   if test "$subcmd" = "completion"
-    __commit_echo_complete_options
+    __commit_echo_complete_options $subcmd
     return
   end
 
