@@ -142,9 +142,9 @@ test('completion zsh script includes short flag aliases', async () => {
 test('completion fish script includes short flag aliases', async () => {
   const { stdout } = await runCompletion(['fish']);
   // Fish prints both forms as separate `printf` lines under the subcommand case.
-  assert.match(stdout, /'-y\\t/);
-  assert.match(stdout, /'-v\\t/);
-  assert.match(stdout, /'-m\\t/);
+  assert.match(stdout, /"-y\\t/);
+  assert.match(stdout, /"-v\\t/);
+  assert.match(stdout, /"-m\\t/);
 });
 
 test('completion bash script handles --flag=value glued form', async () => {

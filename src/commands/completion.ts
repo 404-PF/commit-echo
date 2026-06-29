@@ -291,7 +291,7 @@ function generateFishScript(): string {
     .map((n) => {
       const sub = findSubcommand(n);
       if (!sub) return null;
-      return `    '${sub.name}\\t${sub.description}' \\`;
+      return `    "${sub.name}\\t${sub.description}" \\`;
     })
     .filter((line): line is string => line !== null)
     .join('\n');
@@ -299,26 +299,26 @@ function generateFishScript(): string {
   const optionCases = SUBCOMMANDS.map((s) => {
     if (s.name === 'completion') {
       return `    case completion
-      printf '%s\\n' \\
-        '--help\\tDisplay help' \\
-        'bash\\tBash completion script' \\
-        'zsh\\tZsh completion script' \\
-        'fish\\tFish completion script'`;
+      printf "%s\\n" \\
+        "--help\\tDisplay help" \\
+        "bash\\tBash completion script" \\
+        "zsh\\tZsh completion script" \\
+        "fish\\tFish completion script"`;
     }
     const optionLines = s.options
       .map((o) => {
-        const shortLine = o.short ? `\n        '${o.short}\\t${o.description}' \\` : '';
-        return `        '${o.flag}\\t${o.description}' \\${shortLine}`;
+        const shortLine = o.short ? `\n        "${o.short}\\t${o.description}" \\` : '';
+        return `        "${o.flag}\\t${o.description}" \\${shortLine}`;
       })
       .join('\n');
     return `    case ${s.name}
-      printf '%s\\n' \\
+      printf "%s\\n" \\
 ${optionLines}`;
   }).join('\n');
 
   const globalFishOpts = GLOBAL_OPTIONS.map((o) => {
-    const shortLine = o.short ? `\n        '${o.short}\\t${o.description}' \\` : '';
-    return `        '${o.flag}\\t${o.description}' \\${shortLine}`;
+    const shortLine = o.short ? `\n        "${o.short}\\t${o.description}" \\` : '';
+    return `        "${o.flag}\\t${o.description}" \\${shortLine}`;
   }).join('\n');
 
   // Value-taking flags, with their short forms (if any) and the glued
@@ -342,7 +342,7 @@ ${optionCases}
 end
 
 function __commit_echo_subcommands
-  printf '%s\\n' \\
+  printf "%s\\n" \\
 ${subcommandList}
 end
 
@@ -375,7 +375,7 @@ function __commit_echo_completions
   set -l token (commandline -ct)
   if string match -q -- '-*' $token
     # Global options
-    printf '%s\\n' \\
+    printf "%s\\n" \\
 ${globalFishOpts}
     # Subcommand options
     __commit_echo_complete_options $subcmd
