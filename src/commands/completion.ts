@@ -175,6 +175,18 @@ _commit_echo()
     fi
   done
 
+  # Track whether a non-option arg already follows the subcommand
+  local has_positional=0
+  if [[ -n "\${subcmd}" ]]; then
+    local j
+    for ((j=i+1; j<COMP_CWORD; j++)); do
+      if [[ "\${COMP_WORDS[j]}" != -* ]]; then
+        has_positional=1
+        break
+      fi
+    done
+  fi
+
   # If the previous token is a flag that takes a value, don't complete.
   # Using case (not extglob) so the script works regardless of extglob state.
   # Also handles the glued --flag=value form.
@@ -206,7 +218,9 @@ ${optionCases}
 
   case "\${subcmd}" in
     batch)
-      COMPREPLY=( $(compgen -d -- "\${cur}") )
+      if [[ \${has_positional} -eq 0 ]]; then
+        COMPREPLY=( $(compgen -d -- "\${cur}") )
+      fi
       ;;
     completion)
       COMPREPLY=( $(compgen -W "${SHELL_NAMES_LIST}" -- "\${cur}") )
@@ -426,7 +440,23 @@ ${globalFishOpts}
     __commit_echo_complete_options $subcmd
   end
   if test "$subcmd" = "batch"
-    __fish_complete_directories
+    set -l has_positional 0
+    set -l found_subcmd 0
+    for token in $cmd[2..-1]
+      if test $found_subcmd -eq 0
+        if not string match -q -- '-*' $token
+          set found_subcmd 1
+        end
+      else
+        if not string match -q -- '-*' $token
+          set has_positional 1
+          break
+        end
+      end
+    end
+    if test $has_positional -eq 0
+      __fish_complete_directories
+    end
   end
 end
 
