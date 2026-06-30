@@ -2,7 +2,7 @@ import pc from 'picocolors';
 
 export type SupportedShell = 'bash' | 'zsh' | 'fish';
 
-const VALID_SHELLS: SupportedShell[] = ['bash', 'zsh', 'fish'];
+const VALID_SHELLS: readonly SupportedShell[] = ['bash', 'zsh', 'fish'];
 
 /** A single subcommand option. `value` is set for options that take an argument. */
 interface SubcommandOption {
@@ -110,10 +110,6 @@ const SHELL_NAMES_LIST: string = VALID_SHELLS.join(' ');
 const VALUE_TAKING_FLAGS: ReadonlySet<string> = new Set(
   SUBCOMMANDS.flatMap((s) => s.options.filter((o) => o.value).map((o) => o.flag)),
 );
-
-function findSubcommand(name: string): Subcommand | undefined {
-  return SUBCOMMANDS.find((s) => s.name === name);
-}
 
 /** Returns all flag forms (short + long) for an option, long form first. */
 function allFlags(o: SubcommandOption): string[] {
