@@ -32,7 +32,7 @@ function extractShownDiff(stdout) {
 }
 
 function extractPromptDiff(content) {
-  const match = content.match(/```diff\n([\s\S]*)\n```\n\nReturn exactly 3 options/);
+  const match = content.match(/```diff\n([\s\S]*?)\n```/);
   assert.ok(match, `Could not find prompt diff in request:\n${content}`);
   return match[1];
 }
