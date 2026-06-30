@@ -6,6 +6,19 @@ import type { Config } from '../types.js';
 
 const CUSTOM_PROVIDER_KEY = '__custom__';
 
+type ConfigCommandOptions = {
+  json?: boolean;
+};
+
+type ConfigJsonOutput = {
+  provider: string;
+  model: string;
+  endpoint: string;
+  historySize: number;
+  maxDiffSize: number;
+  apiKey: string;
+};
+
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */
 export function maskApiKey(apiKey: string | undefined): string {
   if (!apiKey) {
@@ -30,16 +43,38 @@ function formatProvider(config: Config): string {
   return getProviderInfo(config.provider)?.name ?? config.provider;
 }
 
-/** Displays the current commit-echo configuration without exposing secret values. */
-export async function configCommand(): Promise<void> {
-  intro(pc.bold(pc.cyan('commit-echo config')));
+/** Build the script-friendly payload used by `commit-echo config --json`. */
+function getConfigJsonOutput(config: Config): ConfigJsonOutput {
+  return {
+    provider: formatProvider(config),
+    model: config.model || 'not configured',
+    endpoint: resolveEndpoint(config),
+    historySize: config.historySize,
+    maxDiffSize: config.maxDiffSize,
+    apiKey: maskApiKey(config.apiKey),
+  };
+}
 
+/** Displays the current commit-echo configuration without exposing secret values. */
+export async function configCommand(options: ConfigCommandOptions = {}): Promise<void> {
   if (!configExists()) {
+    if (options.json) {
+      console.log(JSON.stringify({ error: 'No configuration found. Run commit-echo init first.' }, null, 2));
+      process.exit(1);
+    }
+    intro(pc.bold(pc.cyan('commit-echo config')));
     outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));
     return;
   }
 
   const config = await loadConfig();
+
+  if (options.json) {
+    console.log(JSON.stringify(getConfigJsonOutput(config), null, 2));
+    return;
+  }
+
+  intro(pc.bold(pc.cyan('commit-echo config')));
 
   console.log(pc.bold('\nCurrent Configuration\n'));
   console.log(`  Provider: ${pc.cyan(formatProvider(config))}`);
