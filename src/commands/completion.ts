@@ -116,6 +116,11 @@ function allFlags(o: SubcommandOption): string[] {
   return o.short ? [o.flag, o.short] : [o.flag];
 }
 
+/** Escapes single quotes for safe use inside zsh single-quoted strings. */
+function zshEscape(s: string): string {
+  return s.replace(/'/g, "'\\''");
+}
+
 /** Joins lines with ` \\` continuation, omitting the trailing backslash on the last line. */
 function joinContinuationLines(lines: string[]): string {
   if (lines.length <= 1) return lines.join('');
@@ -158,7 +163,7 @@ _commit_echo()
   commands="${subcommandList}"
 
   # Global options
-  global_opts="${globalOpts}"
+  local global_opts="${globalOpts}"
 
   # Find the first non-option word as the subcommand
   local subcmd=""
@@ -200,6 +205,9 @@ ${optionCases}
   fi
 
   case "\${subcmd}" in
+    batch)
+      COMPREPLY=( $(compgen -d -- "\${cur}") )
+      ;;
     completion)
       COMPREPLY=( $(compgen -W "${SHELL_NAMES_LIST}" -- "\${cur}") )
       ;;
@@ -219,12 +227,12 @@ complete -F _commit_echo commit-echo
 /** Generates a zsh completion script using `#compdef` and `_arguments` with subcommand dispatch. */
 function generateZshScript(): string {
   // Subcommand list rendered as `name:description` pairs for `_describe`.
-  const commands = SUBCOMMANDS.map((s) => `    '${s.name}:${s.description}'`).join(' \\\n');
+  const commands = SUBCOMMANDS.map((s) => `    '${s.name}:${zshEscape(s.description)}'`).join(' \\\n');
   // Global flags available before any subcommand. Zsh supports multiple specs
   // per option, so short and long forms can be listed together: `-y[...]:--yes`.
   const globalArgs = GLOBAL_OPTIONS.flatMap((o) => {
-    const specs = [`    '${o.flag}[${o.description}]'`];
-    if (o.short) specs.push(`    '${o.short}[${o.description}]'`);
+    const specs = [`    '${o.flag}[${zshEscape(o.description)}]'`];
+    if (o.short) specs.push(`    '${o.short}[${zshEscape(o.description)}]'`);
     return specs;
   }).join(' \\\n');
 
@@ -235,13 +243,19 @@ function generateZshScript(): string {
         const valuePart = o.value ? `:${o.value}:` : '';
         if (o.short) {
           const shortValuePart = o.value ? `:${o.value}:` : '';
-          return `            '${o.short}[${o.description}]${shortValuePart}' \\\n            '${o.flag}[${o.description}]${valuePart}' \\`;
+          return `            '${o.short}[${zshEscape(o.description)}]${shortValuePart}' \\\n            '${o.flag}[${zshEscape(o.description)}]${valuePart}' \\`;
         }
-        return `            '${o.flag}[${o.description}]${valuePart}' \\`;
+        return `            '${o.flag}[${zshEscape(o.description)}]${valuePart}' \\`;
       })
       .join('\n');
     // The completion subcommand takes a positional shell argument.
-    const positionalArg = s.name === 'completion' ? ` \\\n            '1:shell:(${SHELL_NAMES_LIST})'` : '';
+    // The batch subcommand takes an optional directory argument.
+    const positionalArg =
+      s.name === 'completion'
+        ? ` \\\n            '1:shell:(${SHELL_NAMES_LIST})'`
+        : s.name === 'batch'
+          ? ` \\\n            '1:directory:_files -/'`
+          : '';
     // Skip _arguments entirely when there are no options and no positional arg.
     if (!optionLines && !positionalArg) {
       return `        ${s.name})
@@ -410,6 +424,9 @@ ${globalFishOpts}
   # If we have a subcommand with non-option completions, delegate
   if test "$subcmd" = "completion"
     __commit_echo_complete_options $subcmd
+  end
+  if test "$subcmd" = "batch"
+    __fish_complete_directories
   end
 end
 
