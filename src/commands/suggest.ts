@@ -98,6 +98,7 @@ export async function suggestCommand(
     commit?: boolean;
     autoCommit?: boolean;
     verbose?: boolean;
+    showDiff?: boolean;
     model?: string;
     stream?: boolean;
     dryRun?: boolean;
@@ -176,9 +177,10 @@ export async function suggestCommand(
   }
 
   const profile = await buildProfile(config.historySize);
+  const preview = options.dryRun || options.showDiff ? truncateDiff(diffResult.diff, config.maxDiffSize) : undefined;
 
   if (options.dryRun) {
-    const { diff: truncatedDiff, info: truncation } = truncateDiff(diffResult.diff, config.maxDiffSize);
+    const { diff: truncatedDiff, info: truncation } = preview!;
     const vars = {
       diff: truncatedDiff,
       profile: formatProfile(profile),
@@ -199,6 +201,19 @@ export async function suggestCommand(
     return;
   }
 
+  if (options.showDiff) {
+    const { diff: truncatedDiff, info: truncation } = preview!;
+    console.log(pc.bold('Diff being analyzed:'));
+    console.log(pc.dim(truncatedDiff));
+    console.log('');
+    if (truncation.wasTruncated) {
+      console.log(pc.dim('The diff above is truncated to match maxDiffSize.'));
+      console.log('');
+    }
+  }
+
+  const analysisDiff = options.showDiff ? preview!.diff : diffResult.diff;
+  const analysisTruncation = options.showDiff ? preview!.info : undefined;
   let apiKey: string;
   try {
     apiKey = assertApiKeyAvailable(config);
@@ -208,7 +223,7 @@ export async function suggestCommand(
   }
   while (true) {
     let suggestions: Suggestion[];
-    let truncation: TruncationInfo | undefined;
+    let generatedTruncation: TruncationInfo | undefined;
     let model: string;
 
     if (options.stream) {
@@ -225,9 +240,16 @@ export async function suggestCommand(
       model = config.model;
       let accumulated = '';
       try {
-        for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
+        for await (const event of generateSuggestionsStream(
+          config,
+          analysisDiff,
+          profile,
+          apiKey,
+          streamProvider,
+          analysisTruncation,
+        )) {
           if (event.kind === 'meta') {
-            truncation = event.truncation;
+            generatedTruncation = event.truncation;
             continue;
           }
 
@@ -265,9 +287,9 @@ export async function suggestCommand(
       genSpinner.start('Generating commit suggestions...');
 
       try {
-        const result = await generateSuggestions(config, diffResult.diff, profile, apiKey);
+        const result = await generateSuggestions(config, analysisDiff, profile, apiKey, analysisTruncation);
         suggestions = result.suggestions;
-        truncation = result.truncation;
+        generatedTruncation = result.truncation;
         model = result.model;
         genSpinner.stop(pc.green('Suggestions generated:'));
       } catch (err) {
@@ -279,11 +301,11 @@ export async function suggestCommand(
     }
 
     if (options.verbose) {
-      showVerboseInfo(model, profile, truncation);
+      showVerboseInfo(model, profile, generatedTruncation);
     }
 
-    if (truncation) {
-      showTruncationWarning(truncation);
+    if (generatedTruncation) {
+      showTruncationWarning(generatedTruncation);
     }
 
     if (!options.stream) {

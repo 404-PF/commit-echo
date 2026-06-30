@@ -81,6 +81,7 @@ program
   .option('--commit', 'Commit the selected suggestion', false)
   .option('-y, --yes', 'Automatically select the first suggestion and skip prompts')
   .option('-v, --verbose', 'Print diagnostic information about the suggestion request')
+  .option('-d, --show-diff', 'Print the diff content that will be sent to the LLM')
   .option('-m, --model <model>', 'Override the configured LLM model for this invocation')
   .option('--stream', 'Stream suggestions as they are generated (progressive output)')
   .option('-n, --dry-run', 'Show the LLM input without generating suggestions')
@@ -92,6 +93,7 @@ program
       commit: options.commit,
       autoCommit: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
       verbose: Boolean(options.verbose),
+      showDiff: Boolean(options.showDiff),
       model: options.model,
       stream: Boolean(options.stream),
       dryRun: Boolean(options.dryRun),
