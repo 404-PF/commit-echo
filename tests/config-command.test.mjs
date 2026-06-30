@@ -129,6 +129,7 @@ test('config command reports when no API key is stored in config', async () => {
     assert.match(output, /API key:\s+not stored in config/);
   });
 });
+
 test('maskApiKey returns fallback message for undefined', () => {
   assert.equal(maskApiKey(undefined), 'not stored in config');
 });
