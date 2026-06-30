@@ -61,10 +61,9 @@ export async function configCommand(options: ConfigCommandOptions = {}): Promise
     if (options.json) {
       console.log(JSON.stringify({ error: 'No configuration found. Run commit-echo init first.' }, null, 2));
       process.exit(1);
-    } else {
-      intro(pc.bold(pc.cyan('commit-echo config')));
-      outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));
     }
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));
     return;
   }
 
