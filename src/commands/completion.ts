@@ -254,7 +254,7 @@ function generateZshScript(): string {
       s.name === 'completion'
         ? ` \\\n            '1:shell:(${SHELL_NAMES_LIST})'`
         : s.name === 'batch'
-          ? ` \\\n            '1:directory:_files -/'`
+          ? ` \\\n            '1::directory:_files -/'`
           : '';
     // Skip _arguments entirely when there are no options and no positional arg.
     if (!optionLines && !positionalArg) {
