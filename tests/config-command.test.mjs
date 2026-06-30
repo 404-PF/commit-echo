@@ -36,6 +36,13 @@ async function runConfig(homeDir) {
   });
 }
 
+/** Runs the built config command with extra arguments against an isolated test home. */
+async function runConfigWithArgs(homeDir, args = []) {
+  return execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'config', ...args], {
+    env: envFor(homeDir),
+  });
+}
+
 /** Writes a representative config file with optional field overrides. */
 function writeConfig(homeDir, overrides = {}) {
   const configDir = configDirFor(homeDir);
@@ -148,4 +155,60 @@ test('maskApiKey masks a 4-character key', () => {
 
 test('maskApiKey masks a long key', () => {
   assert.equal(maskApiKey('abcdefghijk'), 'abcd••••');
+});
+
+test('config --json returns error JSON when no configuration exists', async () => {
+  await withTempHome(async (homeDir) => {
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['--json']);
+
+    assert.equal(stderr, '');
+    const data = JSON.parse(stdout);
+    assert.deepEqual(data, { error: 'No configuration found. Run `commit-echo init` first.' });
+  });
+});
+
+test('config --json returns configuration as JSON with masked API key', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['--json']);
+    const data = JSON.parse(stdout);
+
+    assert.equal(stderr, '');
+    assert.equal(data.provider, 'OpenAI');
+    assert.equal(data.model, 'test-model');
+    assert.equal(data.endpoint, 'https://api.openai.com/v1');
+    assert.equal(data.historySize, 12);
+    assert.equal(data.maxDiffSize, 4000);
+    assert.equal(data.apiKey, 'sk-t••••');
+    assert.doesNotMatch(stdout, /sk-test-secret-value/);
+  });
+});
+
+test('config --json returns custom endpoint and provider in JSON', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      baseUrl: 'https://api.example.test/v1',
+      provider: '__custom__',
+    });
+
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['--json']);
+    const data = JSON.parse(stdout);
+
+    assert.equal(stderr, '');
+    assert.equal(data.provider, 'Custom (OpenAI-compatible)');
+    assert.equal(data.endpoint, 'https://api.example.test/v1');
+  });
+});
+
+test('config --json reports missing API key in JSON', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { apiKey: undefined });
+
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['--json']);
+    const data = JSON.parse(stdout);
+
+    assert.equal(stderr, '');
+    assert.equal(data.apiKey, 'not stored in config');
+  });
 });

@@ -40,6 +40,7 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo --yes')}       Auto-select and commit first suggestion
   ${pc.cyan('commit-echo init')}      Run interactive setup wizard
   ${pc.cyan('commit-echo config')}    View current configuration
+  ${pc.cyan('commit-echo config --json')} Output configuration as JSON
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
   ${pc.cyan('commit-echo history')}   View learned style profile and history
@@ -66,7 +67,13 @@ program
     await initCommand({ installHook: Boolean(options.installHook) });
   });
 
-program.command('config').description('View current configuration').action(configCommand);
+program
+  .command('config')
+  .description('View current configuration')
+  .option('--json', 'Output the configuration as JSON')
+  .action(async (options) => {
+    await configCommand({ json: Boolean(options.json) });
+  });
 
 program
   .command('suggest')
