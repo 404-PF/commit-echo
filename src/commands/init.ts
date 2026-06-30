@@ -8,6 +8,10 @@ import { installPrepareCommitMsgHook } from '../git/hook.js';
 
 const CUSTOM_KEY = '__custom__';
 
+export function normalizeBaseUrl(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
 export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   return {
     message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
@@ -78,7 +82,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       outro('Setup cancelled.');
       return;
     }
-    baseUrl = urlResult;
+    baseUrl = normalizeBaseUrl(urlResult);
     apiKeyEnv = 'CUSTOM_API_KEY';
     needsApiKey = true;
   } else {
