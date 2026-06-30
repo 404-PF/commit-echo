@@ -29,7 +29,8 @@ src/
 │   ├── suggest.ts        # Core suggestion flow: diff → LLM → display → optional commit
 │   ├── history.ts        # View learned style profile and recent commit history
 │   ├── config.ts         # View current config
-│   └── batch.ts          # Process multiple git repos in batch mode
+│   ├── batch.ts          # Process multiple git repos in batch mode
+│   └── completion.ts     # Generate shell completion scripts (bash, zsh, fish)
 ├── providers/
 │   ├── index.ts          # Provider factory: createProvider(), complete(), completeStream(), fetchModels()
 │   ├── registry.ts       # BUILTIN_PROVIDERS array (OpenAI, Anthropic, Google, Mistral, etc.)
@@ -77,6 +78,7 @@ src/
 | `commit-echo history --json` | Output history as JSON |
 | `commit-echo config` | View current configuration |
 | `commit-echo batch [dir]` | Process multiple repos (add `--recursive` for nested) |
+| `commit-echo completion` | Generate shell completion scripts (bash, zsh, fish) |
 
 Global flags: `--yes`/`--auto` (auto-accept first suggestion), `--no-color`.
 

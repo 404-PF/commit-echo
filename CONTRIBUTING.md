@@ -36,7 +36,7 @@
 src/
 ├── index.ts          # CLI entry point (Commander)
 ├── types.ts          # Shared types
-├── commands/         # Command implementations (init, suggest, history)
+├── commands/         # Command implementations (init, suggest, history, completion, batch)
 ├── config/           # Config persistence
 ├── git/              # Git operations (diff)
 ├── history/          # History JSONL + style learner

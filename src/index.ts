@@ -10,6 +10,7 @@ import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
 import { configCommand } from './commands/config.js';
 import { batchCommand } from './commands/batch.js';
+import { completionCommand } from './commands/completion.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
 import { runPostCommitHook, runPrepareCommitMsgHook } from './git/hook.js';
 
@@ -46,6 +47,7 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo batch')}     Process all git repos in current directory
   ${pc.cyan('commit-echo batch --recursive')} Search subdirectories for repos
   ${pc.cyan('commit-echo batch --yes')} Auto-commit repos with staged changes
+  ${pc.cyan('commit-echo completion')} Generate shell completion scripts
 
 ${pc.dim('Custom prompt template variables:')}
   ${getAvailableTemplateVars()
@@ -112,6 +114,14 @@ program
       recursive: Boolean(options.recursive),
       yes: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
     });
+  });
+
+program
+  .command('completion')
+  .description('Generate shell completion scripts for bash, zsh, and fish')
+  .argument('[shell]', 'Target shell: bash, zsh, or fish')
+  .action((shell?: string) => {
+    completionCommand(shell);
   });
 
 const hookCommand = new Command('hook')
