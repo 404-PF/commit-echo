@@ -157,13 +157,18 @@ test('maskApiKey masks a long key', () => {
   assert.equal(maskApiKey('abcdefghijk'), 'abcd••••');
 });
 
-test('config --json returns error JSON when no configuration exists', async () => {
+test('config --json returns error JSON and exits non-zero when no configuration exists', async () => {
   await withTempHome(async (homeDir) => {
-    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['--json']);
-
-    assert.equal(stderr, '');
-    const data = JSON.parse(stdout);
-    assert.deepEqual(data, { error: 'No configuration found. Run `commit-echo init` first.' });
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['--json']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.equal(error.stderr, '');
+        const data = JSON.parse(error.stdout);
+        assert.deepEqual(data, { error: 'No configuration found. Run commit-echo init first.' });
+        return true;
+      },
+    );
   });
 });
 
