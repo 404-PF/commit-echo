@@ -158,6 +158,20 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     return;
   }
 
+  const maxDiffResult = await text({
+    message: 'Maximum diff size (characters) to send to the LLM:',
+    placeholder: '4000',
+    initialValue: String(existingConfig?.maxDiffSize ?? 4000),
+    validate: (value) => {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1) return 'Enter a positive integer';
+    },
+  });
+  if (isCancel(maxDiffResult)) {
+    outro('Setup cancelled.');
+    return;
+  }
+
   const useCustomPrompts = await confirm({
     message: 'Set custom prompt templates? (Advanced)',
     initialValue: false,
@@ -206,7 +220,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     baseUrl: providerKey === CUSTOM_KEY ? baseUrl : undefined,
     apiKey: apiKey ?? undefined,
     historySize: Number(historyResult),
-    maxDiffSize: 4000,
+    maxDiffSize: Number(maxDiffResult),
     systemPromptTemplate,
     userPromptTemplate,
   };
