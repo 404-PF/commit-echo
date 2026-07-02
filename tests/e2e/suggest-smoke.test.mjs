@@ -122,6 +122,16 @@ function configDirFor(home) {
       : join(home, '.config', 'commit-echo');
 }
 
+function cliEnvFor(home) {
+  return {
+    ...process.env,
+    HOME: home,
+    XDG_CONFIG_HOME: join(home, '.config'),
+    APPDATA: join(home, 'AppData', 'Roaming'),
+    FORCE_COLOR: '0',
+  };
+}
+
 async function setupRepo(root) {
   const home = join(root, 'home');
   const repo = join(root, 'repo');
@@ -553,15 +563,7 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
 
   await writeCustomProviderConfig(configDir, port, { maxDiffSize: 120 });
 
-  const env = {
-    ...process.env,
-    HOME: home,
-    XDG_CONFIG_HOME: join(home, '.config'),
-    APPDATA: join(home, 'AppData', 'Roaming'),
-    FORCE_COLOR: '0',
-  };
-
-  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env });
+  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
   const stdout = stripAnsi(result.stdout);
   const stderr = stripAnsi(result.stderr);
 
@@ -591,15 +593,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
 
   await writeCustomProviderConfig(configDir, port);
 
-  const env = {
-    ...process.env,
-    HOME: home,
-    XDG_CONFIG_HOME: join(home, '.config'),
-    APPDATA: join(home, 'AppData', 'Roaming'),
-    FORCE_COLOR: '0',
-  };
-
-  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env });
+  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
   const stdout = stripAnsi(result.stdout);
 
   assert.equal(result.code, 0);
@@ -636,15 +630,7 @@ test('suggest --show-diff uses the truncated diff for streamed suggestions', asy
 
   await writeCustomProviderConfig(configDir, port, { maxDiffSize: 120 });
 
-  const env = {
-    ...process.env,
-    HOME: home,
-    XDG_CONFIG_HOME: join(home, '.config'),
-    APPDATA: join(home, 'AppData', 'Roaming'),
-    FORCE_COLOR: '0',
-  };
-
-  const result = await runCli(['suggest', '--show-diff', '--stream', '--yes'], { cwd: repo, env });
+  const result = await runCli(['suggest', '--show-diff', '--stream', '--yes'], { cwd: repo, env: cliEnvFor(home) });
   const stdout = stripAnsi(result.stdout);
   const stderr = stripAnsi(result.stderr);
   const request = requests.at(-1);
