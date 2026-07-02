@@ -144,7 +144,48 @@ async function setupRepo(root) {
   return { home, repo, configDir };
 }
 
-async function writeCustomProviderConfig(configDir, port) {
+function createChatCompletionServer({ content, streamContent, requireStream = false }) {
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+
+      if (parsed.stream && streamContent) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: streamContent } }] })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+
+      if (requireStream) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'expected streaming request' }));
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          model: 'fixture-model',
+          choices: [{ message: { content } }],
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+
+  return { requests, server };
+}
+
+async function writeCustomProviderConfig(configDir, port, extra = {}) {
   await writeFile(
     join(configDir, 'config.json'),
     JSON.stringify(
@@ -154,6 +195,7 @@ async function writeCustomProviderConfig(configDir, port) {
         baseUrl: `http://127.0.0.1:${port}`,
         apiKey: 'test-key',
         historySize: 5,
+        ...extra,
       },
       null,
       2,
@@ -495,26 +537,7 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-staged-'));
   const { home, repo, configDir } = await setupRepo(root);
 
-  const requests = [];
-  const server = createServer(async (req, res) => {
-    if (req.url === '/chat/completions' && req.method === 'POST') {
-      let body = '';
-      req.setEncoding('utf8');
-      for await (const chunk of req) body += chunk;
-      requests.push(JSON.parse(body));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          model: 'fixture-model',
-          choices: [{ message: { content: '1. feat: inspect staged diff' } }],
-        }),
-      );
-      return;
-    }
-
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found' }));
-  });
+  const { requests, server } = createChatCompletionServer({ content: '1. feat: inspect staged diff' });
   const port = await listen(server);
   t.after(async () => {
     server.close();
@@ -528,22 +551,7 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
   );
   execFileSync('git', ['add', 'README.md'], { cwd: repo });
 
-  await writeFile(
-    join(configDir, 'config.json'),
-    JSON.stringify(
-      {
-        provider: '__custom__',
-        model: 'fixture-model',
-        baseUrl: `http://127.0.0.1:${port}`,
-        apiKey: 'test-key',
-        historySize: 5,
-        maxDiffSize: 120,
-      },
-      null,
-      2,
-    ),
-    'utf8',
-  );
+  await writeCustomProviderConfig(configDir, port, { maxDiffSize: 120 });
 
   const env = {
     ...process.env,
@@ -572,26 +580,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-unstaged-'));
   const { home, repo, configDir } = await setupRepo(root);
 
-  const requests = [];
-  const server = createServer(async (req, res) => {
-    if (req.url === '/chat/completions' && req.method === 'POST') {
-      let body = '';
-      req.setEncoding('utf8');
-      for await (const chunk of req) body += chunk;
-      requests.push(JSON.parse(body));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          model: 'fixture-model',
-          choices: [{ message: { content: '1. feat: inspect unstaged diff' } }],
-        }),
-      );
-      return;
-    }
-
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found' }));
-  });
+  const { requests, server } = createChatCompletionServer({ content: '1. feat: inspect unstaged diff' });
   const port = await listen(server);
   t.after(async () => {
     server.close();
@@ -600,21 +589,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
 
   execFileSync('git', ['restore', '--staged', 'README.md'], { cwd: repo });
 
-  await writeFile(
-    join(configDir, 'config.json'),
-    JSON.stringify(
-      {
-        provider: '__custom__',
-        model: 'fixture-model',
-        baseUrl: `http://127.0.0.1:${port}`,
-        apiKey: 'test-key',
-        historySize: 5,
-      },
-      null,
-      2,
-    ),
-    'utf8',
-  );
+  await writeCustomProviderConfig(configDir, port);
 
   const env = {
     ...process.env,
@@ -642,30 +617,9 @@ test('suggest --show-diff uses the truncated diff for streamed suggestions', asy
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-stream-'));
   const { home, repo, configDir } = await setupRepo(root);
 
-  const requests = [];
-  const server = createServer(async (req, res) => {
-    if (req.url === '/chat/completions' && req.method === 'POST') {
-      let body = '';
-      req.setEncoding('utf8');
-      for await (const chunk of req) body += chunk;
-      const parsed = JSON.parse(body);
-      requests.push(parsed);
-
-      if (parsed.stream) {
-        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        res.write('data: {"choices":[{"delta":{"content":"1. feat: streamed diff preview"}}]}\n\n');
-        res.write('data: [DONE]\n\n');
-        res.end();
-        return;
-      }
-
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'expected streaming request' }));
-      return;
-    }
-
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found' }));
+  const { requests, server } = createChatCompletionServer({
+    streamContent: '1. feat: streamed diff preview',
+    requireStream: true,
   });
   const port = await listen(server);
   t.after(async () => {
@@ -680,22 +634,7 @@ test('suggest --show-diff uses the truncated diff for streamed suggestions', asy
   );
   execFileSync('git', ['add', 'README.md'], { cwd: repo });
 
-  await writeFile(
-    join(configDir, 'config.json'),
-    JSON.stringify(
-      {
-        provider: '__custom__',
-        model: 'fixture-model',
-        baseUrl: `http://127.0.0.1:${port}`,
-        apiKey: 'test-key',
-        historySize: 5,
-        maxDiffSize: 120,
-      },
-      null,
-      2,
-    ),
-    'utf8',
-  );
+  await writeCustomProviderConfig(configDir, port, { maxDiffSize: 120 });
 
   const env = {
     ...process.env,
