@@ -214,6 +214,33 @@ async function writeCustomProviderConfig(configDir, port, extra = {}) {
   );
 }
 
+async function setupShowDiffFixture(
+  t,
+  { rootPrefix, content, streamContent, requireStream = false, readme, staged = true, maxDiffSize },
+) {
+  const root = await mkdtemp(join(tmpdir(), rootPrefix));
+  const { home, repo, configDir } = await setupRepo(root);
+  const { requests, server } = createChatCompletionServer({ content, streamContent, requireStream });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  if (readme) {
+    await writeFile(join(repo, 'README.md'), readme, 'utf8');
+    execFileSync('git', ['add', 'README.md'], { cwd: repo });
+  }
+
+  if (!staged) {
+    execFileSync('git', ['restore', '--staged', 'README.md'], { cwd: repo });
+  }
+
+  await writeCustomProviderConfig(configDir, port, maxDiffSize === undefined ? {} : { maxDiffSize });
+
+  return { home, repo, requests };
+}
+
 test('suggest smoke test boots the CLI, loads config, and prints suggestions', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-'));
   const { home, repo, configDir } = await setupRepo(root);
@@ -544,24 +571,12 @@ test('suggest --model overrides configured model for one invocation and -m is an
 });
 
 test('suggest --show-diff prints the truncated staged diff before generating suggestions', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-staged-'));
-  const { home, repo, configDir } = await setupRepo(root);
-
-  const { requests, server } = createChatCompletionServer({ content: '1. feat: inspect staged diff' });
-  const port = await listen(server);
-  t.after(async () => {
-    server.close();
-    await rm(root, { recursive: true, force: true });
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-show-diff-staged-',
+    content: '1. feat: inspect staged diff',
+    readme: ['# fixture', '', ...Array.from({ length: 40 }, (_, i) => `line ${i}`)].join('\n') + '\n',
+    maxDiffSize: 120,
   });
-
-  await writeFile(
-    join(repo, 'README.md'),
-    ['# fixture', '', ...Array.from({ length: 40 }, (_, i) => `line ${i}`)].join('\n') + '\n',
-    'utf8',
-  );
-  execFileSync('git', ['add', 'README.md'], { cwd: repo });
-
-  await writeCustomProviderConfig(configDir, port, { maxDiffSize: 120 });
 
   const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
   const stdout = stripAnsi(result.stdout);
@@ -579,19 +594,11 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
 });
 
 test('suggest --show-diff works with unstaged changes in auto mode', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-unstaged-'));
-  const { home, repo, configDir } = await setupRepo(root);
-
-  const { requests, server } = createChatCompletionServer({ content: '1. feat: inspect unstaged diff' });
-  const port = await listen(server);
-  t.after(async () => {
-    server.close();
-    await rm(root, { recursive: true, force: true });
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-show-diff-unstaged-',
+    content: '1. feat: inspect unstaged diff',
+    staged: false,
   });
-
-  execFileSync('git', ['restore', '--staged', 'README.md'], { cwd: repo });
-
-  await writeCustomProviderConfig(configDir, port);
 
   const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
   const stdout = stripAnsi(result.stdout);
@@ -608,27 +615,13 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
 });
 
 test('suggest --show-diff uses the truncated diff for streamed suggestions', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'commit-echo-show-diff-stream-'));
-  const { home, repo, configDir } = await setupRepo(root);
-
-  const { requests, server } = createChatCompletionServer({
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-show-diff-stream-',
     streamContent: '1. feat: streamed diff preview',
     requireStream: true,
+    readme: ['# fixture', '', ...Array.from({ length: 40 }, (_, i) => `stream line ${i}`)].join('\n') + '\n',
+    maxDiffSize: 120,
   });
-  const port = await listen(server);
-  t.after(async () => {
-    server.close();
-    await rm(root, { recursive: true, force: true });
-  });
-
-  await writeFile(
-    join(repo, 'README.md'),
-    ['# fixture', '', ...Array.from({ length: 40 }, (_, i) => `stream line ${i}`)].join('\n') + '\n',
-    'utf8',
-  );
-  execFileSync('git', ['add', 'README.md'], { cwd: repo });
-
-  await writeCustomProviderConfig(configDir, port, { maxDiffSize: 120 });
 
   const result = await runCli(['suggest', '--show-diff', '--stream', '--yes'], { cwd: repo, env: cliEnvFor(home) });
   const stdout = stripAnsi(result.stdout);

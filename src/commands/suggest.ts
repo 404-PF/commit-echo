@@ -177,10 +177,17 @@ export async function suggestCommand(
   }
 
   const profile = await buildProfile(config.historySize);
-  const preview = options.dryRun || options.showDiff ? truncateDiff(diffResult.diff, config.maxDiffSize) : undefined;
+  const needsPreview = options.dryRun || options.showDiff;
+  const preview = needsPreview ? truncateDiff(diffResult.diff, config.maxDiffSize) : undefined;
+  const getPreview = () => {
+    if (!preview) {
+      throw new Error('diff preview requested without dry-run or show-diff');
+    }
+    return preview;
+  };
 
   if (options.dryRun) {
-    const { diff: truncatedDiff, info: truncation } = preview!;
+    const { diff: truncatedDiff, info: truncation } = getPreview();
     const vars = {
       diff: truncatedDiff,
       profile: formatProfile(profile),
@@ -202,7 +209,7 @@ export async function suggestCommand(
   }
 
   if (options.showDiff) {
-    const { diff: truncatedDiff, info: truncation } = preview!;
+    const { diff: truncatedDiff, info: truncation } = getPreview();
     console.log(pc.bold('Diff being analyzed:'));
     console.log(pc.dim(truncatedDiff));
     console.log('');
@@ -212,8 +219,9 @@ export async function suggestCommand(
     }
   }
 
-  const analysisDiff = options.showDiff ? preview!.diff : diffResult.diff;
-  const analysisTruncation = options.showDiff ? preview!.info : undefined;
+  const analysisPreview = options.showDiff ? getPreview() : undefined;
+  const analysisDiff = analysisPreview?.diff ?? diffResult.diff;
+  const analysisTruncation = analysisPreview?.info;
   let apiKey: string;
   try {
     apiKey = assertApiKeyAvailable(config);
