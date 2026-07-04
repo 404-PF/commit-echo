@@ -279,6 +279,18 @@ test("getRepoRoot returns the absolute path of the repository root", () => {
   }
 });
 
+test("getRepoRoot throws outside a git repo", () => {
+  const dir = createTempDir();
+
+  try {
+    withCwd(dir, () => {
+      assert.throws(() => getRepoRoot());
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("getBranchName returns the current branch name", () => {
   const repoDir = initRepo();
 
