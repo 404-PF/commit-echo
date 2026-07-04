@@ -1,6 +1,13 @@
 import { intro, outro } from '@clack/prompts';
 import pc from 'picocolors';
-import { configExists, loadConfig, saveConfig } from '../config/store.js';
+import {
+  configExists,
+  DEFAULT_HISTORY_SIZE,
+  DEFAULT_MAX_DIFF_SIZE,
+  loadConfig,
+  loadRawConfig,
+  saveConfig,
+} from '../config/store.js';
 import { getProviderInfo } from '../providers/index.js';
 import type { Config } from '../types.js';
 
@@ -40,7 +47,7 @@ function isConfigSetKey(key: string): key is ConfigSetKey {
 
 function parseConfigSetValue(key: ConfigSetKey, rawValue: string): string | number {
   if (!NUMERIC_CONFIG_KEYS.has(key)) {
-    return rawValue.trim();
+    return rawValue;
   }
 
   const value = Number(rawValue);
@@ -143,8 +150,18 @@ export async function configSetCommand(key: string, value: string): Promise<void
     process.exit(1);
   }
 
-  const config = await loadConfig();
-  await saveConfig({ ...config, [key]: parsedValue });
+  const config = await loadRawConfig();
+  await saveConfig({
+    provider: config.provider ?? '',
+    model: config.model ?? '',
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    historySize: config.historySize ?? DEFAULT_HISTORY_SIZE,
+    maxDiffSize: config.maxDiffSize ?? DEFAULT_MAX_DIFF_SIZE,
+    systemPromptTemplate: config.systemPromptTemplate,
+    userPromptTemplate: config.userPromptTemplate,
+    [key]: parsedValue,
+  });
 
   intro(pc.bold(pc.cyan('commit-echo config')));
   outro(`Updated ${pc.cyan(key)}.`);

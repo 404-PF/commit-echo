@@ -279,3 +279,32 @@ test('config set rejects invalid numeric values', async () => {
     );
   });
 });
+
+test('config set preserves surrounding whitespace for template values', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    await runConfigWithArgs(homeDir, ['set', 'systemPromptTemplate', '  keep surrounding whitespace  ']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.systemPromptTemplate, '  keep surrounding whitespace  ');
+  });
+});
+
+test('config set does not persist environment-only overrides for other keys', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    await execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'config', 'set', 'model', 'gpt-4.1-mini'], {
+      env: {
+        ...envFor(homeDir),
+        COMMIT_ECHO_API_KEY: 'sk-env-only-secret',
+      },
+    });
+
+    const config = readConfig(homeDir);
+
+    assert.equal(config.model, 'gpt-4.1-mini');
+    assert.equal(config.apiKey, 'sk-test-secret-value');
+  });
+});
