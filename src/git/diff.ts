@@ -21,7 +21,11 @@ export function checkGitRepo(): void {
   try {
     execSync('git rev-parse --git-dir', { encoding: 'utf-8', stdio: 'pipe' });
   } catch (err) {
-    const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr?.trim();
+    const nodeErr = err as NodeJS.ErrnoException & { stderr?: string };
+    if (nodeErr.code === 'ENOENT') {
+      throw new Error('git is not installed or not found on PATH');
+    }
+    const stderr = nodeErr.stderr?.trim();
     throw new Error(stderr || 'Not a git repository');
   }
 }
