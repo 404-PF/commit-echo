@@ -100,6 +100,7 @@ export async function suggestCommand(
     verbose?: boolean;
     showDiff?: boolean;
     model?: string;
+    maxDiffSize?: string;
     stream?: boolean;
     dryRun?: boolean;
     noCommit?: boolean;
@@ -137,6 +138,10 @@ export async function suggestCommand(
 
   if (options.model) {
     config.model = options.model;
+  }
+
+  if (options.maxDiffSize) {
+    config.maxDiffSize = Number(options.maxDiffSize);
   }
 
   let diffResult: DiffResult;

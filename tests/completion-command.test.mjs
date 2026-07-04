@@ -96,14 +96,27 @@ test('completion bash script includes global options', async () => {
 
 test('completion zsh script includes suggest subcommand options', async () => {
   const { stdout } = await runCompletion(['zsh']);
-  // All nine options registered for `suggest` (long forms) must be present
+  // All suggest options (long forms) must be present
   // so that tab-completion covers every flag the CLI accepts.
-  const expected = ['--commit', '--yes', '--verbose', '--model', '--stream', '--dry-run', '--no-commit', '--auto', '--help'];
+  const expected = [
+    '--commit',
+    '--yes',
+    '--verbose',
+    '--show-diff',
+    '--model',
+    '--max-diff-size',
+    '--stream',
+    '--dry-run',
+    '--no-commit',
+    '--auto',
+    '--help',
+  ];
   for (const opt of expected) {
     assert.ok(stdout.includes(`'${opt}[`), `Expected zsh script to include option: ${opt}`);
   }
-  // And the value-taking marker for --model
+  // And the value-taking markers
   assert.match(stdout, /'--model\[[^\]]+\]:model:'/);
+  assert.match(stdout, /'--max-diff-size\[[^\]]+\]:n:'/);
 });
 
 test('completion fish script includes global options', async () => {
@@ -115,7 +128,19 @@ test('completion fish script includes global options', async () => {
 
 test('completion fish script includes suggest subcommand options', async () => {
   const { stdout } = await runCompletion(['fish']);
-  const expected = ['--commit', '--yes', '--verbose', '--model', '--stream', '--dry-run', '--no-commit', '--auto', '--help'];
+  const expected = [
+    '--commit',
+    '--yes',
+    '--verbose',
+    '--show-diff',
+    '--model',
+    '--max-diff-size',
+    '--stream',
+    '--dry-run',
+    '--no-commit',
+    '--auto',
+    '--help',
+  ];
   for (const opt of expected) {
     assert.ok(stdout.includes(`"${opt}\\t`), `Expected fish script to include option: ${opt}`);
   }
@@ -129,9 +154,10 @@ test('completion --help shows command usage', async () => {
 
 test('completion bash script includes short flag aliases', async () => {
   const { stdout } = await runCompletion(['bash']);
-  // Short aliases for suggest: -y, -v, -m, -n
+  // Short aliases for suggest: -y, -v, -d, -m, -n
   assert.match(stdout, /-y/);
   assert.match(stdout, /-v/);
+  assert.match(stdout, /-d/);
   assert.match(stdout, /-m/);
   // Short alias for batch: -r
   assert.match(stdout, /-r/);
@@ -143,6 +169,7 @@ test('completion zsh script includes short flag aliases', async () => {
   // and `'-m[desc]:model:'` for value-taking flags.
   assert.match(stdout, /'-y\[/);
   assert.match(stdout, /'-y\[[^\]]+\]'/);
+  assert.match(stdout, /'-d\[/);
   assert.match(stdout, /'-m\[/);
   assert.match(stdout, /'-m\[[^\]]+\]:model:'/);
 });
@@ -152,6 +179,7 @@ test('completion fish script includes short flag aliases', async () => {
   // Fish prints both forms as separate `printf` lines under the subcommand case.
   assert.match(stdout, /"-y\\t/);
   assert.match(stdout, /"-v\\t/);
+  assert.match(stdout, /"-d\\t/);
   assert.match(stdout, /"-m\\t/);
 });
 
@@ -173,24 +201,27 @@ test('completion bash script handles --flag=value glued form', async () => {
   const { stdout } = await runCompletion(['bash']);
   // After a value-taking flag in `--flag=value` form, completion should also bail out.
   assert.match(stdout, /--model=\*\) return 0/);
+  assert.match(stdout, /--max-diff-size=\*\) return 0/);
 });
 
 test('completion bash script guards value-taking flags like --model', async () => {
   const { stdout } = await runCompletion(['bash']);
-  // The bash script uses a `case` statement (not extglob) to bail out after --model
+  // The bash script uses a `case` statement (not extglob) to bail out after value-taking flags.
   assert.match(stdout, /case "\$\{COMP_WORDS\[COMP_CWORD-1\]\}"/);
   assert.match(stdout, /--model\) return 0/);
+  assert.match(stdout, /--max-diff-size\) return 0/);
 });
 
 test('completion zsh script marks --model as value-taking', async () => {
   const { stdout } = await runCompletion(['zsh']);
   assert.match(stdout, /'--model\[[^\]]+\]:model:'/);
+  assert.match(stdout, /'--max-diff-size\[[^\]]+\]:n:'/);
 });
 
 test('completion fish script guards value-taking flags like --model', async () => {
   const { stdout } = await runCompletion(['fish']);
   // The fish script guards both the long and short forms, plus the glued --flag=value form.
-  assert.match(stdout, /case '.*--model'.*'--model=\*'/);
+  assert.match(stdout, /case '.*--model'.*'--model=\*'.*'--max-diff-size'.*'--max-diff-size=\*'/);
   assert.match(stdout, /'-m'/);
   assert.match(stdout, /'-m=\*'/);
 });

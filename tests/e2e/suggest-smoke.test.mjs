@@ -593,6 +593,29 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
   assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
 });
 
+test('suggest --max-diff-size overrides configured diff limit for one invocation', async (t) => {
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-max-diff-size-',
+    content: '1. feat: override max diff size',
+    readme: ['# fixture', '', ...Array.from({ length: 40 }, (_, i) => `override line ${i}`)].join('\n') + '\n',
+    maxDiffSize: 100_000,
+  });
+
+  const result = await runCli(['suggest', '--show-diff', '--yes', '--max-diff-size', '120'], {
+    cwd: repo,
+    env: cliEnvFor(home),
+  });
+  const stdout = stripAnsi(result.stdout);
+  const stderr = stripAnsi(result.stderr);
+
+  assert.equal(result.code, 0);
+  assert.match(stdout, /\[\.\.\.truncated 1 file\.\.\.\]/);
+  assert.match(stdout, /Selected:\s+feat: override max diff size/);
+  assert.match(stderr, /Diff truncated:/);
+  assert.match(requests.at(-1).messages[1].content, /\[\.\.\.truncated 1 file\.\.\.\]/);
+  assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
+});
+
 test('suggest --show-diff works with unstaged changes in auto mode', async (t) => {
   const { home, repo, requests } = await setupShowDiffFixture(t, {
     rootPrefix: 'commit-echo-show-diff-unstaged-',

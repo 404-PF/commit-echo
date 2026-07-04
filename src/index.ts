@@ -83,6 +83,7 @@ program
   .option('-v, --verbose', 'Print diagnostic information about the suggestion request')
   .option('-d, --show-diff', 'Print the diff content that will be sent to the LLM')
   .option('-m, --model <model>', 'Override the configured LLM model for this invocation')
+  .option('--max-diff-size <n>', 'Override the configured maximum diff size for this invocation')
   .option('--stream', 'Stream suggestions as they are generated (progressive output)')
   .option('-n, --dry-run', 'Show the LLM input without generating suggestions')
   .option('--no-commit', 'Deprecated alias; suggest already skips committing unless --commit is passed')
@@ -95,6 +96,7 @@ program
       verbose: Boolean(options.verbose),
       showDiff: Boolean(options.showDiff),
       model: options.model,
+      maxDiffSize: options.maxDiffSize,
       stream: Boolean(options.stream),
       dryRun: Boolean(options.dryRun),
       noCommit: process.argv.includes('--no-commit'),
