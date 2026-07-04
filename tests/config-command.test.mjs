@@ -280,6 +280,49 @@ test('config set rejects invalid numeric values', async () => {
   });
 });
 
+test('config set rejects unknown provider keys', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'provider', 'opneai']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Unknown provider: opneai/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects invalid base URLs', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'baseUrl', 'not-a-url']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /baseUrl must be a valid URL/);
+        assert.equal(readConfig(homeDir).baseUrl, undefined);
+        return true;
+      },
+    );
+  });
+});
+
+test('config set normalizes valid base URLs before saving', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    await runConfigWithArgs(homeDir, ['set', 'baseUrl', 'https://api.example.test/v1///']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.baseUrl, 'https://api.example.test/v1');
+  });
+});
+
 test('config set preserves surrounding whitespace for template values', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);

@@ -45,7 +45,31 @@ function isConfigSetKey(key: string): key is ConfigSetKey {
   return CONFIG_SET_KEYS.includes(key as ConfigSetKey);
 }
 
-function parseConfigSetValue(key: ConfigSetKey, rawValue: string): string | number {
+function normalizeBaseUrl(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function parseConfigSetValue(key: ConfigSetKey, rawValue: string): string | number | undefined {
+  if (key === 'provider') {
+    if (rawValue !== CUSTOM_PROVIDER_KEY && !getProviderInfo(rawValue)) {
+      throw new Error(`Unknown provider: ${rawValue}.`);
+    }
+    return rawValue;
+  }
+
+  if (key === 'baseUrl') {
+    if (!rawValue) {
+      return undefined;
+    }
+
+    try {
+      const url = new URL(rawValue);
+      return normalizeBaseUrl(url.toString());
+    } catch {
+      throw new Error('baseUrl must be a valid URL.');
+    }
+  }
+
   if (!NUMERIC_CONFIG_KEYS.has(key)) {
     return rawValue;
   }
@@ -141,7 +165,7 @@ export async function configSetCommand(key: string, value: string): Promise<void
     process.exit(1);
   }
 
-  let parsedValue: string | number;
+  let parsedValue: string | number | undefined;
   try {
     parsedValue = parseConfigSetValue(key, value);
   } catch (error) {
