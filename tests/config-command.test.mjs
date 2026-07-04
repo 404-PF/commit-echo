@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -63,6 +63,10 @@ function writeConfig(homeDir, overrides = {}) {
     ),
     'utf-8',
   );
+}
+
+function readConfig(homeDir) {
+  return JSON.parse(readFileSync(join(configDirFor(homeDir), 'config.json'), 'utf-8'));
 }
 
 /** Creates and removes a temporary home directory around a config command test. */
@@ -216,5 +220,62 @@ test('config --json reports missing API key in JSON', async () => {
 
     assert.equal(stderr, '');
     assert.equal(data.apiKey, 'not stored in config');
+  });
+});
+
+test('config set updates a string value in the persisted config', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['set', 'model', 'gpt-4.1-mini']);
+    const config = readConfig(homeDir);
+
+    assert.match(stdout + stderr, /Updated model/);
+    assert.equal(config.model, 'gpt-4.1-mini');
+    assert.equal(config.provider, 'openai');
+  });
+});
+
+test('config set coerces numeric values before saving', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['set', 'maxDiffSize', '8000']);
+    const config = readConfig(homeDir);
+
+    assert.match(stdout + stderr, /Updated maxDiffSize/);
+    assert.equal(config.maxDiffSize, 8000);
+  });
+});
+
+test('config set rejects unknown keys', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'unknownKey', 'value']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Unknown config key: unknownKey/);
+        assert.equal(readConfig(homeDir).model, 'test-model');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects invalid numeric values', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'historySize', 'ten']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /historySize must be a positive integer/);
+        assert.equal(readConfig(homeDir).historySize, 12);
+        return true;
+      },
+    );
   });
 });

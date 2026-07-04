@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { initCommand } from './commands/init.js';
 import { suggestCommand } from './commands/suggest.js';
 import { historyCommand } from './commands/history.js';
-import { configCommand } from './commands/config.js';
+import { configCommand, configSetCommand } from './commands/config.js';
 import { batchCommand } from './commands/batch.js';
 import { completionCommand } from './commands/completion.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
@@ -67,12 +67,21 @@ program
     await initCommand({ installHook: Boolean(options.installHook) });
   });
 
-program
+const configCliCommand = program
   .command('config')
   .description('View current configuration')
   .option('--json', 'Output the configuration as JSON')
   .action(async (options) => {
     await configCommand({ json: Boolean(options.json) });
+  });
+
+configCliCommand
+  .command('set')
+  .description('Update one configuration value')
+  .argument('<key>', 'Configuration key to update')
+  .argument('<value>', 'New value')
+  .action(async (key: string, value: string) => {
+    await configSetCommand(key, value);
   });
 
 program

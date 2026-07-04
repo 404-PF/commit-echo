@@ -1,6 +1,6 @@
 import { intro, outro } from '@clack/prompts';
 import pc from 'picocolors';
-import { configExists, loadConfig } from '../config/store.js';
+import { configExists, loadConfig, saveConfig } from '../config/store.js';
 import { getProviderInfo } from '../providers/index.js';
 import type { Config } from '../types.js';
 
@@ -18,6 +18,38 @@ type ConfigJsonOutput = {
   maxDiffSize: number;
   apiKey: string;
 };
+
+const CONFIG_SET_KEYS = [
+  'provider',
+  'model',
+  'baseUrl',
+  'apiKey',
+  'historySize',
+  'maxDiffSize',
+  'systemPromptTemplate',
+  'userPromptTemplate',
+] as const;
+
+type ConfigSetKey = (typeof CONFIG_SET_KEYS)[number];
+
+const NUMERIC_CONFIG_KEYS = new Set<ConfigSetKey>(['historySize', 'maxDiffSize']);
+
+function isConfigSetKey(key: string): key is ConfigSetKey {
+  return CONFIG_SET_KEYS.includes(key as ConfigSetKey);
+}
+
+function parseConfigSetValue(key: ConfigSetKey, rawValue: string): string | number {
+  if (!NUMERIC_CONFIG_KEYS.has(key)) {
+    return rawValue.trim();
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${key} must be a positive integer.`);
+  }
+
+  return value;
+}
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */
 export function maskApiKey(apiKey: string | undefined): string {
@@ -86,4 +118,34 @@ export async function configCommand(options: ConfigCommandOptions = {}): Promise
   console.log();
 
   outro('Configuration loaded.');
+}
+
+/** Updates one persisted configuration value. */
+export async function configSetCommand(key: string, value: string): Promise<void> {
+  if (!configExists()) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));
+    process.exit(1);
+  }
+
+  if (!isConfigSetKey(key)) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.red(`Unknown config key: ${key}. Valid keys: ${CONFIG_SET_KEYS.join(', ')}`));
+    process.exit(1);
+  }
+
+  let parsedValue: string | number;
+  try {
+    parsedValue = parseConfigSetValue(key, value);
+  } catch (error) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.red(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+  }
+
+  const config = await loadConfig();
+  await saveConfig({ ...config, [key]: parsedValue });
+
+  intro(pc.bold(pc.cyan('commit-echo config')));
+  outro(`Updated ${pc.cyan(key)}.`);
 }
