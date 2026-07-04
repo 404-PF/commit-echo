@@ -7,7 +7,8 @@ import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
 import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { buildProfile, appendEntry } from '../history/store.js';
-import type { Config, Suggestion } from '../types.js';
+import { showVerboseInfo } from './suggest.js';
+import type { Config, Suggestion, TruncationInfo } from '../types.js';
 
 export interface BatchResult {
   repo: string;
@@ -139,6 +140,7 @@ export async function batchCommand(
   options: {
     directory?: string;
     recursive?: boolean;
+    verbose?: boolean;
     yes?: boolean;
   } = {},
 ): Promise<void> {
@@ -236,9 +238,13 @@ export async function batchCommand(
 
     // Generate suggestions using the shared profile
     let suggestions: Suggestion[];
+    let truncation: TruncationInfo | undefined;
+    let model: string;
     try {
       const result = await generateSuggestions(config, diff, profile, apiKey);
       suggestions = result.suggestions;
+      model = result.model;
+      truncation = result.truncation;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(`    ${pc.red(`✖ Failed to generate suggestions: ${msg}`)}\n`);
@@ -249,6 +255,11 @@ export async function batchCommand(
         message: msg,
       });
       continue;
+    }
+
+    if (options.verbose) {
+      console.log('');
+      showVerboseInfo(model, profile, truncation);
     }
 
     // Display suggestions

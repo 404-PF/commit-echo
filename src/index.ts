@@ -116,6 +116,7 @@ program
   .description('Process multiple git repositories in batch mode')
   .argument('[directory]', 'Directory to scan for git repositories')
   .option('-r, --recursive', 'Recursively search subdirectories for git repos')
+  .option('-v, --verbose', 'Print diagnostic information about the suggestion request')
   .option('-y, --yes', 'Automatically accept the first suggestion and commit without prompts')
   .option('--auto', 'Alias for --yes')
   .action(async (directory, options) => {
@@ -123,6 +124,7 @@ program
     await batchCommand({
       directory: directory || undefined,
       recursive: Boolean(options.recursive),
+      verbose: Boolean(options.verbose),
       yes: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
     });
   });

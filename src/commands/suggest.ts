@@ -36,7 +36,7 @@ function showTruncationWarning(info: TruncationInfo): void {
   );
 }
 
-function showVerboseInfo(model: string, profile: StyleProfile, truncation?: TruncationInfo): void {
+export function showVerboseInfo(model: string, profile: StyleProfile, truncation?: TruncationInfo): void {
   const commonPrefixes = profile.commonPrefixes.length > 0 ? profile.commonPrefixes.join(', ') : 'none';
 
   console.log(pc.dim(`Model: ${model}`));
