@@ -31,7 +31,7 @@ function showTruncationWarning(info: TruncationInfo): void {
     pc.yellow(
       `\n⚠  Diff truncated: ${info.originalSize} → ${info.truncatedSize} chars (${pct}%) ` +
         `— ${info.filesTruncated} file(s) affected. ` +
-        `Adjust maxDiffSize in config to increase the limit.`,
+        `Adjust maxDiffSize in config or increase the --max-diff-size value.`,
     ),
   );
 }
@@ -141,7 +141,12 @@ export async function suggestCommand(
   }
 
   if (options.maxDiffSize) {
-    config.maxDiffSize = Number(options.maxDiffSize);
+    const parsed = Number(options.maxDiffSize);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      outro(pc.red('Invalid --max-diff-size value. Expected a positive integer.'));
+      return;
+    }
+    config.maxDiffSize = parsed;
   }
 
   let diffResult: DiffResult;
