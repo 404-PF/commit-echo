@@ -88,13 +88,29 @@ async function readConfigFile(): Promise<Partial<Config>> {
   }
 }
 
+function normalizeRawConfig(parsed: Partial<Config>, configPath: string): Partial<Config> {
+  return {
+    ...parsed,
+    historySize:
+      parsed.historySize === undefined
+        ? undefined
+        : readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath),
+    maxDiffSize:
+      parsed.maxDiffSize === undefined
+        ? undefined
+        : readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath),
+  };
+}
+
 export async function loadRawConfig(): Promise<Partial<Config>> {
-  return readConfigFile();
+  const configPath = getConfigPath();
+  const parsed = await readConfigFile();
+  return normalizeRawConfig(parsed, configPath);
 }
 
 export async function loadConfig(): Promise<Config> {
   const configPath = getConfigPath();
-  const parsed = await readConfigFile();
+  const parsed = normalizeRawConfig(await readConfigFile(), configPath);
 
   // Resolve numeric config values with env var overrides.
   // Env vars take precedence over config file values.

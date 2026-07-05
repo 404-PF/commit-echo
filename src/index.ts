@@ -77,9 +77,13 @@ const configCliCommand = program
 
 configCliCommand
   .command('set')
-  .description('Update one configuration value')
+  .description('Update one configuration value. Warning: values such as apiKey may be visible in shell history.')
   .argument('<key>', 'Configuration key to update')
   .argument('<value>', 'New value')
+  .addHelpText(
+    'after',
+    `\n${pc.yellow('Security note:')} Passing ${pc.cyan('apiKey')} on the command line may expose it via shell history or process inspection. Prefer ${pc.cyan('commit-echo init')} or environment variables for secrets.`,
+  )
   .action(async (key: string, value: string) => {
     await configSetCommand(key, value);
   });

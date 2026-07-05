@@ -38,6 +38,7 @@ const CONFIG_SET_KEYS = [
 ] as const;
 
 type ConfigSetKey = (typeof CONFIG_SET_KEYS)[number];
+type ConfigSetValueMap = Pick<Config, ConfigSetKey>;
 
 const NUMERIC_CONFIG_KEYS = new Set<ConfigSetKey>(['historySize', 'maxDiffSize']);
 
@@ -49,29 +50,29 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
-function parseConfigSetValue(key: ConfigSetKey, rawValue: string): string | number | undefined {
+function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): ConfigSetValueMap[K] {
   if (key === 'provider') {
     if (rawValue !== CUSTOM_PROVIDER_KEY && !getProviderInfo(rawValue)) {
       throw new Error(`Unknown provider: ${rawValue}.`);
     }
-    return rawValue;
+    return rawValue as ConfigSetValueMap[K];
   }
 
   if (key === 'baseUrl') {
     if (!rawValue) {
-      return undefined;
+      return undefined as ConfigSetValueMap[K];
     }
 
     try {
       const url = new URL(rawValue);
-      return normalizeBaseUrl(url.toString());
+      return normalizeBaseUrl(url.toString()) as ConfigSetValueMap[K];
     } catch {
       throw new Error('baseUrl must be a valid URL.');
     }
   }
 
   if (!NUMERIC_CONFIG_KEYS.has(key)) {
-    return rawValue;
+    return rawValue as ConfigSetValueMap[K];
   }
 
   const value = Number(rawValue);
@@ -79,7 +80,18 @@ function parseConfigSetValue(key: ConfigSetKey, rawValue: string): string | numb
     throw new Error(`${key} must be a positive integer.`);
   }
 
-  return value;
+  return value as ConfigSetValueMap[K];
+}
+
+function updateConfigField<K extends ConfigSetKey>(
+  config: Config,
+  key: K,
+  value: ConfigSetValueMap[K],
+): Config {
+  return {
+    ...config,
+    [key]: value,
+  };
 }
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */
@@ -165,7 +177,7 @@ export async function configSetCommand(key: string, value: string): Promise<void
     process.exit(1);
   }
 
-  let parsedValue: string | number | undefined;
+  let parsedValue: ConfigSetValueMap[ConfigSetKey];
   try {
     parsedValue = parseConfigSetValue(key, value);
   } catch (error) {
@@ -175,7 +187,7 @@ export async function configSetCommand(key: string, value: string): Promise<void
   }
 
   const config = await loadRawConfig();
-  await saveConfig({
+  const nextConfig: Config = {
     provider: config.provider ?? '',
     model: config.model ?? '',
     baseUrl: config.baseUrl,
@@ -184,8 +196,9 @@ export async function configSetCommand(key: string, value: string): Promise<void
     maxDiffSize: config.maxDiffSize ?? DEFAULT_MAX_DIFF_SIZE,
     systemPromptTemplate: config.systemPromptTemplate,
     userPromptTemplate: config.userPromptTemplate,
-    [key]: parsedValue,
-  });
+  };
+
+  await saveConfig(updateConfigField(nextConfig, key, parsedValue));
 
   intro(pc.bold(pc.cyan('commit-echo config')));
   outro(`Updated ${pc.cyan(key)}.`);
