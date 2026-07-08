@@ -121,7 +121,7 @@ function formatProvider(config: Config): string {
 /** Build the script-friendly payload used by `commit-echo config --json`. */
 function getConfigJsonOutput(config: Config): ConfigJsonOutput {
   return {
-    provider: formatProvider(config),
+    provider: config.provider, 
     model: config.model || 'not configured',
     endpoint: resolveEndpoint(config),
     historySize: config.historySize,
