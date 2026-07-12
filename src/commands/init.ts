@@ -12,6 +12,10 @@ export function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
+export function resolveBaseUrl(providerKey: string, existingBaseUrl?: string): string | undefined {
+  return providerKey === CUSTOM_KEY ? existingBaseUrl : getProviderInfo(providerKey)?.baseUrl;
+}
+
 export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   return {
     message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
@@ -91,7 +95,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       outro('Invalid provider selected.');
       return;
     }
-    baseUrl = existingConfig?.baseUrl ?? info.baseUrl;
+    baseUrl = resolveBaseUrl(providerKey as string, existingConfig?.baseUrl);
     apiKeyEnv = info.apiKeyEnv;
     needsApiKey = info.needsApiKey;
   }
