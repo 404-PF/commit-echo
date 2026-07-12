@@ -95,7 +95,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       outro('Invalid provider selected.');
       return;
     }
-    baseUrl = resolveBaseUrl(providerKey as string, existingConfig?.baseUrl);
+    baseUrl = info.baseUrl;
     apiKeyEnv = info.apiKeyEnv;
     needsApiKey = info.needsApiKey;
   }
