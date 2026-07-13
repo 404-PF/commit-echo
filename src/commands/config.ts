@@ -8,10 +8,8 @@ import {
   loadRawConfig,
   saveConfig,
 } from '../config/store.js';
-import { getProviderInfo, getValidProviderKeys } from '../providers/index.js';
+import { CUSTOM_PROVIDER_KEY, getProviderInfo, getValidProviderKeys } from '../providers/index.js';
 import type { Config } from '../types.js';
-
-const CUSTOM_PROVIDER_KEY = '__custom__';
 
 type ConfigCommandOptions = {
   json?: boolean;
@@ -88,6 +86,26 @@ function updateConfigField<K extends ConfigSetKey>(config: Config, key: K, value
     ...config,
     [key]: value,
   };
+}
+
+function applyProviderChange(config: Config, provider: Config['provider']): Config {
+  const nextConfig = updateConfigField(config, 'provider', provider);
+  if (provider === CUSTOM_PROVIDER_KEY) {
+    return nextConfig;
+  }
+
+  return {
+    ...nextConfig,
+    baseUrl: undefined,
+  };
+}
+
+function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: string): Config {
+  if (key === 'provider') {
+    return applyProviderChange(config, parseConfigSetValue('provider', rawValue));
+  }
+
+  return updateConfigField(config, key, parseConfigSetValue(key, rawValue));
 }
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */
@@ -173,15 +191,6 @@ export async function configSetCommand(key: string, value: string): Promise<void
     process.exit(1);
   }
 
-  let parsedValue: ConfigSetValueMap[ConfigSetKey];
-  try {
-    parsedValue = parseConfigSetValue(key, value);
-  } catch (error) {
-    intro(pc.bold(pc.cyan('commit-echo config')));
-    outro(pc.red(error instanceof Error ? error.message : String(error)));
-    process.exit(1);
-  }
-
   const config = await loadRawConfig();
   const nextConfig: Config = {
     provider: config.provider ?? '',
@@ -194,7 +203,16 @@ export async function configSetCommand(key: string, value: string): Promise<void
     userPromptTemplate: config.userPromptTemplate,
   };
 
-  await saveConfig(updateConfigField(nextConfig, key, parsedValue));
+  let updatedConfig: Config;
+  try {
+    updatedConfig = updateConfigFromRawValue(nextConfig, key, value);
+  } catch (error) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.red(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+  }
+
+  await saveConfig(updatedConfig);
 
   intro(pc.bold(pc.cyan('commit-echo config')));
   outro(`Updated ${pc.cyan(key)}.`);

@@ -1,5 +1,8 @@
 import type { ProviderInfo } from '../types.js';
 
+export const CUSTOM_PROVIDER_KEY = '__custom__';
+export const CUSTOM_API_KEY_ENV = 'CUSTOM_API_KEY';
+
 export const BUILTIN_PROVIDERS: ProviderInfo[] = [
   {
     key: 'openai',
