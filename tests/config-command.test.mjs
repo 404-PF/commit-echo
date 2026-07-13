@@ -280,7 +280,7 @@ test('config set rejects invalid numeric values', async () => {
   });
 });
 
-test('config set rejects unknown provider keys', async () => {
+test('config set rejects unknown provider keys and lists valid options', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
 
@@ -288,7 +288,11 @@ test('config set rejects unknown provider keys', async () => {
       () => runConfigWithArgs(homeDir, ['set', 'provider', 'opneai']),
       (error) => {
         assert.equal(error.code, 1);
-        assert.match(error.stdout + error.stderr, /Unknown provider: opneai/);
+        const output = error.stdout + error.stderr;
+        assert.match(output, /Unknown provider: 'opneai'/);
+        assert.match(output, /Valid providers:/);
+        assert.match(output, /openai/);
+        assert.match(output, /anthropic/);
         assert.equal(readConfig(homeDir).provider, 'openai');
         return true;
       },

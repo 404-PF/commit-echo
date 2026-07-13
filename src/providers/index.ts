@@ -9,7 +9,7 @@ export { BUILTIN_PROVIDERS, getProviderInfo, getProviderNames } from './registry
 
 const CUSTOM_PROVIDER_KEY = '__custom__';
 
-function getValidProviderKeys(): string {
+export function getValidProviderKeys(): string {
   return [...BUILTIN_PROVIDERS.map((provider) => provider.key), CUSTOM_PROVIDER_KEY].join(', ');
 }
 
