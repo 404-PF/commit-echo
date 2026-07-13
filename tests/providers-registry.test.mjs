@@ -32,18 +32,18 @@ test('all built-in providers expose required metadata', () => {
   assert.ok(BUILTIN_PROVIDERS.length > 0);
 
   for (const provider of BUILTIN_PROVIDERS) {
-    assert.equal(typeof provider.key, 'string');
-    assert.notEqual(provider.key, '');
-    assert.equal(typeof provider.name, 'string');
-    assert.notEqual(provider.name, '');
-    assert.equal(typeof provider.needsApiKey, 'boolean');
+    assert.strictEqual(typeof provider.key, 'string');
+    assert.notStrictEqual(provider.key, '');
+    assert.strictEqual(typeof provider.name, 'string');
+    assert.notStrictEqual(provider.name, '');
+    assert.strictEqual(typeof provider.needsApiKey, 'boolean');
 
     if (provider.key === 'example') {
-      assert.equal(provider.baseUrl, '');
-      assert.equal(provider.apiKeyEnv, '');
-      assert.equal(provider.website, '');
-      assert.equal(provider.docsUrl, '');
-      assert.equal(provider.needsApiKey, false);
+      assert.strictEqual(provider.baseUrl, '');
+      assert.strictEqual(provider.apiKeyEnv, '');
+      assert.strictEqual(provider.website, '');
+      assert.strictEqual(provider.docsUrl, '');
+      assert.strictEqual(provider.needsApiKey, false);
       continue;
     }
 
@@ -54,7 +54,7 @@ test('all built-in providers expose required metadata', () => {
     if (provider.needsApiKey) {
       assert.match(provider.apiKeyEnv, /^[A-Z][A-Z0-9_]*_API_KEY$/);
     } else {
-      assert.equal(typeof provider.apiKeyEnv, 'string');
+      assert.strictEqual(typeof provider.apiKeyEnv, 'string');
     }
   }
 });
