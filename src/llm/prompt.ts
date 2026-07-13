@@ -151,7 +151,12 @@ export function truncateDiff(diff: string, maxSize: number): { diff: string; inf
     const separatorLength = kept.length > 0 ? 1 : 0;
     remaining = Math.max(0, remaining - separatorLength);
 
-    if (section.length <= remaining) {
+    const filesTruncatedIfKept = totalFiles - (fullyKept + 1);
+    const fileWordIfKept = filesTruncatedIfKept === 1 ? 'file' : 'files';
+    const markerLengthIfKept = `\n[...truncated ${filesTruncatedIfKept} ${fileWordIfKept}...]`.length;
+    const separatorBeforeMarker = 1;
+
+    if (section.length + markerLengthIfKept + separatorBeforeMarker <= remaining) {
       kept.push(section);
       remaining -= section.length;
       fullyKept++;
