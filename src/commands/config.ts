@@ -8,7 +8,7 @@ import {
   loadRawConfig,
   saveConfig,
 } from '../config/store.js';
-import { getProviderInfo } from '../providers/index.js';
+import { getProviderInfo, getValidProviderKeys } from '../providers/index.js';
 import type { Config } from '../types.js';
 
 const CUSTOM_PROVIDER_KEY = '__custom__';
@@ -53,7 +53,7 @@ function normalizeBaseUrl(value: string): string {
 function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): ConfigSetValueMap[K] {
   if (key === 'provider') {
     if (rawValue !== CUSTOM_PROVIDER_KEY && !getProviderInfo(rawValue)) {
-      throw new Error(`Unknown provider: ${rawValue}.`);
+      throw new Error(`Unknown provider: '${rawValue}'. Valid providers: ${getValidProviderKeys()}`);
     }
     return rawValue as ConfigSetValueMap[K];
   }
@@ -83,11 +83,7 @@ function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): 
   return value as ConfigSetValueMap[K];
 }
 
-function updateConfigField<K extends ConfigSetKey>(
-  config: Config,
-  key: K,
-  value: ConfigSetValueMap[K],
-): Config {
+function updateConfigField<K extends ConfigSetKey>(config: Config, key: K, value: ConfigSetValueMap[K]): Config {
   return {
     ...config,
     [key]: value,
@@ -121,7 +117,7 @@ function formatProvider(config: Config): string {
 /** Build the script-friendly payload used by `commit-echo config --json`. */
 function getConfigJsonOutput(config: Config): ConfigJsonOutput {
   return {
-    provider: config.provider, 
+    provider: config.provider,
     model: config.model || 'not configured',
     endpoint: resolveEndpoint(config),
     historySize: config.historySize,
