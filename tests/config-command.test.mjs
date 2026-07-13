@@ -300,6 +300,36 @@ test('config set rejects unknown provider keys and lists valid options', async (
   });
 });
 
+test('config set clears stale baseUrl when switching away from custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      provider: '__custom__',
+      baseUrl: 'https://old-custom.example.test/v1',
+    });
+
+    await runConfigWithArgs(homeDir, ['set', 'provider', 'openai']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.provider, 'openai');
+    assert.equal(config.baseUrl, undefined);
+  });
+});
+
+test('config set preserves baseUrl when switching to custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      provider: 'openai',
+      baseUrl: 'https://custom.example.test/v1',
+    });
+
+    await runConfigWithArgs(homeDir, ['set', 'provider', '__custom__']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.provider, '__custom__');
+    assert.equal(config.baseUrl, 'https://custom.example.test/v1');
+  });
+});
+
 test('config set rejects invalid base URLs', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
