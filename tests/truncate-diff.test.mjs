@@ -60,6 +60,14 @@ test('truncates single file that exceeds the limit', () => {
   assert.ok(!diff.includes('+added'));
 });
 
+test('keeps a single-file truncation within an extremely small limit', () => {
+  const { diff, info } = truncateDiff(FILE_A, 10);
+
+  assert.equal(info.wasTruncated, true);
+  assert.ok(info.truncatedSize <= 10);
+  assert.ok(diff.length <= 10);
+});
+
 test('truncates multiple files keeping first fully and partially keeping second', () => {
   const twoFileDiff = FILE_A + '\n' + FILE_B;
   // Set limit to fit FILE_A but not both
@@ -84,6 +92,8 @@ test('truncates all files when limit is extremely small', () => {
 
   assert.equal(info.wasTruncated, true);
   assert.equal(info.filesTruncated, 2);
+  assert.ok(info.truncatedSize <= 10);
+  assert.ok(diff.length <= 10);
 
   // Only the truncation marker should remain (no headers fit)
   assert.ok(!diff.includes('diff --git'));
