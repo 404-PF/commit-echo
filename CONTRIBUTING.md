@@ -34,14 +34,34 @@
 
 ```
 src/
-├── index.ts          # CLI entry point (Commander)
-├── types.ts          # Shared types
-├── commands/         # Command implementations (init, suggest, history, completion, batch)
-├── config/           # Config persistence
-├── git/              # Git operations (diff)
-├── history/          # History JSONL + style learner
-├── llm/              # Prompt builder + API client
-└── providers/        # LLM provider adapters
+├── index.ts              # CLI entry point (Commander) — registers all commands
+├── types.ts              # Shared TypeScript interfaces (Config, Provider, Suggestion, etc.)
+├── commands/
+│   ├── init.ts           # Interactive setup wizard (clack/prompts) — provider, model, API key
+│   ├── suggest.ts        # Core suggestion flow: diff → LLM → display → optional commit
+│   ├── history.ts        # View learned style profile and recent commit history
+│   ├── config.ts         # View current config
+│   ├── batch.ts          # Process multiple git repos in batch mode
+│   └── completion.ts     # Generate shell completion scripts (bash, zsh, fish)
+├── providers/
+│   ├── index.ts          # Provider factory: createProvider(), complete(), completeStream(), fetchModels()
+│   ├── registry.ts       # BUILTIN_PROVIDERS array (OpenAI, Anthropic, Google, Mistral, etc.)
+│   ├── openai-compatible.ts  # Default adapter for OpenAI-compatible APIs (most providers)
+│   ├── anthropic.ts      # Anthropic-specific adapter (Messages API)
+│   ├── cohere.ts         # Cohere-specific adapter
+│   ├── example.ts        # No-op example provider for testing
+│   ├── request.ts        # Shared HTTP request helpers
+│   └── sse.ts            # Server-Sent Events streaming parser
+├── llm/
+│   ├── client.ts         # generateSuggestions() — orchestrates config → prompt → LLM → parse
+│   └── prompt.ts         # buildSystemPrompt(), buildUserPrompt(), template vars, diff truncation
+├── git/
+│   ├── diff.ts           # Git ops: getStagedDiff(), getUnstagedDiff(), commit(), checkGitRepo()
+│   └── hook.ts           # Git hook management: prepare-commit-msg, post-commit
+├── history/
+│   └── store.ts          # JSONL history: loadEntries(), appendEntry(), buildProfile(), formatProfile()
+└── config/
+    └── store.ts          # Config persistence: loadConfig(), saveConfig(), env var overrides
 ```
 
 ## Code Conventions
