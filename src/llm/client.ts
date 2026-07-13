@@ -1,13 +1,13 @@
 import type { Config, Provider, Suggestion, StyleProfile, TruncationInfo } from '../types.js';
-import { getProviderInfo } from '../providers/index.js';
+import { CUSTOM_API_KEY_ENV, CUSTOM_PROVIDER_KEY, getProviderInfo } from '../providers/index.js';
 import { complete, completeStream } from '../providers/index.js';
 import { resolveSystemPrompt, resolveUserPrompt, parseSuggestions, truncateDiff } from './prompt.js';
 import { buildProfile, formatProfile } from '../history/store.js';
 import { getBranchName, getLastCommitMessage } from '../git/diff.js';
 
 function getApiKeyEnv(config: Config): string | undefined {
-  if (config.provider === '__custom__') {
-    return 'CUSTOM_API_KEY';
+  if (config.provider === CUSTOM_PROVIDER_KEY) {
+    return CUSTOM_API_KEY_ENV;
   }
 
   return getProviderInfo(config.provider)?.apiKeyEnv;
@@ -23,7 +23,7 @@ export function resolveApiKey(config: Config): string {
 export function assertApiKeyAvailable(config: Config): string {
   const apiKey = resolveApiKey(config);
   const info = getProviderInfo(config.provider);
-  const needsApiKey = config.provider === '__custom__' || info?.needsApiKey;
+  const needsApiKey = config.provider === CUSTOM_PROVIDER_KEY || info?.needsApiKey;
 
   if (!apiKey && needsApiKey) {
     const envVar = getApiKeyEnv(config) || 'YOUR_PROVIDER_API_KEY';

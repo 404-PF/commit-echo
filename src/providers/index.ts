@@ -3,11 +3,15 @@ import { OpenAICompatibleProvider } from './openai-compatible.js';
 import { AnthropicProvider } from './anthropic.js';
 import { CohereProvider } from './cohere.js';
 import { ExampleProvider } from './example.js';
-import { BUILTIN_PROVIDERS, getProviderInfo } from './registry.js';
+import { BUILTIN_PROVIDERS, CUSTOM_PROVIDER_KEY, getProviderInfo } from './registry.js';
 
-export { BUILTIN_PROVIDERS, getProviderInfo, getProviderNames } from './registry.js';
-
-const CUSTOM_PROVIDER_KEY = '__custom__';
+export {
+  BUILTIN_PROVIDERS,
+  CUSTOM_API_KEY_ENV,
+  CUSTOM_PROVIDER_KEY,
+  getProviderInfo,
+  getProviderNames,
+} from './registry.js';
 
 export function getValidProviderKeys(): string {
   return [...BUILTIN_PROVIDERS.map((provider) => provider.key), CUSTOM_PROVIDER_KEY].join(', ');

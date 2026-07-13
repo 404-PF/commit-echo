@@ -185,7 +185,7 @@ test('config --json returns configuration as JSON with masked API key', async ()
     const data = JSON.parse(stdout);
 
     assert.equal(stderr, '');
-    assert.equal(data.provider, 'OpenAI');
+    assert.equal(data.provider, 'openai');
     assert.equal(data.model, 'test-model');
     assert.equal(data.endpoint, 'https://api.openai.com/v1');
     assert.equal(data.historySize, 12);
@@ -206,7 +206,7 @@ test('config --json returns custom endpoint and provider in JSON', async () => {
     const data = JSON.parse(stdout);
 
     assert.equal(stderr, '');
-    assert.equal(data.provider, 'Custom (OpenAI-compatible)');
+    assert.equal(data.provider, '__custom__');
     assert.equal(data.endpoint, 'https://api.example.test/v1');
   });
 });
@@ -303,6 +303,7 @@ test('config set rejects unknown provider keys and lists valid options', async (
 test('config set clears stale baseUrl when switching away from custom provider', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir, {
+      apiKey: 'sk-still-valid-for-next-provider',
       provider: '__custom__',
       baseUrl: 'https://old-custom.example.test/v1',
     });
@@ -311,6 +312,22 @@ test('config set clears stale baseUrl when switching away from custom provider',
     const config = readConfig(homeDir);
 
     assert.equal(config.provider, 'openai');
+    assert.equal(config.baseUrl, undefined);
+    assert.equal(config.apiKey, 'sk-still-valid-for-next-provider');
+  });
+});
+
+test('config set clears stale baseUrl when switching between built-in providers', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      provider: 'openai',
+      baseUrl: 'https://custom.example.test/v1',
+    });
+
+    await runConfigWithArgs(homeDir, ['set', 'provider', 'anthropic']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.provider, 'anthropic');
     assert.equal(config.baseUrl, undefined);
   });
 });

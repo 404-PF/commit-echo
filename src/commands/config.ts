@@ -8,10 +8,8 @@ import {
   loadRawConfig,
   saveConfig,
 } from '../config/store.js';
-import { getProviderInfo, getValidProviderKeys } from '../providers/index.js';
+import { CUSTOM_PROVIDER_KEY, getProviderInfo, getValidProviderKeys } from '../providers/index.js';
 import type { Config } from '../types.js';
-
-const CUSTOM_PROVIDER_KEY = '__custom__';
 
 type ConfigCommandOptions = {
   json?: boolean;
@@ -84,17 +82,30 @@ function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): 
 }
 
 function updateConfigField<K extends ConfigSetKey>(config: Config, key: K, value: ConfigSetValueMap[K]): Config {
-  if (key === 'provider' && value !== CUSTOM_PROVIDER_KEY) {
-    return {
-      ...config,
-      [key]: value,
-      baseUrl: undefined,
-    };
-  }
   return {
     ...config,
     [key]: value,
   };
+}
+
+function applyProviderChange(config: Config, provider: Config['provider']): Config {
+  const nextConfig = updateConfigField(config, 'provider', provider);
+  if (provider === CUSTOM_PROVIDER_KEY) {
+    return nextConfig;
+  }
+
+  return {
+    ...nextConfig,
+    baseUrl: undefined,
+  };
+}
+
+function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: string): Config {
+  if (key === 'provider') {
+    return applyProviderChange(config, parseConfigSetValue('provider', rawValue));
+  }
+
+  return updateConfigField(config, key, parseConfigSetValue(key, rawValue));
 }
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */
@@ -180,9 +191,8 @@ export async function configSetCommand(key: string, value: string): Promise<void
     process.exit(1);
   }
 
-  let parsedValue: ConfigSetValueMap[ConfigSetKey];
   try {
-    parsedValue = parseConfigSetValue(key, value);
+    parseConfigSetValue(key, value);
   } catch (error) {
     intro(pc.bold(pc.cyan('commit-echo config')));
     outro(pc.red(error instanceof Error ? error.message : String(error)));
@@ -201,7 +211,7 @@ export async function configSetCommand(key: string, value: string): Promise<void
     userPromptTemplate: config.userPromptTemplate,
   };
 
-  await saveConfig(updateConfigField(nextConfig, key, parsedValue));
+  await saveConfig(updateConfigFromRawValue(nextConfig, key, value));
 
   intro(pc.bold(pc.cyan('commit-echo config')));
   outro(`Updated ${pc.cyan(key)}.`);

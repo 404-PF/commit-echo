@@ -1,19 +1,23 @@
 import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
 import pc from 'picocolors';
-import { BUILTIN_PROVIDERS, getProviderInfo, fetchModels } from '../providers/index.js';
+import {
+  BUILTIN_PROVIDERS,
+  CUSTOM_API_KEY_ENV,
+  CUSTOM_PROVIDER_KEY,
+  getProviderInfo,
+  fetchModels,
+} from '../providers/index.js';
 import { saveConfig, configExists, loadConfig } from '../config/store.js';
 import type { Config } from '../types.js';
 import { getAvailableTemplateVars } from '../llm/prompt.js';
 import { installPrepareCommitMsgHook } from '../git/hook.js';
-
-const CUSTOM_KEY = '__custom__';
 
 export function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
 }
 
 export function resolveBaseUrl(providerKey: string, existingBaseUrl?: string): string | undefined {
-  return providerKey === CUSTOM_KEY ? existingBaseUrl : getProviderInfo(providerKey)?.baseUrl;
+  return providerKey === CUSTOM_PROVIDER_KEY ? existingBaseUrl : getProviderInfo(providerKey)?.baseUrl;
 }
 
 export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
@@ -47,7 +51,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   }));
 
   providerNames.push({
-    value: CUSTOM_KEY,
+    value: CUSTOM_PROVIDER_KEY,
     label: 'Custom (OpenAI-compatible)',
     hint: 'Any OpenAI-compatible API endpoint',
   });
@@ -68,7 +72,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   let apiKey: string | undefined;
   let needsApiKey = true;
 
-  if (providerKey === CUSTOM_KEY) {
+  if (providerKey === CUSTOM_PROVIDER_KEY) {
     const urlResult = await text({
       message: 'Enter the base URL for your OpenAI-compatible API:',
       placeholder: 'https://api.example.com/v1',
@@ -87,7 +91,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       return;
     }
     baseUrl = normalizeBaseUrl(urlResult);
-    apiKeyEnv = 'CUSTOM_API_KEY';
+    apiKeyEnv = CUSTOM_API_KEY_ENV;
     needsApiKey = true;
   } else {
     const info = getProviderInfo(providerKey as string);
@@ -122,7 +126,11 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
 
   let models: string[];
   try {
-    models = await fetchModels(providerKey as string, providerKey === CUSTOM_KEY ? baseUrl : undefined, apiKey ?? '');
+    models = await fetchModels(
+      providerKey as string,
+      providerKey === CUSTOM_PROVIDER_KEY ? baseUrl : undefined,
+      apiKey ?? '',
+    );
     modelSpinner.stop('Models fetched successfully.');
   } catch (err) {
     modelSpinner.stop(pc.yellow('Could not fetch models automatically.'));
@@ -225,7 +233,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   const config: Config = {
     provider: providerKey as string,
     model: selectedModel as string,
-    baseUrl: providerKey === CUSTOM_KEY ? baseUrl : undefined,
+    baseUrl: providerKey === CUSTOM_PROVIDER_KEY ? baseUrl : undefined,
     apiKey: apiKey ?? undefined,
     historySize: Number(historyResult),
     maxDiffSize: Number(maxDiffResult),
@@ -284,7 +292,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   await persistSetup();
 
   const displayKey = config.apiKey ? 'stored in config' : `\$${apiKeyEnv}`;
-  const displayUrl = providerKey === CUSTOM_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
+  const displayUrl = providerKey === CUSTOM_PROVIDER_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
 
   const templateInfo =
     config.systemPromptTemplate || config.userPromptTemplate
