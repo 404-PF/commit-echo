@@ -191,14 +191,6 @@ export async function configSetCommand(key: string, value: string): Promise<void
     process.exit(1);
   }
 
-  try {
-    parseConfigSetValue(key, value);
-  } catch (error) {
-    intro(pc.bold(pc.cyan('commit-echo config')));
-    outro(pc.red(error instanceof Error ? error.message : String(error)));
-    process.exit(1);
-  }
-
   const config = await loadRawConfig();
   const nextConfig: Config = {
     provider: config.provider ?? '',
@@ -211,7 +203,16 @@ export async function configSetCommand(key: string, value: string): Promise<void
     userPromptTemplate: config.userPromptTemplate,
   };
 
-  await saveConfig(updateConfigFromRawValue(nextConfig, key, value));
+  let updatedConfig: Config;
+  try {
+    updatedConfig = updateConfigFromRawValue(nextConfig, key, value);
+  } catch (error) {
+    intro(pc.bold(pc.cyan('commit-echo config')));
+    outro(pc.red(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+  }
+
+  await saveConfig(updatedConfig);
 
   intro(pc.bold(pc.cyan('commit-echo config')));
   outro(`Updated ${pc.cyan(key)}.`);
