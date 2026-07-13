@@ -148,7 +148,15 @@ export function truncateDiff(diff: string, maxSize: number): { diff: string; inf
   for (const section of sections) {
     if (partialFile) break; // already past the limit
 
-    if (section.length <= remaining) {
+    const separatorLength = kept.length > 0 ? 1 : 0;
+    remaining = Math.max(0, remaining - separatorLength);
+
+    const filesTruncatedIfKept = totalFiles - (fullyKept + 1);
+    const fileWordIfKept = filesTruncatedIfKept === 1 ? 'file' : 'files';
+    const markerLengthIfKept = `\n[...truncated ${filesTruncatedIfKept} ${fileWordIfKept}...]`.length;
+    const separatorBeforeMarker = 1;
+
+    if (section.length + markerLengthIfKept + separatorBeforeMarker <= remaining) {
       kept.push(section);
       remaining -= section.length;
       fullyKept++;
@@ -188,9 +196,10 @@ export function truncateDiff(diff: string, maxSize: number): { diff: string; inf
   const filesTruncated = totalFiles - fullyKept;
   const fileWord = filesTruncated === 1 ? 'file' : 'files';
   const marker = `\n[...truncated ${filesTruncated} ${fileWord}...]`;
-  kept.push(marker);
-
-  const result = kept.join('\n');
+  const content = kept.join('\n');
+  const separator = content.length > 0 ? '\n' : '';
+  const contentBudget = Math.max(0, maxSize - separator.length - marker.length);
+  const result = `${content.slice(0, contentBudget)}${separator}${marker}`.slice(0, maxSize);
 
   return {
     diff: result,

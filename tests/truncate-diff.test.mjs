@@ -60,6 +60,14 @@ test('truncates single file that exceeds the limit', () => {
   assert.ok(!diff.includes('+added'));
 });
 
+test('keeps a single-file truncation within an extremely small limit', () => {
+  const { diff, info } = truncateDiff(FILE_A, 10);
+
+  assert.equal(info.wasTruncated, true);
+  assert.ok(info.truncatedSize <= 10);
+  assert.ok(diff.length <= 10);
+});
+
 test('truncates multiple files keeping first fully and partially keeping second', () => {
   const twoFileDiff = FILE_A + '\n' + FILE_B;
   // Set limit to fit FILE_A but not both
@@ -78,12 +86,35 @@ test('truncates multiple files keeping first fully and partially keeping second'
   assert.ok(diff.includes('[...truncated 1 file...]'));
 });
 
+test('counts a file clipped at the exact section-separator boundary', () => {
+  const twoFileDiff = FILE_A + '\n' + FILE_B;
+  const limit = FILE_A.length + FILE_B.length;
+  const { diff, info } = truncateDiff(twoFileDiff, limit);
+
+  assert.equal(twoFileDiff.length, limit + 1);
+  assert.equal(diff.length, limit);
+  assert.equal(info.filesTruncated, 1);
+  assert.ok(diff.includes('[...truncated 1 file...]'));
+});
+
+test('reserves truncation marker space before keeping a file whole', () => {
+  const twoFileDiff = FILE_A + '\n' + FILE_B;
+  const limit = FILE_A.length + 1;
+  const { diff, info } = truncateDiff(twoFileDiff, limit);
+
+  assert.equal(info.filesTruncated, 2);
+  assert.ok(!diff.includes('+added'));
+  assert.ok(diff.includes('[...truncated 2 files...]'));
+});
+
 test('truncates all files when limit is extremely small', () => {
   const twoFileDiff = FILE_A + '\n' + FILE_B;
   const { diff, info } = truncateDiff(twoFileDiff, 10);
 
   assert.equal(info.wasTruncated, true);
   assert.equal(info.filesTruncated, 2);
+  assert.ok(info.truncatedSize <= 10);
+  assert.ok(diff.length <= 10);
 
   // Only the truncation marker should remain (no headers fit)
   assert.ok(!diff.includes('diff --git'));
