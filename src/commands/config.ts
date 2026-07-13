@@ -84,17 +84,17 @@ function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): 
 }
 
 function updateConfigField<K extends ConfigSetKey>(config: Config, key: K, value: ConfigSetValueMap[K]): Config {
-	if (key === 'provider' && value !== CUSTOM_PROVIDER_KEY) {
-		return {
-			...config,
-			[key]: value,
-			baseUrl: undefined,
-		};
-	}
-	return {
-		...config,
-		[key]: value,
-	};
+  if (key === 'provider' && value !== CUSTOM_PROVIDER_KEY) {
+    return {
+      ...config,
+      [key]: value,
+      baseUrl: undefined,
+    };
+  }
+  return {
+    ...config,
+    [key]: value,
+  };
 }
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */
