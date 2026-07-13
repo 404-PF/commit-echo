@@ -164,6 +164,7 @@ Set the API key for the provider you plan to use before running the setup wizard
 | Provider key | Display name | API key env var | Required? |
 |---|---|---|---|
 | `openai` | OpenAI | `OPENAI_API_KEY` | Yes |
+| `openrouter` | OpenRouter | `OPENROUTER_API_KEY` | Yes |
 | `anthropic` | Anthropic | `ANTHROPIC_API_KEY` | Yes |
 | `google` | Google Gemini | `GOOGLE_API_KEY` | Yes |
 | `mistral` | Mistral | `MISTRAL_API_KEY` | Yes |

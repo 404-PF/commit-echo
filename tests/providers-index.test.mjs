@@ -32,6 +32,7 @@ test('getStreamingProvider rejects providers without streaming', () => {
 test('getStreamingProvider accepts streaming providers', () => {
   assert.doesNotThrow(() => getStreamingProvider('anthropic'));
   assert.doesNotThrow(() => getStreamingProvider('openai'));
+  assert.doesNotThrow(() => getStreamingProvider('openrouter'));
 });
 
 test('completeStream rejects Cohere before making a request', async () => {

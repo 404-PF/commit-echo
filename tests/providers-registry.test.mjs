@@ -15,3 +15,15 @@ test('getProviderInfo returns undefined for unknown providers', () => {
 test('getProviderNames includes OpenAI', () => {
   assert.ok(getProviderNames().includes('OpenAI'));
 });
+
+test('getProviderInfo returns built-in OpenRouter metadata', () => {
+  assert.deepStrictEqual(getProviderInfo('openrouter'), {
+    key: 'openrouter',
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    website: 'https://openrouter.ai',
+    docsUrl: 'https://openrouter.ai/docs',
+    needsApiKey: true,
+  });
+});
