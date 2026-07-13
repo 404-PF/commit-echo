@@ -11,6 +11,15 @@ export const BUILTIN_PROVIDERS: ProviderInfo[] = [
     needsApiKey: true,
   },
   {
+    key: 'openrouter',
+    name: 'OpenRouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKeyEnv: 'OPENROUTER_API_KEY',
+    website: 'https://openrouter.ai',
+    docsUrl: 'https://openrouter.ai/docs',
+    needsApiKey: true,
+  },
+  {
     key: 'anthropic',
     name: 'Anthropic',
     baseUrl: 'https://api.anthropic.com/v1',
