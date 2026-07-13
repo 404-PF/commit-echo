@@ -144,6 +144,7 @@ export async function suggestCommand(
     const parsed = Number(options.maxDiffSize);
     if (!Number.isInteger(parsed) || parsed <= 0) {
       outro(pc.red('Invalid --max-diff-size value. Expected a positive integer.'));
+      process.exitCode = 1;
       return;
     }
     config.maxDiffSize = parsed;
