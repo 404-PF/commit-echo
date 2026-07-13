@@ -86,6 +86,17 @@ test('truncates multiple files keeping first fully and partially keeping second'
   assert.ok(diff.includes('[...truncated 1 file...]'));
 });
 
+test('counts a file clipped at the exact section-separator boundary', () => {
+  const twoFileDiff = FILE_A + '\n' + FILE_B;
+  const limit = FILE_A.length + FILE_B.length;
+  const { diff, info } = truncateDiff(twoFileDiff, limit);
+
+  assert.equal(twoFileDiff.length, limit + 1);
+  assert.equal(diff.length, limit);
+  assert.equal(info.filesTruncated, 1);
+  assert.ok(diff.includes('[...truncated 1 file...]'));
+});
+
 test('truncates all files when limit is extremely small', () => {
   const twoFileDiff = FILE_A + '\n' + FILE_B;
   const { diff, info } = truncateDiff(twoFileDiff, 10);

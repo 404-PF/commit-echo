@@ -148,6 +148,9 @@ export function truncateDiff(diff: string, maxSize: number): { diff: string; inf
   for (const section of sections) {
     if (partialFile) break; // already past the limit
 
+    const separatorLength = kept.length > 0 ? 1 : 0;
+    remaining = Math.max(0, remaining - separatorLength);
+
     if (section.length <= remaining) {
       kept.push(section);
       remaining -= section.length;
