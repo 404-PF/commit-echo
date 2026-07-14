@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BUILTIN_PROVIDERS, getProviderInfo, getProviderNames } from '../dist/providers/registry.js';
+import { BUILTIN_PROVIDERS, getProviderInfo, getProviderNames } from '../../dist/providers/registry.js';
 
 test('getProviderInfo returns built-in OpenAI metadata', () => {
   assert.strictEqual(getProviderInfo('openai')?.key, 'openai');
