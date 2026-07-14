@@ -138,11 +138,11 @@ export async function loadConfig(): Promise<Config> {
 
 export async function saveConfig(config: Config): Promise<void> {
   const configDir = getConfigDir();
-  if (!existsSync(configDir)) {
-    await mkdir(configDir, { recursive: true, mode: 0o700 });
-  }
+  await mkdir(configDir, { recursive: true, mode: 0o700 });
+  await chmod(configDir, 0o700);
   const configPath = getConfigPath();
   await writeFile(configPath, JSON.stringify(config, null, 2), { encoding: 'utf-8', mode: 0o600 });
+  await chmod(configPath, 0o600);
 }
 
 export function configExists(): boolean {

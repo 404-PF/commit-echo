@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile, stat, chmod } from 'node:fs/promises';
 import { tmpdir, platform } from 'node:os';
 import { dirname } from 'node:path';
 import test from 'node:test';
@@ -329,6 +329,33 @@ if (!isWindows) {
       const dirMode = dirStat.mode & 0o777;
 
       assert.equal(dirMode, 0o700, `Expected 0o700 but got 0o${dirMode.toString(8)}`);
+    });
+  });
+
+  test('saveConfig tightens permissions on pre-existing directory and file', async () => {
+    await withTempConfig(async () => {
+      const config = {
+        provider: 'openai',
+        model: 'gpt-4.1',
+        historySize: 50,
+        maxDiffSize: 4000,
+      };
+
+      // Pre-create directory with lax permissions
+      await mkdir(getConfigDir(), { recursive: true, mode: 0o777 });
+      // Pre-create file with lax permissions
+      await writeFile(getConfigPath(), '{}', 'utf-8');
+      await chmod(getConfigPath(), 0o644);
+
+      await saveConfig(config);
+
+      const dirStat = await stat(getConfigDir());
+      const dirMode = dirStat.mode & 0o777;
+      const fileStat = await stat(getConfigPath());
+      const fileMode = fileStat.mode & 0o777;
+
+      assert.equal(dirMode, 0o700, `Expected dir 0o700 but got 0o${dirMode.toString(8)}`);
+      assert.equal(fileMode, 0o600, `Expected file 0o600 but got 0o${fileMode.toString(8)}`);
     });
   });
 }
