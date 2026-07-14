@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
@@ -139,9 +139,10 @@ export async function loadConfig(): Promise<Config> {
 export async function saveConfig(config: Config): Promise<void> {
   const configDir = getConfigDir();
   if (!existsSync(configDir)) {
-    await mkdir(configDir, { recursive: true });
+    await mkdir(configDir, { recursive: true, mode: 0o700 });
   }
-  await writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
+  const configPath = getConfigPath();
+  await writeFile(configPath, JSON.stringify(config, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
 export function configExists(): boolean {

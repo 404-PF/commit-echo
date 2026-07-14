@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, mkdtemp, rm, writeFile, stat } from 'node:fs/promises';
+import { tmpdir, platform } from 'node:os';
 import { dirname } from 'node:path';
 import test from 'node:test';
 
-import { getConfigPath, loadConfig, CONFIG_ENV_VARS } from '../dist/config/store.js';
+import { getConfigPath, getConfigDir, loadConfig, saveConfig, CONFIG_ENV_VARS } from '../dist/config/store.js';
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -273,3 +273,62 @@ test('env var zero for numeric option throws', async () => {
     COMMIT_ECHO_HISTORY_SIZE: '0',
   });
 });
+
+// --- saveConfig permission tests (Unix only) ---
+
+const isWindows = platform() === 'win32';
+
+test('saveConfig creates config file with correct content', async () => {
+  await withTempConfig(async () => {
+    const config = {
+      provider: 'openai',
+      model: 'gpt-4.1',
+      historySize: 50,
+      maxDiffSize: 4000,
+    };
+
+    await saveConfig(config);
+    const loaded = await loadConfig();
+
+    assert.equal(loaded.provider, 'openai');
+    assert.equal(loaded.model, 'gpt-4.1');
+    assert.equal(loaded.historySize, 50);
+    assert.equal(loaded.maxDiffSize, 4000);
+  });
+});
+
+if (!isWindows) {
+  test('saveConfig sets restrictive file permissions (0o600)', async () => {
+    await withTempConfig(async () => {
+      const config = {
+        provider: 'openai',
+        model: 'gpt-4.1',
+        historySize: 50,
+        maxDiffSize: 4000,
+      };
+
+      await saveConfig(config);
+      const fileStat = await stat(getConfigPath());
+      const fileMode = fileStat.mode & 0o777;
+
+      assert.equal(fileMode, 0o600, `Expected 0o600 but got 0o${fileMode.toString(8)}`);
+    });
+  });
+
+  test('saveConfig sets restrictive directory permissions (0o700)', async () => {
+    await withTempConfig(async () => {
+      const config = {
+        provider: 'openai',
+        model: 'gpt-4.1',
+        historySize: 50,
+        maxDiffSize: 4000,
+      };
+
+      await saveConfig(config);
+      const dirStat = await stat(getConfigDir());
+      const dirMode = dirStat.mode & 0o777;
+
+      assert.equal(dirMode, 0o700, `Expected 0o700 but got 0o${dirMode.toString(8)}`);
+    });
+  });
+}
