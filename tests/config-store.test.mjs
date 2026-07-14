@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import test from 'node:test';
 
-import { getConfigPath, loadConfig, CONFIG_ENV_VARS } from '../dist/config/store.js';
+import { getConfigPath, loadConfig, saveConfig, invalidateConfigCache, CONFIG_ENV_VARS } from '../dist/config/store.js';
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -218,6 +218,76 @@ test('env vars fall back to defaults when neither env var nor config file provid
 
     assert.equal(config.historySize, 50);
     assert.equal(config.maxDiffSize, 4000);
+  });
+});
+
+// --- In-memory caching tests ---
+
+test('loadConfig caches the parsed config for the process lifetime', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    const first = await loadConfig();
+    // Mutate the underlying file; a second load must still return the cached object.
+    await writeConfig(configPath, {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+    });
+
+    const second = await loadConfig();
+
+    assert.equal(second.provider, 'openai');
+    assert.equal(second.model, 'gpt-4.1');
+    assert.equal(first, second, 'expected the same cached instance');
+  });
+});
+
+test('invalidateConfigCache forces a fresh read from disk', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    const first = await loadConfig();
+
+    await writeConfig(configPath, {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+    });
+    invalidateConfigCache(configPath);
+
+    const second = await loadConfig();
+
+    assert.notEqual(first, second);
+    assert.equal(second.provider, 'anthropic');
+    assert.equal(second.model, 'claude-sonnet-4-20250514');
+  });
+});
+
+test('saveConfig invalidates the cache so subsequent loads read new values', async () => {
+  await withTempConfig(async (configPath) => {
+    await writeConfig(configPath, {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    await loadConfig();
+
+    await saveConfig({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-20250514',
+      historySize: 50,
+      maxDiffSize: 4000,
+    });
+
+    const after = await loadConfig();
+
+    assert.equal(after.provider, 'anthropic');
+    assert.equal(after.model, 'claude-sonnet-4-20250514');
   });
 });
 

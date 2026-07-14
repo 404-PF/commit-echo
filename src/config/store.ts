@@ -108,8 +108,26 @@ export async function loadRawConfig(): Promise<Partial<Config>> {
   return normalizeRawConfig(parsed, configPath);
 }
 
+const configCache = new Map<string, Config>();
+
+/**
+ * Clear cached config so the next loadConfig() reads from disk again.
+ * When a path is given, only that path's entry is cleared; otherwise the
+ * entire process-lifetime cache is cleared.
+ */
+export function invalidateConfigCache(configPath?: string): void {
+  if (configPath) {
+    configCache.delete(configPath);
+  } else {
+    configCache.clear();
+  }
+}
+
 export async function loadConfig(): Promise<Config> {
   const configPath = getConfigPath();
+  const cached = configCache.get(configPath);
+  if (cached) return cached;
+
   const parsed = normalizeRawConfig(await readConfigFile(), configPath);
 
   // Resolve numeric config values with env var overrides.
@@ -124,7 +142,7 @@ export async function loadConfig(): Promise<Config> {
     envMaxDiffSize ??
     readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
 
-  return {
+  const config = {
     provider: (process.env['COMMIT_ECHO_PROVIDER'] ?? parsed.provider ?? '').trim(),
     model: (process.env['COMMIT_ECHO_MODEL'] ?? parsed.model ?? '').trim(),
     baseUrl: (process.env['COMMIT_ECHO_BASE_URL'] ?? parsed.baseUrl)?.trim(),
@@ -134,6 +152,9 @@ export async function loadConfig(): Promise<Config> {
     systemPromptTemplate: parsed.systemPromptTemplate,
     userPromptTemplate: parsed.userPromptTemplate,
   };
+
+  configCache.set(configPath, config);
+  return config;
 }
 
 export async function saveConfig(config: Config): Promise<void> {
@@ -141,7 +162,9 @@ export async function saveConfig(config: Config): Promise<void> {
   if (!existsSync(configDir)) {
     await mkdir(configDir, { recursive: true });
   }
-  await writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
+  const configPath = getConfigPath();
+  await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  invalidateConfigCache(configPath);
 }
 
 export function configExists(): boolean {
