@@ -231,8 +231,6 @@ export async function suggestCommand(
   }
 
   const analysisPreview = options.showDiff ? getPreview() : undefined;
-  const analysisDiff = analysisPreview?.diff ?? diffResult.diff;
-  const analysisTruncation = analysisPreview?.info;
   let apiKey: string;
   try {
     apiKey = assertApiKeyAvailable(config);
@@ -261,11 +259,10 @@ export async function suggestCommand(
       try {
         for await (const event of generateSuggestionsStream(
           config,
-          analysisDiff,
+          diffResult.diff,
           profile,
           apiKey,
           streamProvider,
-          analysisTruncation,
         )) {
           if (event.kind === 'meta') {
             generatedTruncation = event.truncation;
@@ -306,7 +303,7 @@ export async function suggestCommand(
       genSpinner.start('Generating commit suggestions...');
 
       try {
-        const result = await generateSuggestions(config, analysisDiff, profile, apiKey, analysisTruncation);
+        const result = await generateSuggestions(config, diffResult.diff, profile, apiKey);
         suggestions = result.suggestions;
         generatedTruncation = result.truncation;
         model = result.model;

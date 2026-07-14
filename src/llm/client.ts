@@ -47,9 +47,7 @@ export async function generateSuggestions(
 }> {
   const profile = profileParam ?? (await buildProfile(config.historySize));
 
-  const { diff: truncatedDiff, info: truncation } = precomputedTruncation
-    ? { diff, info: precomputedTruncation }
-    : truncateDiff(diff, config.maxDiffSize);
+  const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
 
   const branch = getBranchName();
   const profileStr = formatProfile(profile);
@@ -119,9 +117,7 @@ export async function* generateSuggestionsStream(
 ): AsyncGenerator<SuggestionStreamEvent> {
   const profile = profileParam ?? (await buildProfile(config.historySize));
 
-  const { diff: truncatedDiff, info: truncation } = precomputedTruncation
-    ? { diff, info: precomputedTruncation }
-    : truncateDiff(diff, config.maxDiffSize);
+  const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
 
   const branch = getBranchName();
   const profileStr = formatProfile(profile);
