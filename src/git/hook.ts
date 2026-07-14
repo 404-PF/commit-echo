@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { appendFile, copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -44,7 +44,7 @@ export interface PrepareCommitMsgHookDeps {
 }
 
 function resolveGitPath(gitPath: string): string {
-  return execSync(`git rev-parse --git-path ${gitPath}`, { encoding: 'utf-8' }).trim();
+  return execFileSync('git', ['rev-parse', '--git-path', gitPath], { encoding: 'utf-8' }).trim();
 }
 
 function resolveHookPath(hookName: string): string {
