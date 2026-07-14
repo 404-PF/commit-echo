@@ -332,6 +332,26 @@ if (!isWindows) {
     });
   });
 
+  test('loadConfig migrates permissions on pre-existing lax config', async () => {
+    await withTempConfig(async () => {
+      // Pre-create directory with lax permissions
+      await mkdir(getConfigDir(), { recursive: true, mode: 0o777 });
+      // Pre-create file with lax permissions (as an older release would)
+      await writeFile(getConfigPath(), '{}', 'utf-8');
+      await chmod(getConfigPath(), 0o644);
+
+      await loadConfig();
+
+      const dirStat = await stat(getConfigDir());
+      const dirMode = dirStat.mode & 0o777;
+      const fileStat = await stat(getConfigPath());
+      const fileMode = fileStat.mode & 0o777;
+
+      assert.equal(dirMode, 0o700, `Expected dir 0o700 but got 0o${dirMode.toString(8)}`);
+      assert.equal(fileMode, 0o600, `Expected file 0o600 but got 0o${fileMode.toString(8)}`);
+    });
+  });
+
   test('saveConfig tightens permissions on pre-existing directory and file', async () => {
     await withTempConfig(async () => {
       const config = {

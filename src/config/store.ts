@@ -108,7 +108,33 @@ export async function loadRawConfig(): Promise<Partial<Config>> {
   return normalizeRawConfig(parsed, configPath);
 }
 
+/**
+ * Best-effort tightening of permissions on an existing config directory and
+ * file. Upgrades from releases that wrote `config.json` as world-readable
+ * (e.g. 0644) keep those lax permissions until the file is rewritten, so the
+ * stored API key stays readable by other local users on the normal read path.
+ * Calling this from the load path migrates existing installations. Failures are
+ * ignored because chmod is unsupported or a no-op on some platforms (e.g.
+ * Windows) and must never break config loading.
+ */
+export async function secureConfigPermissions(): Promise<void> {
+  try {
+    await chmod(getConfigDir(), 0o700);
+  } catch {
+    // best-effort; ignore unsupported platforms or ownership errors
+  }
+
+  try {
+    await chmod(getConfigPath(), 0o600);
+  } catch {
+    // best-effort; ignore unsupported platforms or ownership errors
+  }
+}
+
 export async function loadConfig(): Promise<Config> {
+  // Migrate permissions on the read path so pre-existing lax configs are
+  // hardened even when the file is never rewritten (e.g. `suggest`).
+  await secureConfigPermissions();
   const configPath = getConfigPath();
   const parsed = normalizeRawConfig(await readConfigFile(), configPath);
 
