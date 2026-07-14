@@ -108,32 +108,68 @@ export async function loadRawConfig(): Promise<Partial<Config>> {
   return normalizeRawConfig(parsed, configPath);
 }
 
-export async function loadConfig(): Promise<Config> {
+const configCache = new Map<string, Promise<Config>>();
+
+/**
+ * Clear cached config so the next loadConfig() reads from disk again.
+ * When a path is given, only that path's entry is cleared; otherwise the
+ * entire process-lifetime cache is cleared.
+ */
+export function invalidateConfigCache(configPath?: string): void {
+  if (configPath) {
+    configCache.delete(configPath);
+  } else {
+    configCache.clear();
+  }
+}
+
+export function loadConfig(): Promise<Config> {
   const configPath = getConfigPath();
-  const parsed = normalizeRawConfig(await readConfigFile(), configPath);
+  const cached = configCache.get(configPath);
+  if (cached) return cached;
 
-  // Resolve numeric config values with env var overrides.
-  // Env vars take precedence over config file values.
-  const envHistorySize = readPositiveIntegerEnvVar('COMMIT_ECHO_HISTORY_SIZE');
-  const envMaxDiffSize = readPositiveIntegerEnvVar('COMMIT_ECHO_MAX_DIFF_SIZE');
+  // Create the load promise synchronously and cache it before any await, so
+  // concurrent callers share a single in-flight load instead of each reading
+  // the file. The promise is set here once; a later invalidateConfigCache()
+  // removes it and cannot be re-populated by a stale completed load, since we
+  // never re-insert the resolved value after awaiting.
+  const loadPromise = (async (): Promise<Config> => {
+    const parsed = normalizeRawConfig(await readConfigFile(), configPath);
 
-  const historySize =
-    envHistorySize ??
-    readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath);
-  const maxDiffSize =
-    envMaxDiffSize ??
-    readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
+    // Resolve numeric config values with env var overrides.
+    // Env vars take precedence over config file values.
+    const envHistorySize = readPositiveIntegerEnvVar('COMMIT_ECHO_HISTORY_SIZE');
+    const envMaxDiffSize = readPositiveIntegerEnvVar('COMMIT_ECHO_MAX_DIFF_SIZE');
 
-  return {
-    provider: (process.env['COMMIT_ECHO_PROVIDER'] ?? parsed.provider ?? '').trim(),
-    model: (process.env['COMMIT_ECHO_MODEL'] ?? parsed.model ?? '').trim(),
-    baseUrl: (process.env['COMMIT_ECHO_BASE_URL'] ?? parsed.baseUrl)?.trim(),
-    apiKey: (process.env['COMMIT_ECHO_API_KEY'] ?? parsed.apiKey)?.trim(),
-    historySize,
-    maxDiffSize,
-    systemPromptTemplate: parsed.systemPromptTemplate,
-    userPromptTemplate: parsed.userPromptTemplate,
-  };
+    const historySize =
+      envHistorySize ??
+      readPositiveIntegerConfigValue(parsed.historySize, 'historySize', DEFAULT_HISTORY_SIZE, configPath);
+    const maxDiffSize =
+      envMaxDiffSize ??
+      readPositiveIntegerConfigValue(parsed.maxDiffSize, 'maxDiffSize', DEFAULT_MAX_DIFF_SIZE, configPath);
+
+    return {
+      provider: (process.env['COMMIT_ECHO_PROVIDER'] ?? parsed.provider ?? '').trim(),
+      model: (process.env['COMMIT_ECHO_MODEL'] ?? parsed.model ?? '').trim(),
+      baseUrl: (process.env['COMMIT_ECHO_BASE_URL'] ?? parsed.baseUrl)?.trim(),
+      apiKey: (process.env['COMMIT_ECHO_API_KEY'] ?? parsed.apiKey)?.trim(),
+      historySize,
+      maxDiffSize,
+      systemPromptTemplate: parsed.systemPromptTemplate,
+      userPromptTemplate: parsed.userPromptTemplate,
+    };
+  })();
+
+  configCache.set(configPath, loadPromise);
+
+  // If the load fails, drop the rejected promise so a retry re-reads the file.
+  loadPromise.catch(() => {
+    if (configCache.get(configPath) === loadPromise) {
+      configCache.delete(configPath);
+    }
+  });
+
+  return loadPromise;
 }
 
 export async function saveConfig(config: Config): Promise<void> {
@@ -141,7 +177,9 @@ export async function saveConfig(config: Config): Promise<void> {
   if (!existsSync(configDir)) {
     await mkdir(configDir, { recursive: true });
   }
-  await writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
+  const configPath = getConfigPath();
+  await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  invalidateConfigCache(configPath);
 }
 
 export function configExists(): boolean {
