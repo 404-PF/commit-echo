@@ -229,6 +229,47 @@ test('gitHasChanges detects both staged and unstaged', () => {
   }
 });
 
+test('gitHasChanges throws on non-git directory (status 128)', () => {
+  const root = createTempDir();
+  try {
+    assert.throws(
+      () => gitHasChanges(root),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /diff check failed/i);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('gitHasChanges throws when git repo is corrupt (broken index)', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'repo');
+    writeFileSync(join(repo, 'file.txt'), 'content\n', 'utf-8');
+    git(['add', 'file.txt'], repo);
+    git(['commit', '-m', 'feat: initial'], repo);
+
+    // Corrupt the index file to cause a fatal git error
+    const indexFile = join(repo, '.git', 'index');
+    writeFileSync(indexFile, 'not a valid index');
+
+    assert.throws(
+      () => gitHasChanges(repo),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /diff check failed/i);
+        return true;
+      },
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // ─── getGitDiff ─────────────────────────────────────────────────────────────
 
 test('getGitDiff returns the staged diff', () => {

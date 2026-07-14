@@ -57,6 +57,9 @@ export function findGitRepositories(rootDir: string, recursive: boolean): string
 
 /**
  * Check whether a git repository at `cwd` has staged or unstaged changes.
+ *
+ * Exit code 1 from `git diff --quiet` means changes exist (normal).
+ * Any other non-zero exit code signals a fatal Git error and is thrown.
  */
 export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean } {
   let staged = false;
@@ -64,13 +67,25 @@ export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean
 
   try {
     execSync('git diff --cached --quiet', { cwd, stdio: 'pipe' });
-  } catch {
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status !== 1) {
+      const stderr = (err as { stderr?: Buffer | string }).stderr;
+      const detail = stderr ? String(stderr).trim() : `git diff --cached --quiet exited with code ${status}`;
+      throw new Error(`Staged diff check failed: ${detail}`);
+    }
     staged = true;
   }
 
   try {
     execSync('git diff --quiet', { cwd, stdio: 'pipe' });
-  } catch {
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status !== 1) {
+      const stderr = (err as { stderr?: Buffer | string }).stderr;
+      const detail = stderr ? String(stderr).trim() : `git diff --quiet exited with code ${status}`;
+      throw new Error(`Unstaged diff check failed: ${detail}`);
+    }
     unstaged = true;
   }
 
@@ -191,7 +206,16 @@ export async function batchCommand(
     console.log(`  ${pc.bold(pc.cyan(`▶ ${repoName}`))}  ${pc.dim(repoPath)}`);
 
     // Check what kind of changes exist
-    const { staged, unstaged } = gitHasChanges(repoPath);
+    let staged: boolean;
+    let unstaged: boolean;
+    try {
+      ({ staged, unstaged } = gitHasChanges(repoPath));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
+      results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
+      continue;
+    }
 
     if (!staged) {
       if (!unstaged) {
