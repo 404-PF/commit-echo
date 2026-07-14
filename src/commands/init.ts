@@ -291,7 +291,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
 
   await persistSetup();
 
-  const displayKey = config.apiKey ? 'stored in config' : `\$${apiKeyEnv}`;
+  const displayKey = config.apiKey ? 'stored in config' : `$${apiKeyEnv}`;
   const displayUrl = providerKey === CUSTOM_PROVIDER_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
 
   const templateInfo =
