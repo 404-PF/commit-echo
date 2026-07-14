@@ -50,11 +50,11 @@ test('all built-in providers expose required metadata', () => {
     assert.match(provider.baseUrl, /^https?:\/\//);
     assert.match(provider.website, /^https?:\/\//);
     assert.match(provider.docsUrl, /^https?:\/\//);
+    assert.strictEqual(typeof provider.apiKeyEnv, 'string');
+    assert.notStrictEqual(provider.apiKeyEnv, '');
 
     if (provider.needsApiKey) {
       assert.match(provider.apiKeyEnv, /^[A-Z][A-Z0-9_]*_API_KEY$/);
-    } else {
-      assert.strictEqual(typeof provider.apiKeyEnv, 'string');
     }
   }
 });
