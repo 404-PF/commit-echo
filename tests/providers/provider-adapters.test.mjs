@@ -331,6 +331,32 @@ test('OpenAICompatibleProvider complete forwards messages and trims the first ch
   });
 });
 
+test('OpenAICompatibleProvider complete omits authorization for keyless providers', async (t) => {
+  const provider = new OpenAICompatibleProvider();
+  const requestLog = [];
+
+  mockFetch(t, async (url, init) => {
+    requestLog.push({ url, init });
+    return new Response(
+      JSON.stringify({
+        model: 'llama3',
+        choices: [{ message: { content: 'local answer' } }],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  });
+
+  await provider.complete({
+    model: 'llama3',
+    baseUrl: 'http://localhost:11434/v1',
+    apiKey: '',
+    messages: [{ role: 'user', content: 'hello' }],
+  });
+
+  assert.equal(requestLog.length, 1);
+  assert.equal(requestLog[0].init?.headers.Authorization, undefined);
+});
+
 test('OpenAICompatibleProvider complete surfaces API errors with the response body', async (t) => {
   const provider = new OpenAICompatibleProvider();
 
@@ -481,4 +507,30 @@ test('OpenAICompatibleProvider completeStream parses streaming chunks and stops 
     { kind: 'text', text: 'hello' },
     { kind: 'text', text: ' world' },
   ]);
+});
+
+test('OpenAICompatibleProvider completeStream omits authorization for keyless providers', async (t) => {
+  const provider = new OpenAICompatibleProvider();
+  const requestLog = [];
+
+  mockFetch(t, async (url, init) => {
+    requestLog.push({ url, init });
+    return new Response('data: [DONE]', {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+  });
+
+  const chunks = await collectChunks(
+    provider.completeStream({
+      model: 'llama3',
+      baseUrl: 'http://localhost:11434/v1',
+      apiKey: '',
+      messages: [{ role: 'user', content: 'hello' }],
+    }),
+  );
+
+  assert.deepEqual(chunks, []);
+  assert.equal(requestLog.length, 1);
+  assert.equal(requestLog[0].init?.headers.Authorization, undefined);
 });

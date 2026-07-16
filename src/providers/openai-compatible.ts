@@ -19,24 +19,30 @@ function buildOpenAiRequestBody(params: ChatParams, options: { stream?: boolean 
   return body;
 }
 
+function buildOpenAiHeaders(apiKey: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  const trimmedApiKey = apiKey.trim();
+  if (trimmedApiKey) {
+    headers['Authorization'] = `Bearer ${trimmedApiKey}`;
+  }
+
+  return headers;
+}
+
 export class OpenAICompatibleProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
     const { model, apiKey, baseUrl } = params;
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
     const response = await fetchWithTimeout(
       url,
       {
         method: 'POST',
-        headers,
+        headers: buildOpenAiHeaders(apiKey),
         body: JSON.stringify(buildOpenAiRequestBody(params)),
       },
       'OpenAI-compatible API request',
@@ -68,18 +74,11 @@ export class OpenAICompatibleProvider implements Provider {
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
     const response = await fetchWithTimeout(
       url,
       {
         method: 'POST',
-        headers,
+        headers: buildOpenAiHeaders(apiKey),
         body: JSON.stringify(buildOpenAiRequestBody(params, { stream: true })),
       },
       'OpenAI-compatible streaming request',
@@ -111,12 +110,7 @@ export class OpenAICompatibleProvider implements Provider {
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
     const url = `${baseUrl.replace(/\/+$/, '')}/models`;
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
+    const headers = buildOpenAiHeaders(apiKey);
 
     const response = await fetchWithTimeout(url, { headers }, 'OpenAI-compatible model request');
 
