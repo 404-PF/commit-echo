@@ -16,8 +16,7 @@ function mockFetch(t, implementation) {
 }
 
 function forceImmediateTimeout(t) {
-  globalThis.setTimeout = (callback, _delay, ...args) =>
-    originalSetTimeout(callback, 0, ...args);
+  globalThis.setTimeout = (callback, _delay, ...args) => originalSetTimeout(callback, 0, ...args);
 
   t.after(() => {
     globalThis.setTimeout = originalSetTimeout;
@@ -31,11 +30,7 @@ function readJsonBody(init) {
 function abortOnSignal() {
   return async (_url, init) =>
     new Promise((_resolve, reject) => {
-      init?.signal?.addEventListener(
-        'abort',
-        () => reject(new DOMException('Aborted', 'AbortError')),
-        { once: true },
-      );
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
     });
 }
 
@@ -100,10 +95,7 @@ test('AnthropicProvider complete builds the expected request and trims the respo
 test('AnthropicProvider complete surfaces API errors with the response body', async (t) => {
   const provider = new AnthropicProvider();
 
-  mockFetch(
-    t,
-    async () => new Response('invalid request', { status: 400, statusText: 'Bad Request' }),
-  );
+  mockFetch(t, async () => new Response('invalid request', { status: 400, statusText: 'Bad Request' }));
 
   await assert.rejects(
     provider.complete({
@@ -242,10 +234,7 @@ test('CohereProvider complete builds chat history and trims the response text', 
 test('CohereProvider complete surfaces API errors with the response body', async (t) => {
   const provider = new CohereProvider();
 
-  mockFetch(
-    t,
-    async () => new Response('rate limited', { status: 429, statusText: 'Too Many Requests' }),
-  );
+  mockFetch(t, async () => new Response('rate limited', { status: 429, statusText: 'Too Many Requests' }));
 
   await assert.rejects(
     provider.complete({
@@ -345,10 +334,7 @@ test('OpenAICompatibleProvider complete forwards messages and trims the first ch
 test('OpenAICompatibleProvider complete surfaces API errors with the response body', async (t) => {
   const provider = new OpenAICompatibleProvider();
 
-  mockFetch(
-    t,
-    async () => new Response('server exploded', { status: 500, statusText: 'Server Error' }),
-  );
+  mockFetch(t, async () => new Response('server exploded', { status: 500, statusText: 'Server Error' }));
 
   await assert.rejects(
     provider.complete({
@@ -382,6 +368,70 @@ test('OpenAICompatibleProvider complete rejects empty choices', async (t) => {
     }),
     /LLM returned empty response\./,
   );
+});
+
+test('OpenAICompatibleProvider complete omits Authorization header when apiKey is empty (Ollama)', async (t) => {
+  const provider = new OpenAICompatibleProvider();
+  const requestLog = [];
+
+  mockFetch(t, async (url, init) => {
+    requestLog.push({ url, init });
+    return new Response(
+      JSON.stringify({
+        model: 'llama-test',
+        choices: [{ message: { content: 'feat: add cool stuff' } }],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  });
+
+  const result = await provider.complete({
+    model: 'llama-test',
+    baseUrl: 'http://localhost:11434/v1',
+    apiKey: '',
+    temperature: 0.7,
+    maxTokens: 128,
+    messages: [
+      { role: 'system', content: 'Be concise.' },
+      { role: 'user', content: 'Draft a commit message.' },
+    ],
+  });
+
+  assert.equal(requestLog.length, 1);
+  assert.equal(requestLog[0].init?.headers.Authorization, undefined);
+  assert.deepEqual(result, {
+    content: 'feat: add cool stuff',
+    model: 'llama-test',
+  });
+});
+
+test('OpenAICompatibleProvider completeStream omits Authorization header when apiKey is empty (Ollama)', async (t) => {
+  const provider = new OpenAICompatibleProvider();
+  const requestLog = [];
+
+  mockFetch(t, async (url, init) => {
+    requestLog.push({ url, init });
+    return new Response(
+      ['data: {"model":"llama-stream","choices":[{"delta":{"content":"hello"}}]}', 'data: [DONE]'].join('\n'),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    );
+  });
+
+  const chunks = await collectChunks(
+    provider.completeStream({
+      model: 'llama-test',
+      baseUrl: 'http://localhost:11434/v1',
+      apiKey: '',
+      messages: [{ role: 'user', content: 'hello' }],
+    }),
+  );
+
+  assert.equal(requestLog.length, 1);
+  assert.equal(requestLog[0].init?.headers.Authorization, undefined);
+  assert.deepEqual(chunks, [
+    { kind: 'model', model: 'llama-stream' },
+    { kind: 'text', text: 'hello' },
+  ]);
 });
 
 test('OpenAICompatibleProvider complete reports request timeouts', async (t) => {
