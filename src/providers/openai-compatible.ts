@@ -25,14 +25,18 @@ export class OpenAICompatibleProvider implements Provider {
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetchWithTimeout(
       url,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers,
         body: JSON.stringify(buildOpenAiRequestBody(params)),
       },
       'OpenAI-compatible API request',
@@ -64,14 +68,18 @@ export class OpenAICompatibleProvider implements Provider {
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetchWithTimeout(
       url,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers,
         body: JSON.stringify(buildOpenAiRequestBody(params, { stream: true })),
       },
       'OpenAI-compatible streaming request',
