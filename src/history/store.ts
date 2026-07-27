@@ -1,5 +1,6 @@
-import { readFile, writeFile, appendFile, mkdir, open, unlink, stat } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, mkdir, open, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import type { CommitEntry, StyleProfile } from '../types.js';
 import { getHistoryPath, getConfigDir } from '../config/store.js';
 
@@ -17,10 +18,44 @@ function waitForHistoryLockRetry(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, HISTORY_LOCK_RETRY_MS));
 }
 
+interface HistoryLockSnapshot {
+  ownerToken: string;
+  mtimeMs: number;
+}
+
+async function readHistoryLockSnapshot(lockPath: string): Promise<HistoryLockSnapshot> {
+  const lock = await open(lockPath, 'r');
+  try {
+    const [ownerToken, lockStats] = await Promise.all([lock.readFile('utf-8'), lock.stat()]);
+    return { ownerToken, mtimeMs: lockStats.mtimeMs };
+  } finally {
+    await lock.close();
+  }
+}
+
+async function removeHistoryLock(lockPath: string, ownerToken: string): Promise<void> {
+  try {
+    const lockSnapshot = await readHistoryLockSnapshot(lockPath);
+    if (lockSnapshot.ownerToken === ownerToken) {
+      await unlink(lockPath);
+    }
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) throw error;
+  }
+}
+
 async function removeStaleHistoryLock(lockPath: string): Promise<void> {
   try {
-    const lockStats = await stat(lockPath);
-    if (Date.now() - lockStats.mtimeMs > HISTORY_LOCK_STALE_MS) {
+    const lockSnapshot = await readHistoryLockSnapshot(lockPath);
+    if (Date.now() - lockSnapshot.mtimeMs <= HISTORY_LOCK_STALE_MS) return;
+
+    // Re-read the owner before unlinking so a waiter cannot remove a lock that
+    // another waiter acquired after observing the stale lock.
+    const currentSnapshot = await readHistoryLockSnapshot(lockPath);
+    if (
+      currentSnapshot.ownerToken === lockSnapshot.ownerToken &&
+      currentSnapshot.mtimeMs === lockSnapshot.mtimeMs
+    ) {
       await unlink(lockPath);
     }
   } catch (error) {
@@ -35,15 +70,11 @@ async function acquireHistoryLock(historyPath: string): Promise<() => Promise<vo
   while (true) {
     try {
       const lock = await open(lockPath, 'wx', 0o600);
+      const ownerToken = randomUUID();
+      await lock.writeFile(ownerToken, 'utf-8');
       await lock.close();
 
-      return async () => {
-        try {
-          await unlink(lockPath);
-        } catch (error) {
-          if (!hasErrorCode(error, 'ENOENT')) throw error;
-        }
-      };
+      return () => removeHistoryLock(lockPath, ownerToken);
     } catch (error) {
       if (!hasErrorCode(error, 'EEXIST')) throw error;
 

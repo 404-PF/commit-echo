@@ -369,7 +369,7 @@ test('runPostCommitHook appends the committed message to history and clears the 
       provider: 'mock',
     }),
     appendHistoryEntry: async (entry) => {
-      entries.push(JSON.parse(entry));
+      entries.push(entry);
     },
     removePendingEntryFile: async () => {
       removed = true;
