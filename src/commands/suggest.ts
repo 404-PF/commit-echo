@@ -349,7 +349,7 @@ export async function suggestCommand(
       const action = await select({
         message: 'Choose an action:',
         options: [
-          { value: 'select', label: 'Select a suggestion to commit' },
+          { value: 'select', label: shouldCommit ? 'Select a suggestion to commit' : 'Select a suggestion' },
           { value: 'regenerate', label: 'Regenerate suggestions' },
           { value: 'cancel', label: 'Cancel' },
         ],
@@ -387,6 +387,11 @@ export async function suggestCommand(
 
       if (shouldCommit) {
         await acceptAndCommit(selected, config, diffResult.diff);
+      } else {
+        console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
+        if (selected.body) {
+          console.log(`  ${pc.dim(selected.body)}`);
+        }
       }
       break;
     } catch (err) {
