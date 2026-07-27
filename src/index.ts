@@ -101,8 +101,9 @@ program
   .option('-n, --dry-run', 'Show the LLM input without generating suggestions')
   .option('--no-commit', 'Deprecated alias; suggest already skips committing unless --commit is passed')
   .option('--auto', 'Alias for --yes')
-  .action(async (options) => {
+  .action(async (options, command) => {
     const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
+    const noCommit = command.getOptionValueSource('commit') === 'cli' && options.commit === false;
     await suggestCommand({
       commit: options.commit,
       autoCommit: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
@@ -112,7 +113,7 @@ program
       maxDiffSize: options.maxDiffSize,
       stream: Boolean(options.stream),
       dryRun: Boolean(options.dryRun),
-      noCommit: process.argv.includes('--no-commit'),
+      noCommit,
     });
   });
 
