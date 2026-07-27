@@ -1,9 +1,60 @@
-import { readFile, writeFile, appendFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, mkdir, open, unlink, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { CommitEntry, StyleProfile } from '../types.js';
 import { getHistoryPath, getConfigDir } from '../config/store.js';
 
 const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([^)]+\))?:\s*/;
+
+const HISTORY_LOCK_RETRY_MS = 25;
+const HISTORY_LOCK_TIMEOUT_MS = 10_000;
+const HISTORY_LOCK_STALE_MS = 60_000;
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
+}
+
+function waitForHistoryLockRetry(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, HISTORY_LOCK_RETRY_MS));
+}
+
+async function removeStaleHistoryLock(lockPath: string): Promise<void> {
+  try {
+    const lockStats = await stat(lockPath);
+    if (Date.now() - lockStats.mtimeMs > HISTORY_LOCK_STALE_MS) {
+      await unlink(lockPath);
+    }
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) throw error;
+  }
+}
+
+async function acquireHistoryLock(historyPath: string): Promise<() => Promise<void>> {
+  const lockPath = `${historyPath}.lock`;
+  const deadline = Date.now() + HISTORY_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    try {
+      const lock = await open(lockPath, 'wx', 0o600);
+      await lock.close();
+
+      return async () => {
+        try {
+          await unlink(lockPath);
+        } catch (error) {
+          if (!hasErrorCode(error, 'ENOENT')) throw error;
+        }
+      };
+    } catch (error) {
+      if (!hasErrorCode(error, 'EEXIST')) throw error;
+
+      await removeStaleHistoryLock(lockPath);
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting to update commit history: ${historyPath}`);
+      }
+      await waitForHistoryLockRetry();
+    }
+  }
+}
 
 /** Append one commit entry to the configured JSONL history file. */
 export async function appendEntry(entry: CommitEntry): Promise<void> {
@@ -12,7 +63,13 @@ export async function appendEntry(entry: CommitEntry): Promise<void> {
   if (!existsSync(configDir)) {
     await mkdir(configDir, { recursive: true });
   }
-  await appendFile(historyPath, JSON.stringify(entry) + '\n', 'utf-8');
+
+  const releaseHistoryLock = await acquireHistoryLock(historyPath);
+  try {
+    await appendFile(historyPath, JSON.stringify(entry) + '\n', 'utf-8');
+  } finally {
+    await releaseHistoryLock();
+  }
 }
 
 /** Load recent valid history entries while warning once about corrupted JSONL rows. */
