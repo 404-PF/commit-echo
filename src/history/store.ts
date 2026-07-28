@@ -311,15 +311,17 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
     );
     if (verbMatch) {
       const verb = verbMatch[1]!;
+      imperativeSampleCount++;
       if (!verb.endsWith('ed') && !verb.endsWith('ing')) {
         imperativeCount++;
-        imperativeSampleCount++;
       }
     } else {
       const firstWord = firstLine.match(/^\w+/);
-      if (firstWord && !firstWord[0]!.endsWith('ed') && !firstWord[0]!.endsWith('ing')) {
-        imperativeCount++;
+      if (firstWord) {
         imperativeSampleCount++;
+        if (!firstWord[0]!.endsWith('ed') && !firstWord[0]!.endsWith('ing')) {
+          imperativeCount++;
+        }
       }
     }
 

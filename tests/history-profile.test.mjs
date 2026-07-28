@@ -43,7 +43,7 @@ function restoreEnv(name, value) {
   }
 }
 
-test('buildProfile excludes descriptive verb forms from the imperative-rate denominator', async () => {
+test('buildProfile counts descriptive verb forms in the imperative-rate denominator', async () => {
   const originalHome = process.env.HOME;
   const originalAppData = process.env.APPDATA;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -58,7 +58,7 @@ test('buildProfile excludes descriptive verb forms from the imperative-rate deno
     const profile = await buildProfile(10);
 
     assert.equal(profile.totalCommits, 3);
-    assert.equal(profile.imperativeRate, 1);
+    assert.equal(profile.imperativeRate, 1 / 3);
   } finally {
     restoreEnv('HOME', originalHome);
     restoreEnv('APPDATA', originalAppData);
