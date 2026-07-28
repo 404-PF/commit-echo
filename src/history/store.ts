@@ -12,6 +12,7 @@ const HISTORY_LOCK_STALE_MS = 60_000;
 const HISTORY_LOCK_TIMEOUT_MS = HISTORY_LOCK_STALE_MS + 10_000;
 const HISTORY_LOCK_HEARTBEAT_MS = 15_000;
 const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
+const HISTORY_READ_CHUNK_SIZE = 64 * 1024;
 
 function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
@@ -210,25 +211,58 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
   const historyPath = getHistoryPath();
   if (!existsSync(historyPath)) return [];
 
-  const raw = await readFile(historyPath, 'utf-8');
-  const lines = raw
-    .split('\n')
-    .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter(({ line }) => line.trim().length > 0)
-    .reverse();
-
   const entries: CommitEntry[] = [];
-  const corruptedLineNumbers: number[] = [];
+  const corruptedLineNumbers: Array<number | undefined> = [];
+  const history = await open(historyPath, 'r');
 
-  for (const { line, lineNumber } of lines) {
-    try {
-      const entry = JSON.parse(line) as CommitEntry;
-      if (entries.length < limit) {
-        entries.push(entry);
+  try {
+    const { size } = await history.stat();
+    let position = size;
+    let remainder = '';
+    let processedLineCount = 0;
+    let totalLineCount: number | undefined;
+    const corruptedLineIndexesFromEnd: number[] = [];
+
+    const parseLine = (line: string) => {
+      const lineIndexFromEnd = processedLineCount++;
+      if (line.trim().length === 0) return;
+
+      try {
+        entries.push(JSON.parse(line) as CommitEntry);
+      } catch {
+        corruptedLineIndexesFromEnd.push(lineIndexFromEnd);
       }
-    } catch {
-      corruptedLineNumbers.push(lineNumber);
+    };
+
+    while (position > 0 && entries.length < limit) {
+      const bytesToRead = Math.min(HISTORY_READ_CHUNK_SIZE, position);
+      position -= bytesToRead;
+      const buffer = Buffer.allocUnsafe(bytesToRead);
+      const { bytesRead } = await history.read(buffer, 0, bytesToRead, position);
+      const lines = (buffer.toString('utf-8', 0, bytesRead) + remainder).split('\n');
+      remainder = lines.shift()!;
+      const processedBeforeChunk = processedLineCount;
+
+      if (position === 0) {
+        totalLineCount = processedBeforeChunk + lines.length + 1;
+      }
+
+      for (let index = lines.length - 1; index >= 0 && entries.length < limit; index--) {
+        parseLine(lines[index]!);
+      }
     }
+
+    if (position === 0 && entries.length < limit) {
+      parseLine(remainder);
+    }
+
+    for (const lineIndexFromEnd of corruptedLineIndexesFromEnd) {
+      corruptedLineNumbers.push(
+        totalLineCount === undefined ? undefined : totalLineCount - lineIndexFromEnd,
+      );
+    }
+  } finally {
+    await history.close();
   }
 
   warnCorruptedHistory(historyPath, corruptedLineNumbers);
@@ -237,20 +271,20 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
 }
 
 /** Emit a compact warning that identifies corrupted history line numbers. */
-function warnCorruptedHistory(historyPath: string, corruptedLineNumbers: number[]): void {
+function warnCorruptedHistory(historyPath: string, corruptedLineNumbers: Array<number | undefined>): void {
   if (corruptedLineNumbers.length === 0) return;
 
   const count = corruptedLineNumbers.length;
   const noun = count === 1 ? 'entry' : 'entries';
-  const lines = corruptedLineNumbers
+  const knownLineNumbers = corruptedLineNumbers.filter((lineNumber): lineNumber is number => lineNumber !== undefined);
+  const lines = knownLineNumbers
     .slice(0, 5)
     .sort((a, b) => a - b)
     .join(', ');
   const suffix = count > 5 ? `, +${count - 5} more` : '';
+  const location = knownLineNumbers.length === count ? `line ${lines}${suffix}` : 'recently scanned rows';
 
-  console.warn(
-    `Warning: ignored ${count} corrupted commit history ${noun} in ${historyPath} (line ${lines}${suffix}).`,
-  );
+  console.warn(`Warning: ignored ${count} corrupted commit history ${noun} in ${historyPath} (${location}).`);
 }
 
 /** Count raw history rows in the configured history file. */

@@ -137,6 +137,22 @@ test('loadEntries warns and returns empty entries when all lines are corrupted',
   });
 });
 
+test('loadEntries stops parsing once it has enough recent valid entries', async () => {
+  await withIsolatedHistory(
+    [
+      '{invalid old line',
+      validEntry('fix: keep older valid entry', '2026-06-01T00:00:00Z'),
+      validEntry('feat: keep newest valid entry', '2026-06-01T00:00:01Z'),
+    ],
+    async ({ warnings }) => {
+      const entries = await loadEntries(1);
+
+      assert.deepEqual(entries.map((entry) => entry.message), ['feat: keep newest valid entry']);
+      assert.deepEqual(warnings, []);
+    },
+  );
+});
+
 test('countEntries counts raw non-empty history rows, including malformed JSON lines', async () => {
   await withIsolatedHistory(
     [
