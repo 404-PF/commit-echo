@@ -8,8 +8,8 @@ import { getHistoryPath, getConfigDir } from '../config/store.js';
 const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([^)]+\))?:\s*/;
 
 const HISTORY_LOCK_RETRY_MS = 25;
-const HISTORY_LOCK_TIMEOUT_MS = 10_000;
 const HISTORY_LOCK_STALE_MS = 60_000;
+const HISTORY_LOCK_TIMEOUT_MS = HISTORY_LOCK_STALE_MS + 10_000;
 const HISTORY_LOCK_HEARTBEAT_MS = 15_000;
 const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
 
@@ -51,7 +51,7 @@ async function readHistoryLockSnapshot(lockPath: string): Promise<HistoryLockSna
 }
 
 async function removeHistoryLock(lockPath: string, ownerToken: string): Promise<void> {
-  const releasePath = `${lockPath}.release`;
+  const releasePath = `${lockPath}.release.${ownerToken}`;
   try {
     const lockSnapshot = await readHistoryLockSnapshot(lockPath);
     if (lockSnapshot.ownerToken !== ownerToken) return;
@@ -120,7 +120,7 @@ async function removeStaleHistoryLock(lockPath: string): Promise<void> {
       if (currentSnapshot.ownerToken === lockSnapshot.ownerToken) {
         // Atomically detach the lock before verifying to prevent a race where
         // the owner releases and a new writer acquires between our check and unlink.
-        const staleRemovalPath = `${lockPath}.stale-removal`;
+        const staleRemovalPath = `${lockPath}.stale-removal.${randomUUID()}`;
         await rename(lockPath, staleRemovalPath);
         try {
           const content = await readFile(staleRemovalPath, 'utf-8');
