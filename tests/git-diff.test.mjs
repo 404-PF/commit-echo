@@ -190,6 +190,26 @@ test("getUnstagedDiff returns diff for unstaged changes", () => {
   }
 });
 
+test("getUnstagedDiff includes untracked files", () => {
+  const repoDir = initRepo();
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    writeFileSync(join(repoDir, "new-file.txt"), "untracked content\n", "utf-8");
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.equal(result.staged, false);
+      assert.ok(result.diff.includes("new-file.txt"));
+      assert.ok(result.diff.includes("+untracked content"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getUnstagedDiff handles diffs larger than the default execSync buffer", () => {
   const repoDir = initRepo();
 

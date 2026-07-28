@@ -55,14 +55,43 @@ export function getStagedDiff(): DiffResult {
   };
 }
 
-export function getUnstagedDiff(): DiffResult {
-  const diff = execSync('git diff', {
+function getUntrackedDiff(): string {
+  const files = spawnSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], {
     encoding: 'utf-8',
     maxBuffer: GIT_DIFF_MAX_BUFFER,
   });
+  if (files.error) throw files.error;
+  if (files.status !== 0) {
+    throw new Error(files.stderr.trim() || `git ls-files exited with code ${files.status}`);
+  }
+
+  return files.stdout
+    .split('\0')
+    .filter(Boolean)
+    .map((file) => {
+      const result = spawnSync('git', ['diff', '--no-index', '--', '/dev/null', file], {
+        encoding: 'utf-8',
+        maxBuffer: GIT_DIFF_MAX_BUFFER,
+      });
+      if (result.error) throw result.error;
+      if (result.status !== 0 && result.status !== 1) {
+        throw new Error(result.stderr.trim() || `git diff --no-index exited with code ${result.status}`);
+      }
+      return result.stdout;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function getUnstagedDiff(): DiffResult {
+  const trackedDiff = execSync('git diff', {
+    encoding: 'utf-8',
+    maxBuffer: GIT_DIFF_MAX_BUFFER,
+  });
+  const diff = [trackedDiff, getUntrackedDiff()].filter(Boolean).join('\n').trim();
   return {
-    diff: diff.trim(),
-    hasChanges: diff.trim().length > 0,
+    diff,
+    hasChanges: diff.length > 0,
     staged: false,
   };
 }
