@@ -9,6 +9,7 @@ const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|b
 const HISTORY_LOCK_RETRY_MS = 25;
 const HISTORY_LOCK_TIMEOUT_MS = 10_000;
 const HISTORY_LOCK_STALE_MS = 60_000;
+const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
 
 function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
@@ -44,19 +45,49 @@ async function removeHistoryLock(lockPath: string, ownerToken: string): Promise<
   }
 }
 
+async function hasHistoryLockTakeover(lockPath: string): Promise<boolean> {
+  const takeover = `${lockPath}${HISTORY_LOCK_TAKEOVER_SUFFIX}`;
+  try {
+    const lock = await open(takeover, 'r');
+    await lock.close();
+    return true;
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) throw error;
+    return false;
+  }
+}
+
 async function removeStaleHistoryLock(lockPath: string): Promise<void> {
   try {
     const lockSnapshot = await readHistoryLockSnapshot(lockPath);
     if (Date.now() - lockSnapshot.mtimeMs <= HISTORY_LOCK_STALE_MS) return;
 
-    // Re-read the owner before unlinking so a waiter cannot remove a lock that
-    // another waiter acquired after observing the stale lock.
-    const currentSnapshot = await readHistoryLockSnapshot(lockPath);
-    if (
-      currentSnapshot.ownerToken === lockSnapshot.ownerToken &&
-      currentSnapshot.mtimeMs === lockSnapshot.mtimeMs
-    ) {
-      await unlink(lockPath);
+    // Claim this stale lock generation with an exclusive marker. Other
+    // waiters must leave the marker and lock alone until its claimant finishes.
+    const takeoverPath = `${lockPath}${HISTORY_LOCK_TAKEOVER_SUFFIX}`;
+    try {
+      const takeover = await open(takeoverPath, 'wx', 0o600);
+      await takeover.writeFile(lockSnapshot.ownerToken, 'utf-8');
+      await takeover.close();
+    } catch (error) {
+      if (hasErrorCode(error, 'EEXIST')) return;
+      if (!hasErrorCode(error, 'ENOENT')) throw error;
+      return;
+    }
+
+    try {
+      const currentSnapshot = await readHistoryLockSnapshot(lockPath);
+      if (currentSnapshot.ownerToken === lockSnapshot.ownerToken) {
+        await unlink(lockPath);
+      }
+    } catch (error) {
+      if (!hasErrorCode(error, 'ENOENT')) throw error;
+    } finally {
+      try {
+        await unlink(takeoverPath);
+      } catch (error) {
+        if (!hasErrorCode(error, 'ENOENT')) throw error;
+      }
     }
   } catch (error) {
     if (!hasErrorCode(error, 'ENOENT')) throw error;
@@ -68,6 +99,14 @@ async function acquireHistoryLock(historyPath: string): Promise<() => Promise<vo
   const deadline = Date.now() + HISTORY_LOCK_TIMEOUT_MS;
 
   while (true) {
+    if (await hasHistoryLockTakeover(lockPath)) {
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting to update commit history: ${historyPath}`);
+      }
+      await waitForHistoryLockRetry();
+      continue;
+    }
+
     try {
       const lock = await open(lockPath, 'wx', 0o600);
       const ownerToken = randomUUID();
