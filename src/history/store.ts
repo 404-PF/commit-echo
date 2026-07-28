@@ -1,4 +1,4 @@
-import { readFile, writeFile, appendFile, mkdir, open, unlink } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, mkdir, open, unlink, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { CommitEntry, StyleProfile } from '../types.js';
@@ -35,16 +35,29 @@ async function readHistoryLockSnapshot(lockPath: string): Promise<HistoryLockSna
 }
 
 async function removeHistoryLock(lockPath: string, ownerToken: string): Promise<void> {
+  const releasePath = `${lockPath}.release`;
   try {
     const lockSnapshot = await readHistoryLockSnapshot(lockPath);
     if (lockSnapshot.ownerToken !== ownerToken) return;
 
-    // Re-verify the lock still holds our token before unlinking to avoid
-    // removing a replacement lock acquired during a concurrent takeover.
     const recheck = await readHistoryLockSnapshot(lockPath);
     if (recheck.ownerToken !== ownerToken) return;
 
-    await unlink(lockPath);
+    // Atomically detach the lock from its path so no new writer can acquire it
+    // while we verify ownership. This closes the race where a stale takeover
+    // unlinks and a new writer creates a new lock between our recheck and unlink.
+    await rename(lockPath, releasePath);
+    try {
+      const content = await readFile(releasePath, 'utf-8');
+      if (content !== ownerToken) {
+        // Detached someone else's lock — restore it.
+        await rename(releasePath, lockPath).catch(() => {});
+        return;
+      }
+      await unlink(releasePath);
+    } catch {
+      // File already gone — fine.
+    }
   } catch (error) {
     if (!hasErrorCode(error, 'ENOENT')) throw error;
   }
@@ -89,7 +102,21 @@ async function removeStaleHistoryLock(lockPath: string): Promise<void> {
     try {
       const currentSnapshot = await readHistoryLockSnapshot(lockPath);
       if (currentSnapshot.ownerToken === lockSnapshot.ownerToken) {
-        await unlink(lockPath);
+        // Atomically detach the lock before verifying to prevent a race where
+        // the owner releases and a new writer acquires between our check and unlink.
+        const staleRemovalPath = `${lockPath}.stale-removal`;
+        await rename(lockPath, staleRemovalPath);
+        try {
+          const content = await readFile(staleRemovalPath, 'utf-8');
+          if (content !== lockSnapshot.ownerToken) {
+            // Detached a new writer's lock — restore it.
+            await rename(staleRemovalPath, lockPath).catch(() => {});
+          } else {
+            await unlink(staleRemovalPath);
+          }
+        } catch {
+          // File already gone — fine.
+        }
       }
     } catch (error) {
       if (!hasErrorCode(error, 'ENOENT')) throw error;
