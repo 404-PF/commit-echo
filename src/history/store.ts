@@ -37,9 +37,14 @@ async function readHistoryLockSnapshot(lockPath: string): Promise<HistoryLockSna
 async function removeHistoryLock(lockPath: string, ownerToken: string): Promise<void> {
   try {
     const lockSnapshot = await readHistoryLockSnapshot(lockPath);
-    if (lockSnapshot.ownerToken === ownerToken) {
-      await unlink(lockPath);
-    }
+    if (lockSnapshot.ownerToken !== ownerToken) return;
+
+    // Re-verify the lock still holds our token before unlinking to avoid
+    // removing a replacement lock acquired during a concurrent takeover.
+    const recheck = await readHistoryLockSnapshot(lockPath);
+    if (recheck.ownerToken !== ownerToken) return;
+
+    await unlink(lockPath);
   } catch (error) {
     if (!hasErrorCode(error, 'ENOENT')) throw error;
   }
@@ -49,7 +54,13 @@ async function hasHistoryLockTakeover(lockPath: string): Promise<boolean> {
   const takeover = `${lockPath}${HISTORY_LOCK_TAKEOVER_SUFFIX}`;
   try {
     const lock = await open(takeover, 'r');
+    const stats = await lock.stat();
     await lock.close();
+
+    if (Date.now() - stats.mtimeMs > HISTORY_LOCK_STALE_MS) {
+      await unlink(takeover).catch(() => {});
+      return false;
+    }
     return true;
   } catch (error) {
     if (!hasErrorCode(error, 'ENOENT')) throw error;
@@ -83,11 +94,7 @@ async function removeStaleHistoryLock(lockPath: string): Promise<void> {
     } catch (error) {
       if (!hasErrorCode(error, 'ENOENT')) throw error;
     } finally {
-      try {
-        await unlink(takeoverPath);
-      } catch (error) {
-        if (!hasErrorCode(error, 'ENOENT')) throw error;
-      }
+      await unlink(takeoverPath).catch(() => {});
     }
   } catch (error) {
     if (!hasErrorCode(error, 'ENOENT')) throw error;
