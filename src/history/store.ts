@@ -117,7 +117,10 @@ async function removeStaleHistoryLock(lockPath: string): Promise<void> {
 
     try {
       const currentSnapshot = await readHistoryLockSnapshot(lockPath);
-      if (currentSnapshot.ownerToken === lockSnapshot.ownerToken) {
+      if (
+        currentSnapshot.ownerToken === lockSnapshot.ownerToken &&
+        Date.now() - currentSnapshot.mtimeMs > HISTORY_LOCK_STALE_MS
+      ) {
         // Atomically detach the lock before verifying to prevent a race where
         // the owner releases and a new writer acquires between our check and unlink.
         const staleRemovalPath = `${lockPath}.stale-removal.${randomUUID()}`;
@@ -164,6 +167,7 @@ async function acquireHistoryLock(historyPath: string): Promise<() => Promise<vo
         await lock.writeFile(ownerToken, 'utf-8');
       } catch (writeError) {
         await lock.close();
+        await unlink(lockPath).catch(() => {});
         throw writeError;
       }
       const stopMaintainingLease = maintainHistoryLockLease(lock);
