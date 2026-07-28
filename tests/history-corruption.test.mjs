@@ -189,14 +189,27 @@ test('countEntries counts raw non-empty history rows, including malformed JSON l
 test('loadEntries preserves UTF-8 characters split across backward-read chunks', async () => {
   const prefix = '{"timestamp":"2026-06-01T00:00:00Z","message":"a';
   const suffix = '","diff":"","model":"test-model","provider":"local"}';
-  const messageTailLength = 65535 - Buffer.byteLength(suffix) - 1;
+  const messageTailLength = 2 * 1024 * 1024 - Buffer.byteLength(suffix) - 1;
   const row = `${prefix}\u00e9x\u00e9${'b'.repeat(messageTailLength)}${suffix}`;
 
-  await withIsolatedHistory([row], async () => {
-    const entries = await loadEntries(1);
+  const originalConcat = Buffer.concat;
+  let concatCalls = 0;
+  Buffer.concat = (...args) => {
+    concatCalls += 1;
+    return originalConcat(...args);
+  };
 
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].message, `a\u00e9x\u00e9${'b'.repeat(messageTailLength)}`);
-    assert.doesNotMatch(entries[0].message, /\uFFFD/);
+  await withIsolatedHistory([row], async () => {
+    try {
+      const entries = await loadEntries(1);
+
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].message, `a\u00e9x\u00e9${'b'.repeat(messageTailLength)}`);
+      assert.doesNotMatch(entries[0].message, /\uFFFD/);
+    } finally {
+      Buffer.concat = originalConcat;
+    }
   });
+
+  assert.equal(concatCalls, 1);
 });

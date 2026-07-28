@@ -218,7 +218,7 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
   try {
     const { size } = await history.stat();
     let position = size;
-    let remainder = Buffer.alloc(0);
+    let remainderChunks: Buffer[] = [];
     let processedLineCount = 0;
     let totalLineCount: number | undefined;
     const corruptedLineIndexesFromEnd: number[] = [];
@@ -241,22 +241,24 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
       const bytesToRead = chunkEnd - position;
       const buffer = Buffer.allocUnsafe(bytesToRead);
       const { bytesRead } = await history.read(buffer, 0, bytesToRead, position);
-      const chunk = Buffer.concat([buffer.subarray(0, bytesRead), remainder]);
-      const lines: Buffer[] = [];
+      const chunk = buffer.subarray(0, bytesRead);
       const firstLineEnd = chunk.indexOf(0x0a);
       if (firstLineEnd === -1) {
-        remainder = chunk;
-      } else {
-        remainder = chunk.subarray(0, firstLineEnd);
-        let lineStart = firstLineEnd + 1;
-        for (let index = lineStart; index < chunk.length; index++) {
-          if (chunk[index] === 0x0a) {
-            lines.push(chunk.subarray(lineStart, index));
-            lineStart = index + 1;
-          }
-        }
-        lines.push(chunk.subarray(lineStart));
+        remainderChunks.unshift(chunk);
+        continue;
       }
+
+      const combined = remainderChunks.length === 0 ? chunk : Buffer.concat([chunk, ...remainderChunks]);
+      remainderChunks = [combined.subarray(0, firstLineEnd)];
+      const lines: Buffer[] = [];
+      let lineStart = firstLineEnd + 1;
+      for (let index = lineStart; index < combined.length; index++) {
+        if (combined[index] === 0x0a) {
+          lines.push(combined.subarray(lineStart, index));
+          lineStart = index + 1;
+        }
+      }
+      lines.push(combined.subarray(lineStart));
       const processedBeforeChunk = processedLineCount;
 
       if (position === 0) {
@@ -269,6 +271,7 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
     }
 
     if (position === 0 && entries.length < limit) {
+      const remainder = remainderChunks.length === 1 ? remainderChunks[0]! : Buffer.concat(remainderChunks);
       parseLine(remainder);
     }
 
