@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { getConfigDir } from '../dist/config/store.js';
-import { countEntries, loadEntries } from '../dist/history/store.js';
+import { countEntries, loadEntries, readHistoryChunk } from '../dist/history/store.js';
 
 function writeHistory(lines) {
   const configDir = getConfigDir();
@@ -30,6 +30,35 @@ function validEntry(message, timestamp) {
     provider: 'local',
   });
 }
+
+test('readHistoryChunk retries short reads from the unread offset', async () => {
+  const source = Buffer.from('history entry with a short read');
+  const destination = Buffer.alloc(source.length);
+  const reads = [];
+  const history = {
+    async read(buffer, offset, length, position) {
+      reads.push({ offset, length, position });
+      const bytesToCopy = Math.min(5, length);
+      source.copy(buffer, offset, position, position + bytesToCopy);
+      return { bytesRead: bytesToCopy, buffer };
+    },
+  };
+
+  assert.equal(await readHistoryChunk(history, destination, 0, source.length), source.length);
+  assert.deepEqual(destination, source);
+  assert.deepEqual(
+    reads.map(({ offset, position }) => ({ offset, position })),
+    [
+      { offset: 0, position: 0 },
+      { offset: 5, position: 5 },
+      { offset: 10, position: 10 },
+      { offset: 15, position: 15 },
+      { offset: 20, position: 20 },
+      { offset: 25, position: 25 },
+      { offset: 30, position: 30 },
+    ],
+  );
+});
 
 async function withIsolatedHistory(lines, assertion) {
   const originalHome = process.env.HOME;

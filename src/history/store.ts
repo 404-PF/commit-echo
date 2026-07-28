@@ -14,6 +14,24 @@ const HISTORY_LOCK_HEARTBEAT_MS = 15_000;
 const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
 const HISTORY_READ_CHUNK_SIZE = 64 * 1024;
 
+/** Read a complete history chunk, retrying when the filesystem returns a short read. */
+export async function readHistoryChunk(
+  history: Pick<FileHandle, 'read'>,
+  buffer: Buffer,
+  position: number,
+  bytesToRead: number,
+): Promise<number> {
+  let bytesRead = 0;
+
+  while (bytesRead < bytesToRead) {
+    const result = await history.read(buffer, bytesRead, bytesToRead - bytesRead, position + bytesRead);
+    if (result.bytesRead === 0) break;
+    bytesRead += result.bytesRead;
+  }
+
+  return bytesRead;
+}
+
 function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 }
@@ -240,7 +258,7 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
       position = Math.max(0, chunkEnd - HISTORY_READ_CHUNK_SIZE - 3);
       const bytesToRead = chunkEnd - position;
       const buffer = Buffer.allocUnsafe(bytesToRead);
-      const { bytesRead } = await history.read(buffer, 0, bytesToRead, position);
+      const bytesRead = await readHistoryChunk(history, buffer, position, bytesToRead);
       const chunk = buffer.subarray(0, bytesRead);
       const firstLineEnd = chunk.indexOf(0x0a);
       if (firstLineEnd === -1) {
