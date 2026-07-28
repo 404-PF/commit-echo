@@ -218,13 +218,14 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
   try {
     const { size } = await history.stat();
     let position = size;
-    let remainder = '';
+    let remainder = Buffer.alloc(0);
     let processedLineCount = 0;
     let totalLineCount: number | undefined;
     const corruptedLineIndexesFromEnd: number[] = [];
 
-    const parseLine = (line: string) => {
+    const parseLine = (lineBytes: Buffer) => {
       const lineIndexFromEnd = processedLineCount++;
+      const line = lineBytes.toString('utf-8');
       if (line.trim().length === 0) return;
 
       try {
@@ -235,14 +236,27 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
     };
 
     while (position > 0 && entries.length < limit) {
-      // Read a few extra bytes so the next chunk begins before any UTF-8 code point it intersects.
       const chunkEnd = position;
       position = Math.max(0, chunkEnd - HISTORY_READ_CHUNK_SIZE - 3);
       const bytesToRead = chunkEnd - position;
       const buffer = Buffer.allocUnsafe(bytesToRead);
       const { bytesRead } = await history.read(buffer, 0, bytesToRead, position);
-      const lines = (buffer.toString('utf-8', 0, bytesRead) + remainder).split('\n');
-      remainder = lines.shift()!;
+      const chunk = Buffer.concat([buffer.subarray(0, bytesRead), remainder]);
+      const lines: Buffer[] = [];
+      const firstLineEnd = chunk.indexOf(0x0a);
+      if (firstLineEnd === -1) {
+        remainder = chunk;
+      } else {
+        remainder = chunk.subarray(0, firstLineEnd);
+        let lineStart = firstLineEnd + 1;
+        for (let index = lineStart; index < chunk.length; index++) {
+          if (chunk[index] === 0x0a) {
+            lines.push(chunk.subarray(lineStart, index));
+            lineStart = index + 1;
+          }
+        }
+        lines.push(chunk.subarray(lineStart));
+      }
       const processedBeforeChunk = processedLineCount;
 
       if (position === 0) {
@@ -259,9 +273,7 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
     }
 
     for (const lineIndexFromEnd of corruptedLineIndexesFromEnd) {
-      corruptedLineNumbers.push(
-        totalLineCount === undefined ? undefined : totalLineCount - lineIndexFromEnd,
-      );
+      corruptedLineNumbers.push(totalLineCount === undefined ? undefined : totalLineCount - lineIndexFromEnd);
     }
   } finally {
     await history.close();
