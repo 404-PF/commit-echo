@@ -114,7 +114,7 @@ export function maskApiKey(apiKey: string | undefined): string {
     return 'not stored in config';
   }
 
-  const visibleLength = Math.min(4, Math.max(2, apiKey.length));
+  const visibleLength = Math.min(4, Math.floor(apiKey.length / 2));
   return `${apiKey.slice(0, visibleLength)}••••`;
 }
 

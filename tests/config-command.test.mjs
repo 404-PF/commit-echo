@@ -143,19 +143,19 @@ test('maskApiKey returns fallback message for empty string', () => {
 });
 
 test('maskApiKey masks a 1-character key', () => {
-  assert.equal(maskApiKey('a'), 'a••••');
+  assert.equal(maskApiKey('a'), '••••');
 });
 
 test('maskApiKey masks a 2-character key', () => {
-  assert.equal(maskApiKey('ab'), 'ab••••');
+  assert.equal(maskApiKey('ab'), 'a••••');
 });
 
 test('maskApiKey masks a 3-character key', () => {
-  assert.equal(maskApiKey('abc'), 'abc••••');
+  assert.equal(maskApiKey('abc'), 'a••••');
 });
 
 test('maskApiKey masks a 4-character key', () => {
-  assert.equal(maskApiKey('abcd'), 'abcd••••');
+  assert.equal(maskApiKey('abcd'), 'ab••••');
 });
 
 test('maskApiKey masks a long key', () => {
