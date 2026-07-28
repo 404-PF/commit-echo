@@ -1,9 +1,193 @@
-import { readFile, writeFile, appendFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, appendFile, mkdir, open, unlink, rename } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import type { CommitEntry, StyleProfile } from '../types.js';
 import { getHistoryPath, getConfigDir } from '../config/store.js';
 
 const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([^)]+\))?:\s*/;
+
+const HISTORY_LOCK_RETRY_MS = 25;
+const HISTORY_LOCK_STALE_MS = 60_000;
+const HISTORY_LOCK_TIMEOUT_MS = HISTORY_LOCK_STALE_MS + 10_000;
+const HISTORY_LOCK_HEARTBEAT_MS = 15_000;
+const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
+}
+
+function waitForHistoryLockRetry(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, HISTORY_LOCK_RETRY_MS));
+}
+
+function maintainHistoryLockLease(lock: FileHandle): () => Promise<void> {
+  let renewal: Promise<void> | undefined;
+  const renew = () => {
+    const now = new Date();
+    renewal = lock.utimes(now, now).catch(() => {});
+  };
+  const heartbeat = setInterval(renew, HISTORY_LOCK_HEARTBEAT_MS);
+
+  return async () => {
+    clearInterval(heartbeat);
+    await renewal;
+  };
+}
+
+interface HistoryLockSnapshot {
+  ownerToken: string;
+  mtimeMs: number;
+}
+
+async function readHistoryLockSnapshot(lockPath: string): Promise<HistoryLockSnapshot> {
+  const lock = await open(lockPath, 'r');
+  try {
+    const [ownerToken, lockStats] = await Promise.all([lock.readFile('utf-8'), lock.stat()]);
+    return { ownerToken, mtimeMs: lockStats.mtimeMs };
+  } finally {
+    await lock.close();
+  }
+}
+
+async function removeHistoryLock(lockPath: string, ownerToken: string): Promise<void> {
+  const releasePath = `${lockPath}.release.${ownerToken}`;
+  try {
+    const lockSnapshot = await readHistoryLockSnapshot(lockPath);
+    if (lockSnapshot.ownerToken !== ownerToken) return;
+
+    const recheck = await readHistoryLockSnapshot(lockPath);
+    if (recheck.ownerToken !== ownerToken) return;
+
+    // Atomically detach the lock from its path so no new writer can acquire it
+    // while we verify ownership. This closes the race where a stale takeover
+    // unlinks and a new writer creates a new lock between our recheck and unlink.
+    await rename(lockPath, releasePath);
+    try {
+      const content = await readFile(releasePath, 'utf-8');
+      if (content !== ownerToken) {
+        // Detached someone else's lock — restore it.
+        await rename(releasePath, lockPath).catch(() => {});
+        return;
+      }
+      await unlink(releasePath);
+    } catch {
+      // File already gone — fine.
+    }
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) throw error;
+  }
+}
+
+async function hasHistoryLockTakeover(lockPath: string): Promise<boolean> {
+  const takeover = `${lockPath}${HISTORY_LOCK_TAKEOVER_SUFFIX}`;
+  try {
+    const lock = await open(takeover, 'r');
+    const stats = await lock.stat();
+    await lock.close();
+
+    if (Date.now() - stats.mtimeMs > HISTORY_LOCK_STALE_MS) {
+      await unlink(takeover).catch(() => {});
+      return false;
+    }
+    return true;
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) throw error;
+    return false;
+  }
+}
+
+async function removeStaleHistoryLock(lockPath: string): Promise<void> {
+  try {
+    const lockSnapshot = await readHistoryLockSnapshot(lockPath);
+    if (Date.now() - lockSnapshot.mtimeMs <= HISTORY_LOCK_STALE_MS) return;
+
+    // Claim this stale lock generation with an exclusive marker. Other
+    // waiters must leave the marker and lock alone until its claimant finishes.
+    const takeoverPath = `${lockPath}${HISTORY_LOCK_TAKEOVER_SUFFIX}`;
+    try {
+      const takeover = await open(takeoverPath, 'wx', 0o600);
+      await takeover.writeFile(lockSnapshot.ownerToken, 'utf-8');
+      await takeover.close();
+    } catch (error) {
+      if (hasErrorCode(error, 'EEXIST')) return;
+      if (!hasErrorCode(error, 'ENOENT')) throw error;
+      return;
+    }
+
+    try {
+      const currentSnapshot = await readHistoryLockSnapshot(lockPath);
+      if (
+        currentSnapshot.ownerToken === lockSnapshot.ownerToken &&
+        Date.now() - currentSnapshot.mtimeMs > HISTORY_LOCK_STALE_MS
+      ) {
+        // Atomically detach the lock before verifying to prevent a race where
+        // the owner releases and a new writer acquires between our check and unlink.
+        const staleRemovalPath = `${lockPath}.stale-removal.${randomUUID()}`;
+        await rename(lockPath, staleRemovalPath);
+        try {
+          const content = await readFile(staleRemovalPath, 'utf-8');
+          if (content !== lockSnapshot.ownerToken) {
+            // Detached a new writer's lock — restore it.
+            await rename(staleRemovalPath, lockPath).catch(() => {});
+          } else {
+            await unlink(staleRemovalPath);
+          }
+        } catch {
+          // File already gone — fine.
+        }
+      }
+    } catch (error) {
+      if (!hasErrorCode(error, 'ENOENT')) throw error;
+    } finally {
+      await unlink(takeoverPath).catch(() => {});
+    }
+  } catch (error) {
+    if (!hasErrorCode(error, 'ENOENT')) throw error;
+  }
+}
+
+async function acquireHistoryLock(historyPath: string): Promise<() => Promise<void>> {
+  const lockPath = `${historyPath}.lock`;
+  const deadline = Date.now() + HISTORY_LOCK_TIMEOUT_MS;
+
+  while (true) {
+    if (await hasHistoryLockTakeover(lockPath)) {
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting to update commit history: ${historyPath}`);
+      }
+      await waitForHistoryLockRetry();
+      continue;
+    }
+
+    try {
+      const lock = await open(lockPath, 'wx', 0o600);
+      const ownerToken = randomUUID();
+      try {
+        await lock.writeFile(ownerToken, 'utf-8');
+      } catch (writeError) {
+        await lock.close();
+        await unlink(lockPath).catch(() => {});
+        throw writeError;
+      }
+      const stopMaintainingLease = maintainHistoryLockLease(lock);
+
+      return async () => {
+        await stopMaintainingLease();
+        await lock.close();
+        await removeHistoryLock(lockPath, ownerToken);
+      };
+    } catch (error) {
+      if (!hasErrorCode(error, 'EEXIST')) throw error;
+
+      await removeStaleHistoryLock(lockPath);
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting to update commit history: ${historyPath}`);
+      }
+      await waitForHistoryLockRetry();
+    }
+  }
+}
 
 /** Append one commit entry to the configured JSONL history file. */
 export async function appendEntry(entry: CommitEntry): Promise<void> {
@@ -12,7 +196,13 @@ export async function appendEntry(entry: CommitEntry): Promise<void> {
   if (!existsSync(configDir)) {
     await mkdir(configDir, { recursive: true });
   }
-  await appendFile(historyPath, JSON.stringify(entry) + '\n', 'utf-8');
+
+  const releaseHistoryLock = await acquireHistoryLock(historyPath);
+  try {
+    await appendFile(historyPath, JSON.stringify(entry) + '\n', 'utf-8');
+  } finally {
+    await releaseHistoryLock();
+  }
 }
 
 /** Load recent valid history entries while warning once about corrupted JSONL rows. */

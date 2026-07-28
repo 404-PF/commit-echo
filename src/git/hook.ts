@@ -1,13 +1,13 @@
 import { execFileSync, execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { appendFile, copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
-import { loadConfig, getHistoryPath } from '../config/store.js';
-import { buildProfile } from '../history/store.js';
+import { loadConfig } from '../config/store.js';
+import { appendEntry, buildProfile } from '../history/store.js';
 import { generateSuggestions } from '../llm/client.js';
 
 const MANAGED_HOOK_MARKER = '# commit-echo managed hook';
@@ -25,7 +25,7 @@ export interface PostCommitHookDeps {
   checkGitRepo: () => void;
   readLatestCommitMessage: () => string;
   readPendingEntryFile: () => Promise<string>;
-  appendHistoryEntry: (entry: string) => Promise<void>;
+  appendHistoryEntry: (entry: CommitEntry) => Promise<void>;
   removePendingEntryFile: () => Promise<void>;
   warn: (message: string) => void;
 }
@@ -218,10 +218,7 @@ export async function runPostCommitHook(
     checkGitRepo,
     readLatestCommitMessage: () => execSync('git log -1 --pretty=%B', { encoding: 'utf-8' }).trim(),
     readPendingEntryFile: async () => readFile(resolvePendingEntryPath(), 'utf-8'),
-    appendHistoryEntry: async (entry) => {
-      await mkdir(dirname(getHistoryPath()), { recursive: true });
-      await appendFile(getHistoryPath(), `${entry}\n`, 'utf-8');
-    },
+    appendHistoryEntry: appendEntry,
     removePendingEntryFile: async () => rm(resolvePendingEntryPath(), { force: true }),
     warn: (message) => console.warn(message),
   },
@@ -249,13 +246,13 @@ export async function runPostCommitHook(
       return;
     }
 
-    const entry = JSON.stringify({
+    const entry: CommitEntry = {
       timestamp: pending.timestamp,
       message,
       diff: pending.diff,
       model: pending.model,
       provider: pending.provider,
-    });
+    };
 
     try {
       await deps.appendHistoryEntry(entry);
