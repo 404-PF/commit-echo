@@ -413,7 +413,19 @@ export async function batchCommand(
         message: `Optional body for ${repoName}:`,
         initialValue: selected.body ?? '',
       });
-      const finalBody = isCancel(customBody) || !customBody ? selected.body : customBody;
+      if (isCancel(customBody)) {
+        console.log(`    ${pc.dim('– Cancelled, skipping')}`);
+        results.push({
+          repo: repoPath,
+          repoName,
+          status: 'skipped',
+          message: 'Cancelled',
+        });
+        console.log('');
+        continue;
+      }
+
+      const finalBody = !customBody ? selected.body : customBody;
 
       let commitResult: { hash: string; summary: string };
       try {
