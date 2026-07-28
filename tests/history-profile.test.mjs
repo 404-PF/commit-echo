@@ -67,6 +67,30 @@ test('buildProfile counts descriptive verb forms in the imperative-rate denomina
   }
 });
 
+test('buildProfile recognizes base-form verbs that end in descriptive suffixes', async () => {
+  const originalHome = process.env.HOME;
+  const originalAppData = process.env.APPDATA;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
+
+  try {
+    process.env.HOME = tempHome;
+    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
+    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+    writeHistory(tempHome, ['fix: add retries', 'fix: bring retries', 'fix: added retries']);
+
+    const profile = await buildProfile(10);
+
+    assert.equal(profile.totalCommits, 3);
+    assert.equal(profile.imperativeRate, 2 / 3);
+  } finally {
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
+    rmSync(tempHome, { recursive: true, force: true });
+  }
+});
+
 test('formatProfile reports the empty-history fallback', () => {
   const output = formatProfile({
     avgLength: 0,

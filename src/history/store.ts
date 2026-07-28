@@ -7,6 +7,42 @@ import { getHistoryPath, getConfigDir } from '../config/store.js';
 
 const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([^)]+\))?:\s*/;
 
+const BASE_FORM_VERBS_WITH_SUFFIXES = new Set([
+  'bleed',
+  'breed',
+  'bring',
+  'cling',
+  'ding',
+  'embed',
+  'exceed',
+  'feed',
+  'fling',
+  'heed',
+  'imbed',
+  'king',
+  'need',
+  'ping',
+  'proceed',
+  'ring',
+  'seed',
+  'shed',
+  'sing',
+  'sling',
+  'speed',
+  'spring',
+  'sting',
+  'string',
+  'swing',
+  'wed',
+  'wing',
+  'wring',
+  'zing',
+]);
+
+function isDescriptiveVerb(verb: string): boolean {
+  return !BASE_FORM_VERBS_WITH_SUFFIXES.has(verb) && (verb.endsWith('ed') || verb.endsWith('ing'));
+}
+
 const HISTORY_LOCK_RETRY_MS = 25;
 const HISTORY_LOCK_STALE_MS = 60_000;
 const HISTORY_LOCK_TIMEOUT_MS = HISTORY_LOCK_STALE_MS + 10_000;
@@ -309,19 +345,11 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
     const verbMatch = firstLine.match(
       /^(?:feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(?:\([^)]+\))?:\s*(\w+)/,
     );
-    if (verbMatch) {
-      const verb = verbMatch[1]!;
+    const verb = verbMatch?.[1] ?? firstLine.match(/^\w+/)?.[0];
+    if (verb) {
       imperativeSampleCount++;
-      if (!verb.endsWith('ed') && !verb.endsWith('ing')) {
+      if (!isDescriptiveVerb(verb)) {
         imperativeCount++;
-      }
-    } else {
-      const firstWord = firstLine.match(/^\w+/);
-      if (firstWord) {
-        imperativeSampleCount++;
-        if (!firstWord[0]!.endsWith('ed') && !firstWord[0]!.endsWith('ing')) {
-          imperativeCount++;
-        }
       }
     }
 
