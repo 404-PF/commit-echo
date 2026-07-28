@@ -77,7 +77,7 @@ test('buildProfile recognizes base-form verbs that end in descriptive suffixes',
     process.env.HOME = tempHome;
     process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
     process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
-    writeHistory(tempHome, ['fix: add retries', 'fix: bring retries', 'fix: added retries']);
+    writeHistory(tempHome, ['fix: add retries', 'fix: Bring retries', 'fix: added retries']);
 
     const profile = await buildProfile(10);
 

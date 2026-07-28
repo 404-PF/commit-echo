@@ -40,6 +40,7 @@ const BASE_FORM_VERBS_WITH_SUFFIXES = new Set([
 ]);
 
 function isDescriptiveVerb(verb: string): boolean {
+  verb = verb.toLowerCase();
   return !BASE_FORM_VERBS_WITH_SUFFIXES.has(verb) && (verb.endsWith('ed') || verb.endsWith('ing'));
 }
 
