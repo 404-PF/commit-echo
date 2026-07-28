@@ -1,4 +1,5 @@
 import { readFile, writeFile, appendFile, mkdir, open, unlink, rename } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { CommitEntry, StyleProfile } from '../types.js';
@@ -9,6 +10,7 @@ const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|b
 const HISTORY_LOCK_RETRY_MS = 25;
 const HISTORY_LOCK_TIMEOUT_MS = 10_000;
 const HISTORY_LOCK_STALE_MS = 60_000;
+const HISTORY_LOCK_HEARTBEAT_MS = 15_000;
 const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
 
 function hasErrorCode(error: unknown, code: string): boolean {
@@ -17,6 +19,20 @@ function hasErrorCode(error: unknown, code: string): boolean {
 
 function waitForHistoryLockRetry(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, HISTORY_LOCK_RETRY_MS));
+}
+
+function maintainHistoryLockLease(lock: FileHandle): () => Promise<void> {
+  let renewal: Promise<void> | undefined;
+  const renew = () => {
+    const now = new Date();
+    renewal = lock.utimes(now, now).catch(() => {});
+  };
+  const heartbeat = setInterval(renew, HISTORY_LOCK_HEARTBEAT_MS);
+
+  return async () => {
+    clearInterval(heartbeat);
+    await renewal;
+  };
 }
 
 interface HistoryLockSnapshot {
@@ -144,10 +160,19 @@ async function acquireHistoryLock(historyPath: string): Promise<() => Promise<vo
     try {
       const lock = await open(lockPath, 'wx', 0o600);
       const ownerToken = randomUUID();
-      await lock.writeFile(ownerToken, 'utf-8');
-      await lock.close();
+      try {
+        await lock.writeFile(ownerToken, 'utf-8');
+      } catch (writeError) {
+        await lock.close();
+        throw writeError;
+      }
+      const stopMaintainingLease = maintainHistoryLockLease(lock);
 
-      return () => removeHistoryLock(lockPath, ownerToken);
+      return async () => {
+        await stopMaintainingLease();
+        await lock.close();
+        await removeHistoryLock(lockPath, ownerToken);
+      };
     } catch (error) {
       if (!hasErrorCode(error, 'EEXIST')) throw error;
 
