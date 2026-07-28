@@ -235,8 +235,10 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
     };
 
     while (position > 0 && entries.length < limit) {
-      const bytesToRead = Math.min(HISTORY_READ_CHUNK_SIZE, position);
-      position -= bytesToRead;
+      // Read a few extra bytes so the next chunk begins before any UTF-8 code point it intersects.
+      const chunkEnd = position;
+      position = Math.max(0, chunkEnd - HISTORY_READ_CHUNK_SIZE - 3);
+      const bytesToRead = chunkEnd - position;
       const buffer = Buffer.allocUnsafe(bytesToRead);
       const { bytesRead } = await history.read(buffer, 0, bytesToRead, position);
       const lines = (buffer.toString('utf-8', 0, bytesRead) + remainder).split('\n');
