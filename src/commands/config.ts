@@ -101,11 +101,16 @@ function applyProviderChange(config: Config, provider: Config['provider']): Conf
 }
 
 function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: string): Config {
-  if (key === 'provider') {
-    return applyProviderChange(config, parseConfigSetValue('provider', rawValue));
+  const updatedConfig =
+    key === 'provider'
+      ? applyProviderChange(config, parseConfigSetValue('provider', rawValue))
+      : updateConfigField(config, key, parseConfigSetValue(key, rawValue));
+
+  if (updatedConfig.provider === CUSTOM_PROVIDER_KEY && !updatedConfig.baseUrl) {
+    throw new Error('Custom provider requires a configured baseUrl. Set baseUrl before selecting __custom__.');
   }
 
-  return updateConfigField(config, key, parseConfigSetValue(key, rawValue));
+  return updatedConfig;
 }
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */

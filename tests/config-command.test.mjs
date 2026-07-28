@@ -332,6 +332,22 @@ test('config set clears stale baseUrl when switching between built-in providers'
   });
 });
 
+test('config set requires a baseUrl before switching to the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'provider', '__custom__']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
 test('config set preserves baseUrl when switching to custom provider', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir, {
