@@ -153,6 +153,24 @@ test('loadEntries stops parsing once it has enough recent valid entries', async 
   );
 });
 
+test('loadEntries uses a generic location for corrupted rows in a partial scan', async () => {
+  const olderEntries = Array.from({ length: 700 }, (_, index) =>
+    validEntry(`chore: keep older entry ${index}`, `2026-06-01T00:00:${String(index).padStart(2, '0')}Z`),
+  );
+
+  await withIsolatedHistory(
+    [...olderEntries, validEntry('fix: keep newest valid entry', '2026-06-01T00:01:00Z'), '{invalid newest line'],
+    async ({ warnings }) => {
+      const entries = await loadEntries(1);
+
+      assert.deepEqual(entries.map((entry) => entry.message), ['fix: keep newest valid entry']);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /ignored 1 corrupted commit history entry/);
+      assert.match(warnings[0], /recently scanned rows/);
+    },
+  );
+});
+
 test('countEntries counts raw non-empty history rows, including malformed JSON lines', async () => {
   await withIsolatedHistory(
     [
