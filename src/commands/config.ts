@@ -101,11 +101,45 @@ function applyProviderChange(config: Config, provider: Config['provider']): Conf
 }
 
 function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: string): Config {
-  if (key === 'provider') {
-    return applyProviderChange(config, parseConfigSetValue('provider', rawValue));
+  const updatedConfig =
+    key === 'provider'
+      ? applyProviderChange(config, parseConfigSetValue('provider', rawValue))
+      : updateConfigField(config, key, parseConfigSetValue(key, rawValue));
+
+  // The custom provider requires an endpoint, so validate whenever the update can
+  // change the effective endpoint: switching to it, or editing baseUrl while on it.
+  // Other config sets on an already-custom provider must not be blocked by a
+  // missing or invalid endpoint. The COMMIT_ECHO_BASE_URL override (applied by
+  // loadConfig() but not by loadRawConfig()) is folded in, and the effective
+  // endpoint is trimmed and validated with the same URL rules as baseUrl.
+  const affectsEndpoint =
+    updatedConfig.provider === CUSTOM_PROVIDER_KEY && (key === 'provider' || key === 'baseUrl');
+  if (affectsEndpoint) {
+    const rawEnvBaseUrl = process.env['COMMIT_ECHO_BASE_URL'];
+    const envBaseUrl = rawEnvBaseUrl?.trim();
+    // loadConfig() applies the override with ?? before trimming, so an explicitly
+    // set blank value wins over the stored endpoint at runtime. Reject it here to
+    // match what the running config would actually use.
+    if (rawEnvBaseUrl !== undefined && !envBaseUrl) {
+      throw new Error(
+        'Custom provider requires a configured baseUrl (run `config set baseUrl <url>` or set COMMIT_ECHO_BASE_URL).',
+      );
+    }
+    const effectiveBaseUrl = envBaseUrl || updatedConfig.baseUrl?.trim();
+    if (!effectiveBaseUrl) {
+      throw new Error(
+        'Custom provider requires a configured baseUrl (run `config set baseUrl <url>` or set COMMIT_ECHO_BASE_URL).',
+      );
+    }
+    // On a provider switch the stored value may predate this PR, so validate the
+    // effective URL explicitly; an edited baseUrl was already validated by
+    // parseConfigSetValue() during the update.
+    if (key === 'provider') {
+      parseConfigSetValue('baseUrl', effectiveBaseUrl);
+    }
   }
 
-  return updateConfigField(config, key, parseConfigSetValue(key, rawValue));
+  return updatedConfig;
 }
 
 /** Masks a stored API key while leaving enough prefix to identify which key is configured. */

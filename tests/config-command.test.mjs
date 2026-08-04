@@ -19,8 +19,14 @@ function configDirFor(homeDir) {
 
 /** Builds an environment that keeps config reads inside the test home directory. */
 function envFor(homeDir) {
+  // Drop COMMIT_ECHO_BASE_URL from the inherited environment so the
+  // missing-baseUrl rejection test can't be satisfied by a developer's shell
+  // override; the env-only test adds it explicitly.
+  const parentEnv = { ...process.env };
+  delete parentEnv.COMMIT_ECHO_BASE_URL;
+
   return {
-    ...process.env,
+    ...parentEnv,
     APPDATA: join(homeDir, 'AppData', 'Roaming'),
     FORCE_COLOR: '0',
     HOME: homeDir,
@@ -332,6 +338,22 @@ test('config set clears stale baseUrl when switching between built-in providers'
   });
 });
 
+test('config set requires a baseUrl before switching to the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'provider', '__custom__']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
 test('config set preserves baseUrl when switching to custom provider', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir, {
@@ -344,6 +366,185 @@ test('config set preserves baseUrl when switching to custom provider', async () 
 
     assert.equal(config.provider, '__custom__');
     assert.equal(config.baseUrl, 'https://custom.example.test/v1');
+  });
+});
+
+test('config set accepts an environment-provided baseUrl for the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'provider', '__custom__'],
+      {
+        env: {
+          ...envFor(homeDir),
+          COMMIT_ECHO_BASE_URL: 'https://env-custom.example.test/v1',
+        },
+      },
+    );
+
+    const config = readConfig(homeDir);
+
+    assert.equal(config.provider, '__custom__');
+    assert.equal(config.baseUrl, undefined);
+  });
+});
+
+test('config set rejects a malformed environment baseUrl for the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai' });
+
+    await assert.rejects(
+      () =>
+        execFileAsync(
+          process.execPath,
+          ['dist/index.js', '--no-color', 'config', 'set', 'provider', '__custom__'],
+          {
+            env: {
+              ...envFor(homeDir),
+              COMMIT_ECHO_BASE_URL: 'not-a-url',
+            },
+          },
+        ),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /baseUrl must be a valid URL/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set ignores an invalid environment baseUrl for non-custom operations', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai', model: 'gpt-4o' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'model', 'gpt-4o-mini'],
+      {
+        env: {
+          ...envFor(homeDir),
+          COMMIT_ECHO_BASE_URL: 'not-a-url',
+        },
+      },
+    );
+
+    const config = readConfig(homeDir);
+    assert.equal(config.model, 'gpt-4o-mini');
+    assert.equal(config.provider, 'openai');
+  });
+});
+
+test('config set rejects a malformed stored baseUrl when switching to the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: 'not-a-url', provider: 'openai' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'provider', '__custom__']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /baseUrl must be a valid URL/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects a whitespace-only stored baseUrl when switching to the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: '   ', provider: 'openai' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'provider', '__custom__']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects an explicitly blank environment baseUrl even when a baseUrl is stored', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: 'https://stored.example.test/v1', provider: 'openai' });
+
+    await assert.rejects(
+      () =>
+        execFileAsync(
+          process.execPath,
+          ['dist/index.js', '--no-color', 'config', 'set', 'provider', '__custom__'],
+          {
+            env: {
+              ...envFor(homeDir),
+              COMMIT_ECHO_BASE_URL: '   ',
+            },
+          },
+        ),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set allows unrelated updates on an env-backed custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: '__custom__', model: 'gpt-4o' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'model', 'gpt-4o-mini'],
+      { env: envFor(homeDir) },
+    );
+
+    const config = readConfig(homeDir);
+    assert.equal(config.model, 'gpt-4o-mini');
+    assert.equal(config.provider, '__custom__');
+  });
+});
+
+test('config set baseUrl is not blocked by a malformed environment baseUrl', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: '__custom__' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'baseUrl', 'https://fixed.example.test/v1'],
+      {
+        env: {
+          ...envFor(homeDir),
+          COMMIT_ECHO_BASE_URL: 'not-a-url',
+        },
+      },
+    );
+
+    const config = readConfig(homeDir);
+    assert.equal(config.baseUrl, 'https://fixed.example.test/v1');
+  });
+});
+
+test('config set rejects clearing baseUrl on an existing custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: 'https://custom.example.test/v1', provider: '__custom__' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'baseUrl', '']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).baseUrl, 'https://custom.example.test/v1');
+        return true;
+      },
+    );
   });
 });
 
