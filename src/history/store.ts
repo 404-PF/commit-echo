@@ -276,6 +276,9 @@ function processChunk(
 ): void {
   if (!chunk.includes(0x0a)) {
     state.remainderChunks.unshift(chunk);
+    if (position === 0) {
+      state.totalLineCount = state.processedLineCount + 1;
+    }
     return;
   }
 

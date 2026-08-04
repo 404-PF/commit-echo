@@ -3,7 +3,6 @@ import test from 'node:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-
 import { getConfigDir } from '../dist/config/store.js';
 import { countEntries, loadEntries, readHistoryChunk } from '../dist/history/store.js';
 
@@ -241,4 +240,37 @@ test('loadEntries preserves UTF-8 characters split across backward-read chunks',
   });
 
   assert.equal(concatCalls, 1);
+});
+
+test('loadEntries reports line 1 for a single corrupted row without trailing newline', async () => {
+  const originalHome = process.env.HOME;
+  const originalAppData = process.env.APPDATA;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-history-'));
+  const warnings = [];
+  const originalWarn = console.warn;
+
+  try {
+    process.env.HOME = tempHome;
+    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
+    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+    console.warn = (message) => warnings.push(String(message));
+
+    const configDir = getConfigDir();
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'history.jsonl'), '{not valid json', 'utf-8');
+
+    const entries = await loadEntries(10);
+
+    assert.deepEqual(entries, []);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /ignored 1 corrupted commit history entry/);
+    assert.match(warnings[0], /line 1/);
+  } finally {
+    console.warn = originalWarn;
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
+    rmSync(tempHome, { recursive: true, force: true });
+  }
 });
