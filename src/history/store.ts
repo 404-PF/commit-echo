@@ -12,6 +12,59 @@ const HISTORY_LOCK_STALE_MS = 60_000;
 const HISTORY_LOCK_TIMEOUT_MS = HISTORY_LOCK_STALE_MS + 10_000;
 const HISTORY_LOCK_HEARTBEAT_MS = 15_000;
 const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
+const HISTORY_READ_CHUNK_SIZE = 64 * 1024;
+
+/** Split a buffer into complete newline-delimited lines and an incomplete remainder. */
+function splitCompleteLines(combined: Buffer): { lines: Buffer[]; remainder: Buffer } {
+  const firstLineEnd = combined.indexOf(0x0a);
+  if (firstLineEnd === -1) return { lines: [], remainder: combined };
+
+  const lines: Buffer[] = [];
+  let lineStart = firstLineEnd + 1;
+  for (let index = lineStart; index < combined.length; index++) {
+    if (combined[index] === 0x0a) {
+      lines.push(combined.subarray(lineStart, index));
+      lineStart = index + 1;
+    }
+  }
+  lines.push(combined.subarray(lineStart));
+  return { lines, remainder: combined.subarray(0, firstLineEnd) };
+}
+
+/** Parse a single line buffer, pushing valid entries or recording corrupted line numbers. */
+function processHistoryLine(
+  lineBytes: Buffer,
+  lineIndexFromEnd: number,
+  entries: CommitEntry[],
+  corruptedLineIndexesFromEnd: number[],
+): void {
+  const line = lineBytes.toString('utf-8');
+  if (line.trim().length === 0) return;
+
+  try {
+    entries.push(JSON.parse(line) as CommitEntry);
+  } catch {
+    corruptedLineIndexesFromEnd.push(lineIndexFromEnd);
+  }
+}
+
+/** Read a complete history chunk, retrying when the filesystem returns a short read. */
+export async function readHistoryChunk(
+  history: Pick<FileHandle, 'read'>,
+  buffer: Buffer,
+  position: number,
+  bytesToRead: number,
+): Promise<number> {
+  let bytesRead = 0;
+
+  while (bytesRead < bytesToRead) {
+    const result = await history.read(buffer, bytesRead, bytesToRead - bytesRead, position + bytesRead);
+    if (result.bytesRead === 0) break;
+    bytesRead += result.bytesRead;
+  }
+
+  return bytesRead;
+}
 
 function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
@@ -205,52 +258,108 @@ export async function appendEntry(entry: CommitEntry): Promise<void> {
   }
 }
 
+/** State accumulated while scanning a history file backward. */
+interface HistoryScanState {
+  entries: CommitEntry[];
+  processedLineCount: number;
+  totalLineCount: number | undefined;
+  remainderChunks: Buffer[];
+  corruptedLineIndexesFromEnd: number[];
+}
+
+/** Process one backward-read chunk, returning updated scan state. */
+function processChunk(
+  chunk: Buffer,
+  state: HistoryScanState,
+  position: number,
+  limit: number,
+): void {
+  if (!chunk.includes(0x0a)) {
+    state.remainderChunks.unshift(chunk);
+    if (position === 0) {
+      state.totalLineCount = state.processedLineCount + 1;
+    }
+    return;
+  }
+
+  const combined = state.remainderChunks.length === 0 ? chunk : Buffer.concat([chunk, ...state.remainderChunks]);
+  const { lines, remainder: newRemainder } = splitCompleteLines(combined);
+  state.remainderChunks = [newRemainder];
+
+  if (position === 0) {
+    state.totalLineCount = state.processedLineCount + lines.length + 1;
+  }
+
+  for (let index = lines.length - 1; index >= 0 && state.entries.length < limit; index--) {
+    processHistoryLine(lines[index]!, state.processedLineCount++, state.entries, state.corruptedLineIndexesFromEnd);
+  }
+}
+
+/** Process the remaining partial-line bytes after the main scan loop. */
+function processRemainder(state: HistoryScanState, limit: number): void {
+  const remainder = state.remainderChunks.length === 1 ? state.remainderChunks[0]! : Buffer.concat(state.remainderChunks);
+  processHistoryLine(remainder, state.processedLineCount++, state.entries, state.corruptedLineIndexesFromEnd);
+}
+
 /** Load recent valid history entries while warning once about corrupted JSONL rows. */
 export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
   const historyPath = getHistoryPath();
   if (!existsSync(historyPath)) return [];
 
-  const raw = await readFile(historyPath, 'utf-8');
-  const lines = raw
-    .split('\n')
-    .map((line, index) => ({ line, lineNumber: index + 1 }))
-    .filter(({ line }) => line.trim().length > 0)
-    .reverse();
+  const corruptedLineNumbers: Array<number | undefined> = [];
+  const state: HistoryScanState = {
+    entries: [],
+    processedLineCount: 0,
+    totalLineCount: undefined,
+    remainderChunks: [],
+    corruptedLineIndexesFromEnd: [],
+  };
 
-  const entries: CommitEntry[] = [];
-  const corruptedLineNumbers: number[] = [];
+  const history = await open(historyPath, 'r');
+  try {
+    const { size } = await history.stat();
+    let position = size;
 
-  for (const { line, lineNumber } of lines) {
-    try {
-      const entry = JSON.parse(line) as CommitEntry;
-      if (entries.length < limit) {
-        entries.push(entry);
-      }
-    } catch {
-      corruptedLineNumbers.push(lineNumber);
+    while (position > 0 && state.entries.length < limit) {
+      const chunkEnd = position;
+      position = Math.max(0, chunkEnd - HISTORY_READ_CHUNK_SIZE - 3);
+      const bytesToRead = chunkEnd - position;
+      const buffer = Buffer.allocUnsafe(bytesToRead);
+      const bytesRead = await readHistoryChunk(history, buffer, position, bytesToRead);
+      processChunk(buffer.subarray(0, bytesRead), state, position, limit);
     }
+
+    if (position === 0 && state.entries.length < limit) {
+      processRemainder(state, limit);
+    }
+
+    for (const lineIndexFromEnd of state.corruptedLineIndexesFromEnd) {
+      corruptedLineNumbers.push(state.totalLineCount === undefined ? undefined : state.totalLineCount - lineIndexFromEnd);
+    }
+  } finally {
+    await history.close();
   }
 
   warnCorruptedHistory(historyPath, corruptedLineNumbers);
 
-  return entries;
+  return state.entries;
 }
 
 /** Emit a compact warning that identifies corrupted history line numbers. */
-function warnCorruptedHistory(historyPath: string, corruptedLineNumbers: number[]): void {
+function warnCorruptedHistory(historyPath: string, corruptedLineNumbers: Array<number | undefined>): void {
   if (corruptedLineNumbers.length === 0) return;
 
   const count = corruptedLineNumbers.length;
   const noun = count === 1 ? 'entry' : 'entries';
-  const lines = corruptedLineNumbers
+  const knownLineNumbers = corruptedLineNumbers.filter((lineNumber): lineNumber is number => lineNumber !== undefined);
+  const lines = knownLineNumbers
     .slice(0, 5)
     .sort((a, b) => a - b)
     .join(', ');
   const suffix = count > 5 ? `, +${count - 5} more` : '';
+  const location = knownLineNumbers.length === count ? `line ${lines}${suffix}` : 'recently scanned rows';
 
-  console.warn(
-    `Warning: ignored ${count} corrupted commit history ${noun} in ${historyPath} (line ${lines}${suffix}).`,
-  );
+  console.warn(`Warning: ignored ${count} corrupted commit history ${noun} in ${historyPath} (${location}).`);
 }
 
 /** Count raw history rows in the configured history file. */

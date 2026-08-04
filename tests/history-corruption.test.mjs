@@ -3,9 +3,8 @@ import test from 'node:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-
 import { getConfigDir } from '../dist/config/store.js';
-import { countEntries, loadEntries } from '../dist/history/store.js';
+import { countEntries, loadEntries, readHistoryChunk } from '../dist/history/store.js';
 
 function writeHistory(lines) {
   const configDir = getConfigDir();
@@ -30,6 +29,35 @@ function validEntry(message, timestamp) {
     provider: 'local',
   });
 }
+
+test('readHistoryChunk retries short reads from the unread offset', async () => {
+  const source = Buffer.from('history entry with a short read');
+  const destination = Buffer.alloc(source.length);
+  const reads = [];
+  const history = {
+    async read(buffer, offset, length, position) {
+      reads.push({ offset, length, position });
+      const bytesToCopy = Math.min(5, length);
+      source.copy(buffer, offset, position, position + bytesToCopy);
+      return { bytesRead: bytesToCopy, buffer };
+    },
+  };
+
+  assert.equal(await readHistoryChunk(history, destination, 0, source.length), source.length);
+  assert.deepEqual(destination, source);
+  assert.deepEqual(
+    reads.map(({ offset, position }) => ({ offset, position })),
+    [
+      { offset: 0, position: 0 },
+      { offset: 5, position: 5 },
+      { offset: 10, position: 10 },
+      { offset: 15, position: 15 },
+      { offset: 20, position: 20 },
+      { offset: 25, position: 25 },
+      { offset: 30, position: 30 },
+    ],
+  );
+});
 
 async function withIsolatedHistory(lines, assertion) {
   const originalHome = process.env.HOME;
@@ -137,6 +165,40 @@ test('loadEntries warns and returns empty entries when all lines are corrupted',
   });
 });
 
+test('loadEntries stops parsing once it has enough recent valid entries', async () => {
+  await withIsolatedHistory(
+    [
+      '{invalid old line',
+      validEntry('fix: keep older valid entry', '2026-06-01T00:00:00Z'),
+      validEntry('feat: keep newest valid entry', '2026-06-01T00:00:01Z'),
+    ],
+    async ({ warnings }) => {
+      const entries = await loadEntries(1);
+
+      assert.deepEqual(entries.map((entry) => entry.message), ['feat: keep newest valid entry']);
+      assert.deepEqual(warnings, []);
+    },
+  );
+});
+
+test('loadEntries uses a generic location for corrupted rows in a partial scan', async () => {
+  const olderEntries = Array.from({ length: 700 }, (_, index) =>
+    validEntry(`chore: keep older entry ${index}`, `2026-06-01T00:00:${String(index).padStart(2, '0')}Z`),
+  );
+
+  await withIsolatedHistory(
+    [...olderEntries, validEntry('fix: keep newest valid entry', '2026-06-01T00:01:00Z'), '{invalid newest line'],
+    async ({ warnings }) => {
+      const entries = await loadEntries(1);
+
+      assert.deepEqual(entries.map((entry) => entry.message), ['fix: keep newest valid entry']);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /ignored 1 corrupted commit history entry/);
+      assert.match(warnings[0], /recently scanned rows/);
+    },
+  );
+});
+
 test('countEntries counts raw non-empty history rows, including malformed JSON lines', async () => {
   await withIsolatedHistory(
     [
@@ -150,4 +212,65 @@ test('countEntries counts raw non-empty history rows, including malformed JSON l
       assert.equal(await countEntries(), 3);
     },
   );
+});
+
+test('loadEntries preserves UTF-8 characters split across backward-read chunks', async () => {
+  const prefix = '{"timestamp":"2026-06-01T00:00:00Z","message":"a';
+  const suffix = '","diff":"","model":"test-model","provider":"local"}';
+  const messageTailLength = 2 * 1024 * 1024 - Buffer.byteLength(suffix) - 1;
+  const row = `${prefix}\u00e9x\u00e9${'b'.repeat(messageTailLength)}${suffix}`;
+
+  const originalConcat = Buffer.concat;
+  let concatCalls = 0;
+  Buffer.concat = (...args) => {
+    concatCalls += 1;
+    return originalConcat(...args);
+  };
+
+  await withIsolatedHistory([row], async () => {
+    try {
+      const entries = await loadEntries(1);
+
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].message, `a\u00e9x\u00e9${'b'.repeat(messageTailLength)}`);
+      assert.doesNotMatch(entries[0].message, /\uFFFD/);
+    } finally {
+      Buffer.concat = originalConcat;
+    }
+  });
+
+  assert.equal(concatCalls, 1);
+});
+
+test('loadEntries reports line 1 for a single corrupted row without trailing newline', async () => {
+  const originalHome = process.env.HOME;
+  const originalAppData = process.env.APPDATA;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-history-'));
+  const warnings = [];
+  const originalWarn = console.warn;
+
+  try {
+    process.env.HOME = tempHome;
+    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
+    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+    console.warn = (message) => warnings.push(String(message));
+
+    const configDir = getConfigDir();
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'history.jsonl'), '{not valid json', 'utf-8');
+
+    const entries = await loadEntries(10);
+
+    assert.deepEqual(entries, []);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /ignored 1 corrupted commit history entry/);
+    assert.match(warnings[0], /line 1/);
+  } finally {
+    console.warn = originalWarn;
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
+    rmSync(tempHome, { recursive: true, force: true });
+  }
 });
