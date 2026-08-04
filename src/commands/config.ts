@@ -106,17 +106,20 @@ function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: s
       ? applyProviderChange(config, parseConfigSetValue('provider', rawValue))
       : updateConfigField(config, key, parseConfigSetValue(key, rawValue));
 
-  // The effective endpoint includes the COMMIT_ECHO_BASE_URL override, which is
-  // applied by loadConfig() but not by loadRawConfig(). Trim and validate it
-  // with the same URL rules as baseUrl, and use it only when non-empty so a
-  // whitespace-only or malformed override cannot mask a configured endpoint.
-  const envBaseUrl = process.env['COMMIT_ECHO_BASE_URL']?.trim();
-  if (envBaseUrl) {
-    parseConfigSetValue('baseUrl', envBaseUrl);
-  }
-  const effectiveBaseUrl = envBaseUrl || updatedConfig.baseUrl;
-  if (updatedConfig.provider === CUSTOM_PROVIDER_KEY && !effectiveBaseUrl) {
-    throw new Error('Custom provider requires a configured baseUrl. Set baseUrl before selecting __custom__.');
+  // Only the custom provider requires an endpoint, so scope the COMMIT_ECHO_BASE_URL
+  // override handling (applied by loadConfig() but not by loadRawConfig()) to that
+  // case; an unrelated config set must not be blocked by an invalid env URL. Trim
+  // the override and use it only when non-empty so a whitespace-only value cannot
+  // mask a configured endpoint, and validate it with the same rules as baseUrl.
+  if (updatedConfig.provider === CUSTOM_PROVIDER_KEY) {
+    const envBaseUrl = process.env['COMMIT_ECHO_BASE_URL']?.trim();
+    const effectiveBaseUrl = envBaseUrl || updatedConfig.baseUrl;
+    if (!effectiveBaseUrl) {
+      throw new Error('Custom provider requires a configured baseUrl. Set baseUrl before selecting __custom__.');
+    }
+    if (envBaseUrl) {
+      parseConfigSetValue('baseUrl', envBaseUrl);
+    }
   }
 
   return updatedConfig;

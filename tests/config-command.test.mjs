@@ -391,6 +391,53 @@ test('config set accepts an environment-provided baseUrl for the custom provider
   });
 });
 
+test('config set rejects a malformed environment baseUrl for the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai' });
+
+    await assert.rejects(
+      () =>
+        execFileAsync(
+          process.execPath,
+          ['dist/index.js', '--no-color', 'config', 'set', 'provider', '__custom__'],
+          {
+            env: {
+              ...envFor(homeDir),
+              COMMIT_ECHO_BASE_URL: 'not-a-url',
+            },
+          },
+        ),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /baseUrl must be a valid URL/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set ignores an invalid environment baseUrl for non-custom operations', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai', model: 'gpt-4o' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'model', 'gpt-4o-mini'],
+      {
+        env: {
+          ...envFor(homeDir),
+          COMMIT_ECHO_BASE_URL: 'not-a-url',
+        },
+      },
+    );
+
+    const config = readConfig(homeDir);
+    assert.equal(config.model, 'gpt-4o-mini');
+    assert.equal(config.provider, 'openai');
+  });
+});
+
 test('config set rejects invalid base URLs', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
