@@ -8,6 +8,7 @@ import { getHistoryPath, getConfigDir } from '../config/store.js';
 const CONVENTIONAL_PREFIX_RE = /^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([^)]+\))?:\s*/;
 
 const BASE_FORM_VERBS_WITH_SUFFIXES = new Set([
+  'bed',
   'bleed',
   'breed',
   'bring',
@@ -26,7 +27,9 @@ const BASE_FORM_VERBS_WITH_SUFFIXES = new Set([
   'ring',
   'seed',
   'shed',
+  'shred',
   'sing',
+  'sled',
   'sling',
   'speed',
   'spring',
@@ -39,9 +42,27 @@ const BASE_FORM_VERBS_WITH_SUFFIXES = new Set([
   'zing',
 ]);
 
+const VERB_PREFIXES = ['counter', 'inter', 'over', 'under', 'fore', 'mis', 'pre', 'un', 're'];
+
+// Full verbs that would falsely match a prefix + base-form stem (e.g. "resting" = "re" + "sting").
+const VERB_PREFIX_STRIP_COLLISIONS = new Set(['resting']);
+
+function stripVerbPrefix(verb: string): string {
+  for (const prefix of VERB_PREFIXES) {
+    if (verb.length > prefix.length && verb.startsWith(prefix)) {
+      const stem = verb.slice(prefix.length);
+      if (BASE_FORM_VERBS_WITH_SUFFIXES.has(stem) && !VERB_PREFIX_STRIP_COLLISIONS.has(verb)) {
+        return stem;
+      }
+    }
+  }
+  return verb;
+}
+
 function isDescriptiveVerb(verb: string): boolean {
-  verb = verb.toLowerCase();
-  return !BASE_FORM_VERBS_WITH_SUFFIXES.has(verb) && (verb.endsWith('ed') || verb.endsWith('ing'));
+  const normalized = verb.toLowerCase();
+  const base = stripVerbPrefix(normalized);
+  return !BASE_FORM_VERBS_WITH_SUFFIXES.has(base) && (normalized.endsWith('ed') || normalized.endsWith('ing'));
 }
 
 const HISTORY_LOCK_RETRY_MS = 25;
