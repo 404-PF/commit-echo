@@ -233,6 +233,26 @@ test("getUnstagedDiff combines tracked and untracked changes without duplication
   }
 });
 
+test("getUnstagedDiff handles untracked filenames with pathspec magic", { skip: process.platform === "win32" }, () => {
+  const repoDir = initRepo();
+  const filename = ":(top)foo";
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    writeFileSync(join(repoDir, filename), "untracked content\n", "utf-8");
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.ok(result.diff.includes(filename));
+      assert.ok(result.diff.includes("+untracked content"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getUnstagedDiff includes an untracked embedded git repository", () => {
   const repoDir = initRepo();
 

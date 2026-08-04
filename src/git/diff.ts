@@ -11,7 +11,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, normalize, resolve } from 'node:path';
+import { delimiter, isAbsolute, join, normalize, resolve } from 'node:path';
 
 export interface DiffResult {
   diff: string;
@@ -69,11 +69,17 @@ function getUnixGitCandidates(): string[] {
   return ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/opt/local/bin/git', '/bin/git'];
 }
 
+function getPathGitCandidates(): string[] {
+  const pathValue = process.env.PATH ?? process.env.Path ?? '';
+  return pathValue.split(delimiter).map((directory) => resolve(process.cwd(), directory, GIT_EXECUTABLE_NAME));
+}
+
 function resolveGitExecutable(): string {
   const candidates = [
     ...getGitExecPathCandidates(process.env.GIT_EXEC_PATH),
     ...(process.platform === 'win32' ? getWindowsGitCandidates() : getUnixGitCandidates()),
-  ];
+    ...getPathGitCandidates(),
+  ].map((candidate) => resolve(candidate));
   const executable = candidates.find(isExecutableFile);
 
   if (!executable) {
@@ -179,11 +185,12 @@ function getUntrackedDiff(): string {
     const env = { ...process.env, GIT_INDEX_FILE: tempIndex };
     const addResult = spawnSync(
       getGitExecutable(),
-      ['add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'],
+      ['--literal-pathspecs', 'add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'],
       {
         encoding: 'utf-8',
         env,
         input: `${pathspecs.join('\0')}\0`,
+        maxBuffer: GIT_DIFF_MAX_BUFFER,
         stdio: 'pipe',
       },
     );
@@ -193,7 +200,7 @@ function getUntrackedDiff(): string {
       throw new Error(detail || `git add --intent-to-add exited with code ${addResult.status}`);
     }
 
-    return execFileSync(getGitExecutable(), ['diff'], {
+    return execFileSync(getGitExecutable(), ['--literal-pathspecs', 'diff', '--', ...pathspecs], {
       encoding: 'utf-8',
       env,
       maxBuffer: GIT_DIFF_MAX_BUFFER,
@@ -205,13 +212,11 @@ function getUntrackedDiff(): string {
 
 export function getUnstagedDiff(): DiffResult {
   const untrackedAwareDiff = getUntrackedDiff();
-  const diff = (
-    untrackedAwareDiff ||
-    execFileSync(getGitExecutable(), ['diff'], {
-      encoding: 'utf-8',
-      maxBuffer: GIT_DIFF_MAX_BUFFER,
-    })
-  ).trim();
+  const trackedDiff = execFileSync(getGitExecutable(), ['diff'], {
+    encoding: 'utf-8',
+    maxBuffer: GIT_DIFF_MAX_BUFFER,
+  });
+  const diff = [trackedDiff.trim(), untrackedAwareDiff.trim()].filter(Boolean).join('\n');
   return {
     diff,
     hasChanges: diff.length > 0,
