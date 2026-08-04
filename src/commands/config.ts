@@ -121,11 +121,15 @@ function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: s
     // set blank value wins over the stored endpoint at runtime. Reject it here to
     // match what the running config would actually use.
     if (rawEnvBaseUrl !== undefined && !envBaseUrl) {
-      throw new Error('Custom provider requires a configured baseUrl. Set baseUrl before selecting __custom__.');
+      throw new Error(
+        'Custom provider requires a configured baseUrl (run `config set baseUrl <url>` or set COMMIT_ECHO_BASE_URL).',
+      );
     }
     const effectiveBaseUrl = envBaseUrl || updatedConfig.baseUrl?.trim();
     if (!effectiveBaseUrl) {
-      throw new Error('Custom provider requires a configured baseUrl. Set baseUrl before selecting __custom__.');
+      throw new Error(
+        'Custom provider requires a configured baseUrl (run `config set baseUrl <url>` or set COMMIT_ECHO_BASE_URL).',
+      );
     }
     // On a provider switch the stored value may predate this PR, so validate the
     // effective URL explicitly; an edited baseUrl was already validated by
