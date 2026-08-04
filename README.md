@@ -86,7 +86,7 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 
 Run `commit-echo init` to configure your provider and model. Configuration is stored in `~/.config/commit-echo/config.json`.
 
-To add a custom provider, create a file in the `src/providers` directory (e.g., `src/providers/my-provider.ts`) and add it to the `BUILTIN_PROVIDERS` list. Then, wire it into the `createProvider()` function. You can also use the `__custom__` provider key and set the `CUSTOM_API_KEY` environment variable to point to your custom endpoint.
+To add a custom provider, create a file in the `src/providers` directory (e.g., `src/providers/my-provider.ts`) and add it to the `BUILTIN_PROVIDERS` list. Then, wire it into the `createProvider()` function. You can also use the `__custom__` provider key, configure the endpoint base URL with `commit-echo init` (or `COMMIT_ECHO_BASE_URL`), and set `CUSTOM_API_KEY` to the endpoint's API key.
 
 If you want `git commit` to prefill the first suggestion automatically, run `commit-echo init --install-hook` from inside a Git repository. This installs both a `prepare-commit-msg` hook (prefills the first suggestion) and a `post-commit` hook (logs the committed message for style learning). The hooks skip merge commits, cherry-picks, amend flows, and any commit where a message was already supplied.
 
