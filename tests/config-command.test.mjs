@@ -19,8 +19,14 @@ function configDirFor(homeDir) {
 
 /** Builds an environment that keeps config reads inside the test home directory. */
 function envFor(homeDir) {
+  // Drop COMMIT_ECHO_BASE_URL from the inherited environment so the
+  // missing-baseUrl rejection test can't be satisfied by a developer's shell
+  // override; the env-only test adds it explicitly.
+  const parentEnv = { ...process.env };
+  delete parentEnv.COMMIT_ECHO_BASE_URL;
+
   return {
-    ...process.env,
+    ...parentEnv,
     APPDATA: join(homeDir, 'AppData', 'Roaming'),
     FORCE_COLOR: '0',
     HOME: homeDir,
