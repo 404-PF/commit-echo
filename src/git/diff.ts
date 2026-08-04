@@ -79,8 +79,8 @@ function getPathGitCandidates(): string[] {
 function resolveGitExecutable(): string {
   const candidates = [
     ...getGitExecPathCandidates(process.env.GIT_EXEC_PATH),
-    ...(process.platform === 'win32' ? getWindowsGitCandidates() : getUnixGitCandidates()),
     ...getPathGitCandidates(),
+    ...(process.platform === 'win32' ? getWindowsGitCandidates() : getUnixGitCandidates()),
   ].map((candidate) => resolve(candidate));
   const executable = candidates.find(isExecutableFile);
 
