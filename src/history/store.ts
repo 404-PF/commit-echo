@@ -14,6 +14,40 @@ const HISTORY_LOCK_HEARTBEAT_MS = 15_000;
 const HISTORY_LOCK_TAKEOVER_SUFFIX = '.takeover';
 const HISTORY_READ_CHUNK_SIZE = 64 * 1024;
 
+/** Split a buffer into complete newline-delimited lines and an incomplete remainder. */
+function splitCompleteLines(combined: Buffer): { lines: Buffer[]; remainder: Buffer } {
+  const firstLineEnd = combined.indexOf(0x0a);
+  if (firstLineEnd === -1) return { lines: [], remainder: combined };
+
+  const lines: Buffer[] = [];
+  let lineStart = firstLineEnd + 1;
+  for (let index = lineStart; index < combined.length; index++) {
+    if (combined[index] === 0x0a) {
+      lines.push(combined.subarray(lineStart, index));
+      lineStart = index + 1;
+    }
+  }
+  lines.push(combined.subarray(lineStart));
+  return { lines, remainder: combined.subarray(0, firstLineEnd) };
+}
+
+/** Parse a single line buffer, pushing valid entries or recording corrupted line numbers. */
+function processHistoryLine(
+  lineBytes: Buffer,
+  lineIndexFromEnd: number,
+  entries: CommitEntry[],
+  corruptedLineIndexesFromEnd: number[],
+): void {
+  const line = lineBytes.toString('utf-8');
+  if (line.trim().length === 0) return;
+
+  try {
+    entries.push(JSON.parse(line) as CommitEntry);
+  } catch {
+    corruptedLineIndexesFromEnd.push(lineIndexFromEnd);
+  }
+}
+
 /** Read a complete history chunk, retrying when the filesystem returns a short read. */
 export async function readHistoryChunk(
   history: Pick<FileHandle, 'read'>,
@@ -231,27 +265,15 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
 
   const entries: CommitEntry[] = [];
   const corruptedLineNumbers: Array<number | undefined> = [];
-  const history = await open(historyPath, 'r');
+  const corruptedLineIndexesFromEnd: number[] = [];
+  let processedLineCount = 0;
+  let totalLineCount: number | undefined;
 
+  const history = await open(historyPath, 'r');
   try {
     const { size } = await history.stat();
     let position = size;
     let remainderChunks: Buffer[] = [];
-    let processedLineCount = 0;
-    let totalLineCount: number | undefined;
-    const corruptedLineIndexesFromEnd: number[] = [];
-
-    const parseLine = (lineBytes: Buffer) => {
-      const lineIndexFromEnd = processedLineCount++;
-      const line = lineBytes.toString('utf-8');
-      if (line.trim().length === 0) return;
-
-      try {
-        entries.push(JSON.parse(line) as CommitEntry);
-      } catch {
-        corruptedLineIndexesFromEnd.push(lineIndexFromEnd);
-      }
-    };
 
     while (position > 0 && entries.length < limit) {
       const chunkEnd = position;
@@ -260,23 +282,15 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
       const buffer = Buffer.allocUnsafe(bytesToRead);
       const bytesRead = await readHistoryChunk(history, buffer, position, bytesToRead);
       const chunk = buffer.subarray(0, bytesRead);
-      const firstLineEnd = chunk.indexOf(0x0a);
-      if (firstLineEnd === -1) {
+      const { lines: partialLines, remainder } = splitCompleteLines(chunk);
+      if (partialLines.length === 0) {
         remainderChunks.unshift(chunk);
         continue;
       }
 
       const combined = remainderChunks.length === 0 ? chunk : Buffer.concat([chunk, ...remainderChunks]);
-      remainderChunks = [combined.subarray(0, firstLineEnd)];
-      const lines: Buffer[] = [];
-      let lineStart = firstLineEnd + 1;
-      for (let index = lineStart; index < combined.length; index++) {
-        if (combined[index] === 0x0a) {
-          lines.push(combined.subarray(lineStart, index));
-          lineStart = index + 1;
-        }
-      }
-      lines.push(combined.subarray(lineStart));
+      const { lines, remainder: newRemainder } = splitCompleteLines(combined);
+      remainderChunks = [newRemainder];
       const processedBeforeChunk = processedLineCount;
 
       if (position === 0) {
@@ -284,13 +298,13 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
       }
 
       for (let index = lines.length - 1; index >= 0 && entries.length < limit; index--) {
-        parseLine(lines[index]!);
+        processHistoryLine(lines[index]!, processedLineCount++, entries, corruptedLineIndexesFromEnd);
       }
     }
 
     if (position === 0 && entries.length < limit) {
       const remainder = remainderChunks.length === 1 ? remainderChunks[0]! : Buffer.concat(remainderChunks);
-      parseLine(remainder);
+      processHistoryLine(remainder, processedLineCount++, entries, corruptedLineIndexesFromEnd);
     }
 
     for (const lineIndexFromEnd of corruptedLineIndexesFromEnd) {
