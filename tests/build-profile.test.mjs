@@ -7,7 +7,7 @@ const history = [
   { message: 'feat: feature' },
 ];
 
-test('buildProfile returns correct profile', () => {
-  const profile = buildProfile(history);
+test('buildProfile returns correct profile', async () => {
+  const profile = await buildProfile(history);
   assert.ok(profile);
 });
