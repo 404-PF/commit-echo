@@ -438,6 +438,64 @@ test('config set ignores an invalid environment baseUrl for non-custom operation
   });
 });
 
+test('config set rejects a malformed stored baseUrl when switching to the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: 'not-a-url', provider: 'openai' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'provider', '__custom__']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /baseUrl must be a valid URL/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects a whitespace-only stored baseUrl when switching to the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: '   ', provider: 'openai' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'provider', '__custom__']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects an explicitly blank environment baseUrl even when a baseUrl is stored', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: 'https://stored.example.test/v1', provider: 'openai' });
+
+    await assert.rejects(
+      () =>
+        execFileAsync(
+          process.execPath,
+          ['dist/index.js', '--no-color', 'config', 'set', 'provider', '__custom__'],
+          {
+            env: {
+              ...envFor(homeDir),
+              COMMIT_ECHO_BASE_URL: '   ',
+            },
+          },
+        ),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).provider, 'openai');
+        return true;
+      },
+    );
+  });
+});
+
 test('config set rejects invalid base URLs', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
