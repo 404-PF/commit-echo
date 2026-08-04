@@ -210,6 +210,29 @@ test("getUnstagedDiff includes untracked files", () => {
   }
 });
 
+test("getUnstagedDiff combines tracked and untracked changes without duplication", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "file.txt"), "hello\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+    git(["commit", "-m", "initial commit"], repoDir);
+    writeFileSync(join(repoDir, "file.txt"), "hello\nworld\n", "utf-8");
+    writeFileSync(join(repoDir, "new-file.txt"), "untracked content\n", "utf-8");
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+      const trackedHunks = result.diff.match(/^diff --git a\/file\.txt b\/file\.txt$/gm) ?? [];
+
+      assert.equal(trackedHunks.length, 1);
+      assert.equal((result.diff.match(/\+world/g) ?? []).length, 1);
+      assert.ok(result.diff.includes("+untracked content"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getUnstagedDiff includes an untracked embedded git repository", () => {
   const repoDir = initRepo();
 

@@ -11,7 +11,7 @@ import {
   unlinkSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, isAbsolute, join, normalize, resolve } from 'node:path';
+import { isAbsolute, join, normalize, resolve } from 'node:path';
 
 export interface DiffResult {
   diff: string;
@@ -38,49 +38,49 @@ function isExecutableFile(path: string): boolean {
   }
 }
 
+function getGitExecPathCandidates(gitExecPath: string | undefined): string[] {
+  if (!gitExecPath || !isAbsolute(gitExecPath)) {
+    return [];
+  }
+
+  return process.platform === 'win32'
+    ? [join(gitExecPath, '..', '..', GIT_EXECUTABLE_NAME)]
+    : [join(gitExecPath, '..', '..', 'bin', GIT_EXECUTABLE_NAME)];
+}
+
+function getWindowsGitCandidates(): string[] {
+  const programFiles = [
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+    String.raw`C:\Program Files`,
+  ].filter((value): value is string => Boolean(value));
+  const programFileCandidates = programFiles.flatMap((root) => [
+    join(root, 'Git', 'cmd', GIT_EXECUTABLE_NAME),
+    join(root, 'Git', 'mingw64', 'bin', GIT_EXECUTABLE_NAME),
+  ]);
+  const localAppData = process.env.LOCALAPPDATA;
+
+  return localAppData
+    ? [...programFileCandidates, join(localAppData, 'Programs', 'Git', 'cmd', GIT_EXECUTABLE_NAME)]
+    : programFileCandidates;
+}
+
+function getUnixGitCandidates(): string[] {
+  return ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/opt/local/bin/git', '/bin/git'];
+}
+
 function resolveGitExecutable(): string {
-  const candidates: string[] = [];
-  const gitExecPath = process.env.GIT_EXEC_PATH;
+  const candidates = [
+    ...getGitExecPathCandidates(process.env.GIT_EXEC_PATH),
+    ...(process.platform === 'win32' ? getWindowsGitCandidates() : getUnixGitCandidates()),
+  ];
+  const executable = candidates.find(isExecutableFile);
 
-  if (gitExecPath && isAbsolute(gitExecPath)) {
-    if (process.platform === 'win32') {
-      candidates.push(join(gitExecPath, '..', '..', GIT_EXECUTABLE_NAME));
-    } else {
-      candidates.push(join(gitExecPath, '..', '..', 'bin', GIT_EXECUTABLE_NAME));
-    }
+  if (!executable) {
+    throw new Error('git is not installed or not found in a supported location');
   }
 
-  if (process.platform === 'win32') {
-    const programFiles = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], 'C:\\Program Files'].filter(
-      (value): value is string => Boolean(value),
-    );
-    const localAppData = process.env.LOCALAPPDATA;
-
-    for (const root of programFiles) {
-      candidates.push(join(root, 'Git', 'cmd', GIT_EXECUTABLE_NAME));
-      candidates.push(join(root, 'Git', 'mingw64', 'bin', GIT_EXECUTABLE_NAME));
-    }
-    if (localAppData) {
-      candidates.push(join(localAppData, 'Programs', 'Git', 'cmd', GIT_EXECUTABLE_NAME));
-    }
-  } else {
-    candidates.push('/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/opt/local/bin/git', '/bin/git');
-  }
-
-  const pathValue = process.env.PATH ?? process.env.Path ?? '';
-  for (const directory of pathValue.split(delimiter)) {
-    if (isAbsolute(directory)) {
-      candidates.push(join(directory, GIT_EXECUTABLE_NAME));
-    }
-  }
-
-  for (const candidate of candidates) {
-    if (isExecutableFile(candidate)) {
-      return normalize(candidate);
-    }
-  }
-
-  throw new Error('git is not installed or not found on PATH');
+  return normalize(executable);
 }
 
 function getGitExecutable(): string {
@@ -95,7 +95,7 @@ export function checkGitRepo(): void {
   } catch (err) {
     const nodeErr = err as NodeJS.ErrnoException & { stderr?: string };
     if (nodeErr.code === 'ENOENT') {
-      throw new Error('git is not installed or not found on PATH');
+      throw new Error('git is not installed or not found in a supported location');
     }
     const stderr = nodeErr.stderr?.trim();
     throw new Error(stderr || 'Not a git repository');
@@ -204,11 +204,14 @@ function getUntrackedDiff(): string {
 }
 
 export function getUnstagedDiff(): DiffResult {
-  const trackedDiff = execFileSync(getGitExecutable(), ['diff'], {
-    encoding: 'utf-8',
-    maxBuffer: GIT_DIFF_MAX_BUFFER,
-  });
-  const diff = [trackedDiff, getUntrackedDiff()].filter(Boolean).join('\n').trim();
+  const untrackedAwareDiff = getUntrackedDiff();
+  const diff = (
+    untrackedAwareDiff ||
+    execFileSync(getGitExecutable(), ['diff'], {
+      encoding: 'utf-8',
+      maxBuffer: GIT_DIFF_MAX_BUFFER,
+    })
+  ).trim();
   return {
     diff,
     hasChanges: diff.length > 0,
