@@ -210,6 +210,32 @@ test("getUnstagedDiff includes untracked files", () => {
   }
 });
 
+test("getUnstagedDiff includes an untracked embedded git repository", () => {
+  const repoDir = initRepo();
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    const nestedRepoDir = join(repoDir, "nested");
+    mkdirSync(nestedRepoDir);
+    git(["init"], nestedRepoDir);
+    writeFileSync(join(nestedRepoDir, "nested-file.txt"), "nested content\n", "utf-8");
+    git(["config", "user.name", "Nested Test User"], nestedRepoDir);
+    git(["config", "user.email", "nested-test@example.com"], nestedRepoDir);
+    git(["add", "nested-file.txt"], nestedRepoDir);
+    git(["commit", "-m", "initial nested commit"], nestedRepoDir);
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.ok(result.diff.includes("nested"));
+      assert.ok(result.diff.includes("new file mode 160000"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getUnstagedDiff handles diffs larger than the default execSync buffer", () => {
   const repoDir = initRepo();
 
