@@ -532,6 +532,22 @@ test('config set baseUrl is not blocked by a malformed environment baseUrl', asy
   });
 });
 
+test('config set rejects clearing baseUrl on an existing custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: 'https://custom.example.test/v1', provider: '__custom__' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'baseUrl', '']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /Custom provider requires a configured baseUrl/);
+        assert.equal(readConfig(homeDir).baseUrl, 'https://custom.example.test/v1');
+        return true;
+      },
+    );
+  });
+});
+
 test('config set rejects invalid base URLs', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
