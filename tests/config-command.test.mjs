@@ -363,6 +363,28 @@ test('config set preserves baseUrl when switching to custom provider', async () 
   });
 });
 
+test('config set accepts an environment-provided baseUrl for the custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: 'openai' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'provider', '__custom__'],
+      {
+        env: {
+          ...envFor(homeDir),
+          COMMIT_ECHO_BASE_URL: 'https://env-custom.example.test/v1',
+        },
+      },
+    );
+
+    const config = readConfig(homeDir);
+
+    assert.equal(config.provider, '__custom__');
+    assert.equal(config.baseUrl, undefined);
+  });
+});
+
 test('config set rejects invalid base URLs', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);

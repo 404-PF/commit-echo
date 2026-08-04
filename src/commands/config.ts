@@ -106,7 +106,11 @@ function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: s
       ? applyProviderChange(config, parseConfigSetValue('provider', rawValue))
       : updateConfigField(config, key, parseConfigSetValue(key, rawValue));
 
-  if (updatedConfig.provider === CUSTOM_PROVIDER_KEY && !updatedConfig.baseUrl) {
+  // The effective endpoint includes the COMMIT_ECHO_BASE_URL override, which is
+  // applied by loadConfig() but not by loadRawConfig(). Validate against it so
+  // env-only custom endpoints aren't rejected, without persisting the override.
+  const effectiveBaseUrl = process.env['COMMIT_ECHO_BASE_URL']?.trim() ?? updatedConfig.baseUrl;
+  if (updatedConfig.provider === CUSTOM_PROVIDER_KEY && !effectiveBaseUrl) {
     throw new Error('Custom provider requires a configured baseUrl. Set baseUrl before selecting __custom__.');
   }
 
