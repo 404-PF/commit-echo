@@ -106,13 +106,14 @@ function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: s
       ? applyProviderChange(config, parseConfigSetValue('provider', rawValue))
       : updateConfigField(config, key, parseConfigSetValue(key, rawValue));
 
-  // Only the custom provider requires an endpoint, so scope the COMMIT_ECHO_BASE_URL
-  // override handling (applied by loadConfig() but not by loadRawConfig()) to that
-  // case; an unrelated config set must not be blocked by an invalid env URL. Trim
-  // the effective stored-or-environment endpoint and validate it with the same URL
-  // rules as baseUrl, so a malformed or whitespace-only value is rejected here
-  // rather than failing the custom provider at runtime.
-  if (updatedConfig.provider === CUSTOM_PROVIDER_KEY) {
+  // Only switching to the custom provider requires an endpoint, so scope the
+  // COMMIT_ECHO_BASE_URL override handling (applied by loadConfig() but not by
+  // loadRawConfig()) to the provider-switch path. An unrelated config set on an
+  // already-custom provider must not be blocked by a missing or invalid endpoint.
+  // Trim the effective stored-or-environment endpoint and validate it with the
+  // same URL rules as baseUrl, so a malformed or whitespace-only value is
+  // rejected here rather than failing the custom provider at runtime.
+  if (key === 'provider' && updatedConfig.provider === CUSTOM_PROVIDER_KEY) {
     const rawEnvBaseUrl = process.env['COMMIT_ECHO_BASE_URL'];
     const envBaseUrl = rawEnvBaseUrl?.trim();
     // loadConfig() applies the override with ?? before trimming, so an explicitly

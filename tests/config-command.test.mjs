@@ -496,6 +496,42 @@ test('config set rejects an explicitly blank environment baseUrl even when a bas
   });
 });
 
+test('config set allows unrelated updates on an env-backed custom provider', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: '__custom__', model: 'gpt-4o' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'model', 'gpt-4o-mini'],
+      { env: envFor(homeDir) },
+    );
+
+    const config = readConfig(homeDir);
+    assert.equal(config.model, 'gpt-4o-mini');
+    assert.equal(config.provider, '__custom__');
+  });
+});
+
+test('config set baseUrl is not blocked by a malformed environment baseUrl', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { baseUrl: undefined, provider: '__custom__' });
+
+    await execFileAsync(
+      process.execPath,
+      ['dist/index.js', '--no-color', 'config', 'set', 'baseUrl', 'https://fixed.example.test/v1'],
+      {
+        env: {
+          ...envFor(homeDir),
+          COMMIT_ECHO_BASE_URL: 'not-a-url',
+        },
+      },
+    );
+
+    const config = readConfig(homeDir);
+    assert.equal(config.baseUrl, 'https://fixed.example.test/v1');
+  });
+});
+
 test('config set rejects invalid base URLs', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
