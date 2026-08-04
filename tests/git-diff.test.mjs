@@ -190,6 +190,95 @@ test("getUnstagedDiff returns diff for unstaged changes", () => {
   }
 });
 
+test("getUnstagedDiff includes untracked files", () => {
+  const repoDir = initRepo();
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    writeFileSync(join(repoDir, "new-file.txt"), "untracked content\n", "utf-8");
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.equal(result.staged, false);
+      assert.ok(result.diff.includes("new-file.txt"));
+      assert.ok(result.diff.includes("+untracked content"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("getUnstagedDiff combines tracked and untracked changes without duplication", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "file.txt"), "hello\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+    git(["commit", "-m", "initial commit"], repoDir);
+    writeFileSync(join(repoDir, "file.txt"), "hello\nworld\n", "utf-8");
+    writeFileSync(join(repoDir, "new-file.txt"), "untracked content\n", "utf-8");
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+      const trackedHunks = result.diff.match(/^diff --git a\/file\.txt b\/file\.txt$/gm) ?? [];
+
+      assert.equal(trackedHunks.length, 1);
+      assert.equal((result.diff.match(/\+world/g) ?? []).length, 1);
+      assert.ok(result.diff.includes("+untracked content"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("getUnstagedDiff handles untracked filenames with pathspec magic", { skip: process.platform === "win32" }, () => {
+  const repoDir = initRepo();
+  const filename = ":(top)foo";
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    writeFileSync(join(repoDir, filename), "untracked content\n", "utf-8");
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.ok(result.diff.includes(filename));
+      assert.ok(result.diff.includes("+untracked content"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("getUnstagedDiff includes an untracked embedded git repository", () => {
+  const repoDir = initRepo();
+
+  try {
+    git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
+    const nestedRepoDir = join(repoDir, "nested");
+    mkdirSync(nestedRepoDir);
+    git(["init"], nestedRepoDir);
+    writeFileSync(join(nestedRepoDir, "nested-file.txt"), "nested content\n", "utf-8");
+    git(["config", "user.name", "Nested Test User"], nestedRepoDir);
+    git(["config", "user.email", "nested-test@example.com"], nestedRepoDir);
+    git(["add", "nested-file.txt"], nestedRepoDir);
+    git(["commit", "-m", "initial nested commit"], nestedRepoDir);
+
+    withCwd(repoDir, () => {
+      const result = getUnstagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.ok(result.diff.includes("nested"));
+      assert.ok(result.diff.includes("new file mode 160000"));
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getUnstagedDiff handles diffs larger than the default execSync buffer", () => {
   const repoDir = initRepo();
 
