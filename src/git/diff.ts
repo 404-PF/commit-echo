@@ -73,8 +73,7 @@ function getPathGitCandidates(): string[] {
   const pathValue = process.env.PATH ?? process.env.Path ?? '';
   return pathValue
     .split(delimiter)
-    .filter(Boolean)
-    .map((directory) => resolve(process.cwd(), directory, GIT_EXECUTABLE_NAME));
+    .map((directory) => resolve(process.cwd(), directory || '.', GIT_EXECUTABLE_NAME));
 }
 
 function resolveGitExecutable(): string {
