@@ -367,7 +367,7 @@ export async function buildProfile(historySize: number): Promise<StyleProfile> {
     const verbMatch = firstLine.match(
       /^(?:feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(?:\([^)]+\))?:\s*(\w+)/,
     );
-    const verb = verbMatch?.[1] ?? firstLine.match(/^\w+/)?.[0];
+    const verb = verbMatch?.[1] ?? /^\w+/.exec(firstLine)?.[0];
     if (verb) {
       imperativeSampleCount++;
       if (!isDescriptiveVerb(verb)) {
