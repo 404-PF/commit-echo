@@ -274,7 +274,7 @@ function processChunk(
   position: number,
   limit: number,
 ): void {
-  if (chunk.indexOf(0x0a) === -1) {
+  if (!chunk.includes(0x0a)) {
     state.remainderChunks.unshift(chunk);
     return;
   }
