@@ -84,6 +84,7 @@ const SUBCOMMANDS: readonly Subcommand[] = [
       { flag: '--recursive', short: '-r', description: 'Recursively search subdirectories for git repos' },
       { flag: '--yes', short: '-y', description: 'Automatically accept the first suggestion and commit without prompts' },
       { flag: '--auto', description: 'Alias for --yes' },
+      { flag: '--verbose', short: '-v', description: 'Print diagnostic information about the suggestion request' },
       { flag: '--help', description: 'Display help for batch' },
     ],
   },
