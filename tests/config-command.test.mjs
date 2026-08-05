@@ -109,6 +109,7 @@ test('config command displays the current configuration with a masked API key', 
     assert.match(output, /Endpoint:\s+https:\/\/api\.openai\.com\/v1/);
     assert.match(output, /History size:\s+12/);
     assert.match(output, /Max diff size:\s+4000/);
+    assert.match(output, /Prompt templates:\s+system default, user default/);
     assert.match(output, /API key:\s+sk-t••••/);
     assert.doesNotMatch(output, /sk-test-secret-value/);
   });
@@ -126,6 +127,33 @@ test('config command displays a custom endpoint from the config file', async () 
 
     assert.match(output, /Provider:\s+Custom \(OpenAI-compatible\)/);
     assert.match(output, /Endpoint:\s+https:\/\/api\.example\.test\/v1/);
+  });
+});
+
+test('config command reports custom prompt template status', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      systemPromptTemplate: 'Use system instructions.',
+      userPromptTemplate: 'Use user instructions for {{diff}}.',
+    });
+
+    const { stdout, stderr } = await runConfig(homeDir);
+    const output = stdout + stderr;
+
+    assert.match(output, /Prompt templates:\s+system custom, user custom/);
+  });
+});
+
+test('config command reports mixed prompt template status', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      userPromptTemplate: 'Use user instructions for {{diff}}.',
+    });
+
+    const { stdout, stderr } = await runConfig(homeDir);
+    const output = stdout + stderr;
+
+    assert.match(output, /Prompt templates:\s+system default, user custom/);
   });
 });
 
