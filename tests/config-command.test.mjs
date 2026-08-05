@@ -144,6 +144,19 @@ test('config command reports custom prompt template status', async () => {
   });
 });
 
+test('config command reports mixed prompt template status', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      userPromptTemplate: 'Use user instructions for {{diff}}.',
+    });
+
+    const { stdout, stderr } = await runConfig(homeDir);
+    const output = stdout + stderr;
+
+    assert.match(output, /Prompt templates:\s+system default, user custom/);
+  });
+});
+
 test('config command reports when no API key is stored in config', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir, { apiKey: undefined });
