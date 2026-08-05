@@ -110,7 +110,7 @@ Run `commit-echo init` to configure your provider and model. Configuration is st
 |---|---|
 | Linux | `~/.config/commit-echo` (or `$XDG_CONFIG_HOME/commit-echo` if set) |
 | macOS | `~/Library/Application Support/commit-echo` |
-| Windows | `%APPDATA%\commit-echo` |
+| Windows | `%APPDATA%\commit-echo` (falls back to `~/.config/commit-echo` if `APPDATA` is unset) |
 
 History and learned style data live alongside the config in the same directory (`history.jsonl`).
 
