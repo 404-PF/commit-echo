@@ -12,6 +12,8 @@ LLM-powered CLI that learns your Git commit style and auto-suggests personalized
 - **Multi-provider** — Works with OpenAI, Anthropic, Ollama, and OpenAI-compatible endpoints
 - **Interactive setup** — Guided wizard to configure your provider and model
 - **Git hook integration** — Optional `prepare-commit-msg` hook installation from `commit-echo init --install-hook`
+- **Batch mode** — Process many repositories from one command with `commit-echo batch`
+- **Shell completions** — Generate bash, zsh, or fish completion scripts with `commit-echo completion`
 - **Non-destructive** — Review and edit suggestions before committing
 
 ## Installation
@@ -55,6 +57,15 @@ commit-echo suggest --yes
 
 # View learned style profile
 commit-echo history
+
+# Process repositories in a directory tree
+commit-echo batch . --recursive
+
+# Generate a shell completion script
+commit-echo completion bash
+
+# Update a single config value
+commit-echo config set model gpt-4o
 ```
 
 Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged changes (run `git add`). If no staged changes are found when auto-committing is requested, the command will print an error and exit with a non-zero status.
@@ -75,6 +86,15 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 | `--no-commit` | — | Deprecated alias; `suggest` already skips committing unless `--commit` is passed |
 
 > **Note:** The `--stream` flag is supported for OpenAI-compatible and Anthropic providers. Cohere does not support streaming.
+
+### Command Reference
+
+| Command | Description |
+|---|---|
+| `commit-echo batch [directory]` | Process multiple git repositories in batch mode |
+| `commit-echo completion [shell]` | Generate a shell completion script for bash, zsh, or fish |
+| `commit-echo config` | View the current configuration |
+| `commit-echo config set <key> <value>` | Update one configuration value |
 
 ## Requirements
 
