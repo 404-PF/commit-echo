@@ -104,7 +104,15 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 
 ## Configuration
 
-Run `commit-echo init` to configure your provider and model. Configuration is stored in `~/.config/commit-echo/config.json`.
+Run `commit-echo init` to configure your provider and model. Configuration is stored in `config.json` inside an OS-specific config directory:
+
+| OS | Config directory |
+|---|---|
+| Linux | `~/.config/commit-echo` (or `$XDG_CONFIG_HOME/commit-echo` if set) |
+| macOS | `~/Library/Application Support/commit-echo` |
+| Windows | `%APPDATA%\commit-echo` (falls back to `~/.config/commit-echo` if `APPDATA` is unset) |
+
+History and learned style data live alongside the config in the same directory (`history.jsonl`).
 
 To add a custom provider, create a file in the `src/providers` directory (e.g., `src/providers/my-provider.ts`) and add it to the `BUILTIN_PROVIDERS` list. Then, wire it into the `createProvider()` function. You can also use the `__custom__` provider key for an OpenAI-compatible endpoint, configure the base URL with `commit-echo init` (or `COMMIT_ECHO_BASE_URL`), and set `CUSTOM_API_KEY` to the endpoint's API key.
 
@@ -145,7 +153,7 @@ commit-echo suggest
 
 `maxDiffSize` controls how many diff characters are sent to the LLM. When a staged diff is larger than the limit, `commit-echo` preserves file headers and trims overflow file bodies before generating suggestions. The status output reports this as truncation, so raise the value when important context is being omitted.
 
-For typical feature or fix commits, the default `4000` characters keeps prompts small. For large refactors, generated files, or commits that touch many files, set `maxDiffSize` to `10000` or higher in `~/.config/commit-echo/config.json`:
+For typical feature or fix commits, the default `4000` characters keeps prompts small. For large refactors, generated files, or commits that touch many files, set `maxDiffSize` to `10000` or higher in `config.json` (see the config directory for your OS above):
 
 ```json
 {
@@ -245,7 +253,7 @@ commit-echo init
 What it does:
 - lets you pick a provider
 - helps you choose a model
-- saves the config to `~/.config/commit-echo/config.json`
+- saves the config to `config.json` in the OS-specific config directory (see Configuration above)
 
 ### Generate suggestions without committing
 
