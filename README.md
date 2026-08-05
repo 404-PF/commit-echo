@@ -59,7 +59,7 @@ commit-echo suggest --yes
 commit-echo history
 
 # Process repositories in a directory tree
-commit-echo batch .
+commit-echo batch . --recursive
 
 # Generate a shell completion script
 commit-echo completion bash
