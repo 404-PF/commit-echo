@@ -40,6 +40,7 @@ ${pc.dim('Examples:')}
   ${pc.cyan('commit-echo --yes')}       Auto-select and commit first suggestion
   ${pc.cyan('commit-echo init')}      Run interactive setup wizard
   ${pc.cyan('commit-echo config')}    View current configuration
+  ${pc.cyan('commit-echo config set model gpt-4.1')} Set a config value
   ${pc.cyan('commit-echo config --json')} Output configuration as JSON
   ${pc.cyan('commit-echo suggest')}    Generate suggestions without committing
   ${pc.cyan('commit-echo suggest --yes')} Auto-select first suggestion (no commit)
