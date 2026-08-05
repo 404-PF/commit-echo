@@ -13,7 +13,7 @@ LLM-powered CLI that learns your Git commit style and auto-suggests personalized
 - **Interactive setup** — Guided wizard to configure your provider and model
 - **Git hook integration** — Optional `prepare-commit-msg` hook installation from `commit-echo init --install-hook`
 - **Batch mode** — Process many repositories from one command with `commit-echo batch`
-- **Shell completions** — Generate bash, zsh, or fish completion scripts with `commit-echo completion`
+- **Shell completions** — Generate bash, zsh, fish, or PowerShell completion scripts with `commit-echo completion`
 - **Non-destructive** — Review and edit suggestions before committing
 
 ## Installation
@@ -64,6 +64,9 @@ commit-echo batch . --recursive
 # Generate a shell completion script
 commit-echo completion bash
 
+# PowerShell: install for the current session
+commit-echo completion powershell | Out-String | Invoke-Expression
+
 # Update a single config value
 commit-echo config set model gpt-4o
 ```
@@ -92,7 +95,7 @@ Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged change
 | Command | Description |
 |---|---|
 | `commit-echo batch [directory]` | Process multiple git repositories in batch mode |
-| `commit-echo completion [shell]` | Generate a shell completion script for bash, zsh, or fish |
+| `commit-echo completion [shell]` | Generate a shell completion script for bash, zsh, fish, or PowerShell |
 | `commit-echo config` | View the current configuration |
 | `commit-echo config set <key> <value>` | Update one configuration value |
 

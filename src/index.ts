@@ -146,8 +146,8 @@ program
 
 program
   .command('completion')
-  .description('Generate shell completion scripts for bash, zsh, and fish')
-  .argument('[shell]', 'Target shell: bash, zsh, or fish')
+  .description('Generate shell completion scripts for bash, zsh, fish, and powershell')
+  .argument('[shell]', 'Target shell: bash, zsh, fish, or powershell')
   .action((shell?: string) => {
     completionCommand(shell);
   });
