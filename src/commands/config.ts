@@ -205,6 +205,9 @@ export async function configCommand(options: ConfigCommandOptions = {}): Promise
   console.log(`  Endpoint: ${pc.dim(resolveEndpoint(config))}`);
   console.log(`  History size: ${pc.bold(String(config.historySize))}`);
   console.log(`  Max diff size: ${pc.bold(String(config.maxDiffSize))}`);
+  console.log(
+    `  Prompt templates: system ${pc.dim(config.systemPromptTemplate ? 'custom' : 'default')}, user ${pc.dim(config.userPromptTemplate ? 'custom' : 'default')}`,
+  );
   console.log(`  API key: ${pc.dim(maskApiKey(config.apiKey))}`);
   console.log();
 
