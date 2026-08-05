@@ -408,6 +408,35 @@ test('completion powershell script is syntactically valid (if pwsh is available)
   }
 });
 
+test('completion powershell script uses a working install instruction', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // Dot-sourcing the output of a parenthesized command does not register the
+  // completer; the piped Invoke-Expression form is the documented one.
+  assert.doesNotMatch(stdout, /\. \(commit-echo completion powershell\)/);
+  assert.match(stdout, /commit-echo completion powershell \| Out-String \| Invoke-Expression/);
+});
+
+test('completion powershell script guards the batch positional argument', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // Once a directory positional is present, batch dir completion must stop.
+  assert.match(stdout, /\$hasPositional = \$false/);
+  assert.match(stdout, /\$subcmd -eq 'batch' -and -not \$hasPositional/);
+});
+
+test('completion powershell script completes directories under a typed path prefix', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // ./src and ../x must resolve via the typed prefix, not bare-name filtering.
+  assert.match(stdout, /LastIndexOfAny/);
+  assert.ok(stdout.includes("$backSep = $cur.LastIndexOf('\\')"));
+  assert.match(stdout, /Get-ChildItem -Path \$searchPath -Directory -Name/);
+});
+
+test('completion powershell script escapes wildcard characters in the current word', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // Literal *, ?, [, ] typed by the user must not act as -like metacharacters.
+  assert.match(stdout, /WildcardPattern\]::Escape\(\$cur\)/);
+});
+
 test('completion zsh script skips _arguments for subcommands with no options', async () => {
   const { stdout } = await runCompletion(['zsh']);
   // The `help` subcommand has no options, so it should not have a dangling
