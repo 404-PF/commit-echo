@@ -97,7 +97,7 @@ async function loadTemplateFile(templatePath: string): Promise<{ systemTemplate?
     throw new Error(`Failed to read template file "${templatePath}": ${msg}`);
   }
 
-  const content = raw.trim();
+  const content = raw.replace(/\r\n?/g, '\n').trim();
 
   // Look for --- separator. It can appear as:
   //   "system\n---\nuser"   (separator in the middle)
@@ -125,7 +125,17 @@ async function loadTemplateFile(templatePath: string): Promise<{ systemTemplate?
  *
  * Priority: templatePath (file-based) > systemPromptTemplate (inline) > built-in.
  */
-export async function resolveSystemPrompt(profile: StyleProfile, vars: TemplateVars, config?: Config): Promise<string> {
+export async function resolveSystemPrompt(
+  profile: StyleProfile,
+  vars: TemplateVars,
+  config?: Config,
+  loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
+): Promise<string> {
+  // If a loaded template is provided, prefer it.
+  if (loadedTemplate?.systemTemplate) {
+    return substituteTemplateVars(loadedTemplate.systemTemplate, vars);
+  }
+
   if (config?.templatePath) {
     const { systemTemplate } = await loadTemplateFile(config.templatePath);
     if (systemTemplate) {
@@ -144,7 +154,16 @@ export async function resolveSystemPrompt(profile: StyleProfile, vars: TemplateV
  *
  * Priority: templatePath (file-based) > userPromptTemplate (inline) > built-in.
  */
-export async function resolveUserPrompt(vars: TemplateVars, config?: Config): Promise<string> {
+export async function resolveUserPrompt(
+  vars: TemplateVars,
+  config?: Config,
+  loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
+): Promise<string> {
+  // If a loaded template is provided, prefer it.
+  if (loadedTemplate?.userTemplate) {
+    return substituteTemplateVars(loadedTemplate.userTemplate, vars);
+  }
+
   if (config?.templatePath) {
     const { userTemplate } = await loadTemplateFile(config.templatePath);
     if (userTemplate) {

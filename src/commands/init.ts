@@ -1,5 +1,5 @@
 import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import pc from 'picocolors';
 import {
   BUILTIN_PROVIDERS,
@@ -233,7 +233,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
 
   const useTemplateFile = await confirm({
     message: 'Load templates from a file instead? (Advanced)',
-    initialValue: false,
+    initialValue: Boolean(existingConfig?.templatePath),
   });
   if (isCancel(useTemplateFile)) {
     outro('Setup cancelled.');
@@ -256,6 +256,11 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       validate: (value) => {
         if (!value) return 'Path is required';
         if (!existsSync(value)) return 'File not found. Enter an existing file path.';
+        try {
+          if (!statSync(value).isFile()) return 'Path is not a regular file';
+        } catch {
+          return 'Invalid file path';
+        }
       },
     });
     if (isCancel(pathResult)) {

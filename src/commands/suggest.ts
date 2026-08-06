@@ -206,12 +206,22 @@ export async function suggestCommand(
       message: getLastCommitMessage(),
     };
 
+    let sysPrompt: string;
+    let usrPrompt: string;
+    try {
+      sysPrompt = await resolveSystemPrompt(profile, vars, config);
+      usrPrompt = await resolveUserPrompt(vars, config);
+    } catch (err) {
+      outro(pc.red(`Failed to load template: ${err instanceof Error ? err.message : String(err)}`));
+      return;
+    }
+
     console.log(
       formatDryRunOutput(
         truncatedDiff,
         vars.profile,
-        await resolveSystemPrompt(profile, vars, config),
-        await resolveUserPrompt(vars, config),
+        sysPrompt,
+        usrPrompt,
         truncation.wasTruncated ? truncation : undefined,
       ),
     );
