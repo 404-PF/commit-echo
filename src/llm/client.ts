@@ -62,18 +62,11 @@ export async function generateSuggestions(
 
   let systemPrompt: string;
   let userPrompt: string;
-  if (config?.templatePath) {
-    const loadedTemplate = await loadTemplateFile(config.templatePath);
-    [systemPrompt, userPrompt] = await Promise.all([
-      resolveSystemPrompt(profile, vars, config, loadedTemplate),
-      resolveUserPrompt(vars, config, loadedTemplate),
-    ]);
-  } else {
-    [systemPrompt, userPrompt] = await Promise.all([
-      resolveSystemPrompt(profile, vars, config),
-      resolveUserPrompt(vars, config),
-    ]);
-  }
+  const loadedTemplate = config.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
+  [systemPrompt, userPrompt] = await Promise.all([
+    resolveSystemPrompt(profile, vars, config, loadedTemplate),
+    resolveUserPrompt(vars, config, loadedTemplate),
+  ]);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 
@@ -144,18 +137,11 @@ export async function* generateSuggestionsStream(
 
   let systemPrompt: string;
   let userPrompt: string;
-  if (config?.templatePath) {
-    const loadedTemplate = await loadTemplateFile(config.templatePath);
-    [systemPrompt, userPrompt] = await Promise.all([
-      resolveSystemPrompt(profile, vars, config, loadedTemplate),
-      resolveUserPrompt(vars, config, loadedTemplate),
-    ]);
-  } else {
-    [systemPrompt, userPrompt] = await Promise.all([
-      resolveSystemPrompt(profile, vars, config),
-      resolveUserPrompt(vars, config),
-    ]);
-  }
+  const loadedTemplate = config.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
+  [systemPrompt, userPrompt] = await Promise.all([
+    resolveSystemPrompt(profile, vars, config, loadedTemplate),
+    resolveUserPrompt(vars, config, loadedTemplate),
+  ]);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 

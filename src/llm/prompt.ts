@@ -125,7 +125,7 @@ export async function loadTemplateFile(
 /**
  * Resolve the system prompt to use.
  *
- * Priority: templatePath (file-based) > systemPromptTemplate (inline) > built-in.
+ * Priority: loaded template > templatePath (file-based) > systemPromptTemplate (inline) > built-in.
  */
 export async function resolveSystemPrompt(
   profile: StyleProfile,
@@ -134,11 +134,11 @@ export async function resolveSystemPrompt(
   loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
 ): Promise<string> {
   // If a loaded template is provided, prefer it.
-  if (loadedTemplate?.systemTemplate) {
-    return substituteTemplateVars(loadedTemplate.systemTemplate, vars);
-  }
-
-  if (config?.templatePath) {
+  if (loadedTemplate !== undefined) {
+    if (loadedTemplate.systemTemplate) {
+      return substituteTemplateVars(loadedTemplate.systemTemplate, vars);
+    }
+  } else if (config?.templatePath) {
     const { systemTemplate } = await loadTemplateFile(config.templatePath);
     if (systemTemplate) {
       return substituteTemplateVars(systemTemplate, vars);
@@ -154,7 +154,7 @@ export async function resolveSystemPrompt(
 /**
  * Resolve the user prompt to use.
  *
- * Priority: templatePath (file-based) > userPromptTemplate (inline) > built-in.
+ * Priority: loaded template > templatePath (file-based) > userPromptTemplate (inline) > built-in.
  */
 export async function resolveUserPrompt(
   vars: TemplateVars,
@@ -162,11 +162,11 @@ export async function resolveUserPrompt(
   loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
 ): Promise<string> {
   // If a loaded template is provided, prefer it.
-  if (loadedTemplate?.userTemplate) {
-    return substituteTemplateVars(loadedTemplate.userTemplate, vars);
-  }
-
-  if (config?.templatePath) {
+  if (loadedTemplate !== undefined) {
+    if (loadedTemplate.userTemplate) {
+      return substituteTemplateVars(loadedTemplate.userTemplate, vars);
+    }
+  } else if (config?.templatePath) {
     const { userTemplate } = await loadTemplateFile(config.templatePath);
     if (userTemplate) {
       return substituteTemplateVars(userTemplate, vars);

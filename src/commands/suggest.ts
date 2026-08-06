@@ -215,18 +215,11 @@ export async function suggestCommand(
     let sysPrompt: string;
     let usrPrompt: string;
     try {
-      if (config?.templatePath) {
-        const loadedTemplate = await loadTemplateFile(config.templatePath);
-        [sysPrompt, usrPrompt] = await Promise.all([
-          resolveSystemPrompt(profile, vars, config, loadedTemplate),
-          resolveUserPrompt(vars, config, loadedTemplate),
-        ]);
-      } else {
-        [sysPrompt, usrPrompt] = await Promise.all([
-          resolveSystemPrompt(profile, vars, config),
-          resolveUserPrompt(vars, config),
-        ]);
-      }
+      const loadedTemplate = config.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
+      [sysPrompt, usrPrompt] = await Promise.all([
+        resolveSystemPrompt(profile, vars, config, loadedTemplate),
+        resolveUserPrompt(vars, config, loadedTemplate),
+      ]);
     } catch (err) {
       outro(pc.red(`Failed to load template: ${err instanceof Error ? err.message : String(err)}`));
       return;
