@@ -206,48 +206,6 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     return;
   }
 
-  const useCustomPrompts = await confirm({
-    message: 'Set custom prompt templates? (Advanced)',
-    initialValue: false,
-  });
-  if (isCancel(useCustomPrompts)) {
-    outro('Setup cancelled.');
-    return;
-  }
-
-  let systemPromptTemplate: string | undefined;
-  let userPromptTemplate: string | undefined;
-
-  if (useCustomPrompts) {
-    note(`\nAvailable variables:\n${getAvailableTemplateVars()}\n` + `Leave empty to use the built-in prompt.\n`);
-
-    const sysResult = await text({
-      message: 'Custom system prompt template (optional):',
-      placeholder: 'You are a commit assistant...',
-      initialValue: existingConfig?.systemPromptTemplate,
-    });
-    if (isCancel(sysResult)) {
-      outro('Setup cancelled.');
-      return;
-    }
-    if (sysResult) {
-      systemPromptTemplate = sysResult;
-    }
-
-    const userResult = await text({
-      message: 'Custom user prompt template (optional):',
-      placeholder: 'Generate commit messages for:\n{{diff}}',
-      initialValue: existingConfig?.userPromptTemplate,
-    });
-    if (isCancel(userResult)) {
-      outro('Setup cancelled.');
-      return;
-    }
-    if (userResult) {
-      userPromptTemplate = userResult;
-    }
-  }
-
   const useTemplateFile = await confirm({
     message: 'Load templates from a file instead? (Advanced)',
     initialValue: Boolean(existingConfig?.templatePath),
@@ -287,6 +245,50 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     // Store an absolute path so the config works regardless of the CWD when
     // commit-echo is run later.
     templatePath = resolve(pathResult);
+  }
+
+  let systemPromptTemplate: string | undefined;
+  let userPromptTemplate: string | undefined;
+
+  if (!useTemplateFile) {
+    const useCustomPrompts = await confirm({
+      message: 'Set custom prompt templates? (Advanced)',
+      initialValue: false,
+    });
+    if (isCancel(useCustomPrompts)) {
+      outro('Setup cancelled.');
+      return;
+    }
+
+    if (useCustomPrompts) {
+      note(`\nAvailable variables:\n${getAvailableTemplateVars()}\n` + `Leave empty to use the built-in prompt.\n`);
+
+      const sysResult = await text({
+        message: 'Custom system prompt template (optional):',
+        placeholder: 'You are a commit assistant...',
+        initialValue: existingConfig?.systemPromptTemplate,
+      });
+      if (isCancel(sysResult)) {
+        outro('Setup cancelled.');
+        return;
+      }
+      if (sysResult) {
+        systemPromptTemplate = sysResult;
+      }
+
+      const userResult = await text({
+        message: 'Custom user prompt template (optional):',
+        placeholder: 'Generate commit messages for:\n{{diff}}',
+        initialValue: existingConfig?.userPromptTemplate,
+      });
+      if (isCancel(userResult)) {
+        outro('Setup cancelled.');
+        return;
+      }
+      if (userResult) {
+        userPromptTemplate = userResult;
+      }
+    }
   }
 
   const config: Config = {
