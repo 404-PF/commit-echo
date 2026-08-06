@@ -106,10 +106,13 @@ export async function loadTemplateFile(
   //   "---\nuser"           (separator at the start, empty system prompt)
   //   "system\n---"         (separator at the end, empty user prompt)
   let separatorIndex = content.indexOf('\n---\n');
+  let separatorWidth = 5; // '\n---\n'
   if (separatorIndex === -1 && (content === '---' || content.startsWith('---\n'))) {
     separatorIndex = 0;
+    separatorWidth = 4; // '---\n'
   } else if (separatorIndex === -1 && content.endsWith('\n---')) {
     separatorIndex = content.length - 4;
+    separatorWidth = 4; // '\n---'
   }
 
   if (separatorIndex === -1) {
@@ -117,7 +120,7 @@ export async function loadTemplateFile(
   }
 
   const systemPart = content.slice(0, separatorIndex).trim();
-  const userPart = content.slice(separatorIndex + (separatorIndex === 0 ? 4 : 5)).trim(); // skip '---\n' or '\n---\n'
+  const userPart = content.slice(separatorIndex + separatorWidth).trim();
 
   return {
     systemTemplate: systemPart || undefined,
