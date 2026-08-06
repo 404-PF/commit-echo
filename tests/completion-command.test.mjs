@@ -389,14 +389,16 @@ test('completion powershell script suggests shell names for the completion subco
   assert.match(stdout, /if \(\$subcmd -eq 'completion'\)/);
 });
 
-test('completion powershell script is syntactically valid (if pwsh is available)', async () => {
-  // Skip on platforms without PowerShell 7+ (pwsh)
-  try {
-    await execFileAsync('pwsh', ['-NoProfile', '-Command', 'exit 0']);
-  } catch {
-    assert.ok(true, 'pwsh not available — skipping parse check');
-    return;
-  }
+let _pwshAvailable = false;
+try {
+  await execFileAsync('pwsh', ['-NoProfile', '-Command', 'exit 0']);
+  _pwshAvailable = true;
+} catch {
+  // pwsh not available — tests below will be skipped
+}
+
+test('completion powershell script is syntactically valid', async () => {
+  if (!_pwshAvailable) return;
 
   const { stdout } = await runCompletion(['powershell']);
   const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.ps1`;
@@ -404,6 +406,7 @@ test('completion powershell script is syntactically valid (if pwsh is available)
     await writeFile(scriptPath, stdout, 'utf8');
     const parseCommand = `$errors = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile('${scriptPath}', [ref]$null, [ref]$errors); if ($errors.Count -gt 0) { Write-Error ($errors | ForEach-Object { $_.Message }); exit 1 }`;
     await execFileAsync('pwsh', ['-NoProfile', '-Command', parseCommand]);
+    assert.ok(true, 'PowerShell parser found no syntax errors');
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
