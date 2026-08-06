@@ -29,6 +29,22 @@ export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   };
 }
 
+/**
+ * A template file takes precedence over inline templates at runtime, so drop
+ * inline values when a templatePath is set to keep the saved config consistent
+ * with the effective behavior.
+ */
+export function withTemplateFilePrecedence(
+  systemPromptTemplate: string | undefined,
+  userPromptTemplate: string | undefined,
+  templatePath: string | undefined,
+): { systemPromptTemplate?: string; userPromptTemplate?: string } {
+  if (templatePath) {
+    return { systemPromptTemplate: undefined, userPromptTemplate: undefined };
+  }
+  return { systemPromptTemplate, userPromptTemplate };
+}
+
 export async function initCommand(options: { installHook?: boolean } = {}): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo init')));
 
@@ -280,8 +296,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     apiKey: apiKey ?? undefined,
     historySize: Number(historyResult),
     maxDiffSize: Number(maxDiffResult),
-    systemPromptTemplate,
-    userPromptTemplate,
+    ...withTemplateFilePrecedence(systemPromptTemplate, userPromptTemplate, templatePath),
     templatePath,
   };
 

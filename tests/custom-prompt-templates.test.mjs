@@ -5,6 +5,8 @@ import {
   substituteTemplateVars,
   resolveSystemPrompt,
   resolveUserPrompt,
+  resolvePrompts,
+  loadTemplateFile,
   getAvailableTemplateVars,
 } from '../dist/llm/prompt.js';
 
@@ -394,4 +396,118 @@ test('inline userPromptTemplate is ignored when template file has no user prompt
     assert.ok(prompt.includes('test diff'));
     assert.ok(!prompt.includes('Inline:'));
   });
+});
+
+test('trailing --- separator does not leak into the system prompt', async () => {
+  await withTempFile('System prompt for {{branch}}\n---', async (filePath) => {
+    const prompt = await resolveSystemPrompt(EMPTY_PROFILE, {
+      diff: '',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+    });
+
+    assert.equal(prompt, 'System prompt for main');
+    assert.ok(!prompt.includes('---'));
+  });
+});
+
+test('trailing --- separator leaves user prompt to the built-in', async () => {
+  await withTempFile('System prompt for {{branch}}\n---', async (filePath) => {
+    const prompt = await resolveUserPrompt({
+      diff: 'test diff',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+    });
+
+    assert.ok(prompt.includes('Generate 3 commit message suggestions'));
+    assert.ok(prompt.includes('test diff'));
+  });
+});
+
+test('bare --- separator yields no system or user template', async () => {
+  await withTempFile('---', async (filePath) => {
+    const loaded = await loadTemplateFile(filePath);
+    assert.equal(loaded.systemTemplate, undefined);
+    assert.equal(loaded.userTemplate, undefined);
+  });
+});
+
+// --- resolvePrompts (shared-load) tests ---
+
+const PROMPT_CONFIG = (filePath) => ({
+  provider: '',
+  model: '',
+  historySize: 0,
+  maxDiffSize: 0,
+  templatePath: filePath,
+});
+
+test('resolvePrompts uses file system prompt and built-in user prompt', async () => {
+  await withTempFile('System prompt for {{branch}}', async (filePath) => {
+    const [systemPrompt, userPrompt] = await resolvePrompts(EMPTY_PROFILE, {
+      diff: 'test diff',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, PROMPT_CONFIG(filePath));
+
+    assert.equal(systemPrompt, 'System prompt for main');
+    assert.ok(userPrompt.includes('Generate 3 commit message suggestions'));
+    assert.ok(userPrompt.includes('test diff'));
+  });
+});
+
+test('resolvePrompts uses file user prompt and built-in system prompt', async () => {
+  await withTempFile('---\nUser prompt: {{diff}}', async (filePath) => {
+    const [systemPrompt, userPrompt] = await resolvePrompts(EMPTY_PROFILE, {
+      diff: 'my diff',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, PROMPT_CONFIG(filePath));
+
+    assert.ok(systemPrompt.includes('expert Git commit message assistant'));
+    assert.equal(userPrompt, 'User prompt: my diff');
+  });
+});
+
+test('resolvePrompts uses both file templates when both are present', async () => {
+  await withTempFile('System: {{branch}}\n---\nUser: {{diff}}', async (filePath) => {
+    const [systemPrompt, userPrompt] = await resolvePrompts(EMPTY_PROFILE, {
+      diff: 'my diff',
+      profile: '',
+      branch: 'feature-x',
+      message: '',
+    }, PROMPT_CONFIG(filePath));
+
+    assert.equal(systemPrompt, 'System: feature-x');
+    assert.equal(userPrompt, 'User: my diff');
+  });
+});
+
+test('resolvePrompts uses built-in prompts when no templatePath is set', async () => {
+  const [systemPrompt, userPrompt] = await resolvePrompts(EMPTY_PROFILE, {
+    diff: 'test diff',
+    profile: '',
+    branch: 'main',
+    message: '',
+  });
+
+  assert.ok(systemPrompt.includes('expert Git commit message assistant'));
+  assert.ok(userPrompt.includes('Generate 3 commit message suggestions'));
+  assert.ok(userPrompt.includes('test diff'));
 });

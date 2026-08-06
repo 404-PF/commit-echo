@@ -104,9 +104,12 @@ export async function loadTemplateFile(
   // Look for --- separator. It can appear as:
   //   "system\n---\nuser"   (separator in the middle)
   //   "---\nuser"           (separator at the start, empty system prompt)
+  //   "system\n---"         (separator at the end, empty user prompt)
   let separatorIndex = content.indexOf('\n---\n');
-  if (separatorIndex === -1 && content.startsWith('---\n')) {
+  if (separatorIndex === -1 && (content === '---' || content.startsWith('---\n'))) {
     separatorIndex = 0;
+  } else if (separatorIndex === -1 && content.endsWith('\n---')) {
+    separatorIndex = content.length - 4;
   }
 
   if (separatorIndex === -1) {
