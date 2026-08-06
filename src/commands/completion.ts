@@ -130,7 +130,7 @@ function zshEscape(s: string): string {
 
 /** Escapes single quotes for safe use inside PowerShell single-quoted strings. */
 function powershellEscape(s: string): string {
-  return s.replace(/'/g, "''");
+  return s.replaceAll(/'/g, "''");
 }
 
 /** Joins lines with ` \\` continuation, omitting the trailing backslash on the last line. */
@@ -142,7 +142,7 @@ function joinContinuationLines(lines: string[]): string {
       .map((l) => `${l} \\`)
       .join('\n') +
     '\n' +
-    lines[lines.length - 1]
+    lines.at(-1)!
   );
 }
 
@@ -356,7 +356,7 @@ function generateFishScript(): string {
       .map((l) => `${l} \\`)
       .join('\n') +
     '\n' +
-    subcommandListLines[subcommandListLines.length - 1];
+    subcommandListLines.at(-1)!;
 
   const optionCases = SUBCOMMANDS.map((s) => {
     const rawOptionLines = s.options.flatMap((o) => {

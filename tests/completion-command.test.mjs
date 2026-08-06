@@ -394,7 +394,8 @@ test('completion powershell script is syntactically valid (if pwsh is available)
   try {
     await execFileAsync('pwsh', ['-NoProfile', '-Command', 'exit 0']);
   } catch {
-    return; // pwsh not installed — skip silently
+    assert.ok(true, 'pwsh not available — skipping parse check');
+    return;
   }
 
   const { stdout } = await runCompletion(['powershell']);
