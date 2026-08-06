@@ -352,3 +352,46 @@ test('templatePath takes precedence over userPromptTemplate', async () => {
     assert.ok(!prompt.startsWith('Inline:'));
   });
 });
+
+test('inline systemPromptTemplate is ignored when template file has no system prompt', async () => {
+  await withTempFile('---\nUser prompt: {{diff}}', async (filePath) => {
+    const prompt = await resolveSystemPrompt(EMPTY_PROFILE, {
+      diff: '',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+      systemPromptTemplate: 'Inline: {{branch}}',
+    });
+
+    assert.ok(prompt.includes('expert Git commit message assistant'));
+    assert.ok(!prompt.includes('Inline:'));
+  });
+});
+
+test('inline userPromptTemplate is ignored when template file has no user prompt', async () => {
+  await withTempFile('System prompt only: {{branch}}', async (filePath) => {
+    const prompt = await resolveUserPrompt({
+      diff: 'test diff',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+      userPromptTemplate: 'Inline: {{diff}}',
+    });
+
+    assert.ok(prompt.includes('Generate 3 commit message suggestions'));
+    assert.ok(prompt.includes('test diff'));
+    assert.ok(!prompt.includes('Inline:'));
+  });
+});

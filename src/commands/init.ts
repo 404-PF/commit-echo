@@ -1,5 +1,6 @@
 import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
 import { existsSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import pc from 'picocolors';
 import {
   BUILTIN_PROVIDERS,
@@ -267,7 +268,9 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
       outro('Setup cancelled.');
       return;
     }
-    templatePath = pathResult;
+    // Store an absolute path so the config works regardless of the CWD when
+    // commit-echo is run later.
+    templatePath = resolve(pathResult);
   }
 
   const config: Config = {

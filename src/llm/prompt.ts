@@ -125,7 +125,10 @@ export async function loadTemplateFile(
 /**
  * Resolve the system prompt to use.
  *
- * Priority: loaded template > templatePath (file-based) > systemPromptTemplate (inline) > built-in.
+ * Priority: loaded template (file-based) > systemPromptTemplate (inline) > built-in.
+ * When a template file is configured (loadedTemplate provided or templatePath
+ * set), inline templates are ignored entirely: an empty file side falls
+ * straight through to the built-in prompt.
  */
 export async function resolveSystemPrompt(
   profile: StyleProfile,
@@ -133,17 +136,20 @@ export async function resolveSystemPrompt(
   config?: Config,
   loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
 ): Promise<string> {
-  // If a loaded template is provided, prefer it.
   if (loadedTemplate !== undefined) {
     if (loadedTemplate.systemTemplate) {
       return substituteTemplateVars(loadedTemplate.systemTemplate, vars);
     }
-  } else if (config?.templatePath) {
+    // File had only a user prompt (or was empty) — fall through to built-in
+    return buildSystemPrompt(profile);
+  }
+  if (config?.templatePath) {
     const { systemTemplate } = await loadTemplateFile(config.templatePath);
     if (systemTemplate) {
       return substituteTemplateVars(systemTemplate, vars);
     }
     // File had only a user prompt (or was empty) — fall through to built-in
+    return buildSystemPrompt(profile);
   }
   if (config?.systemPromptTemplate) {
     return substituteTemplateVars(config.systemPromptTemplate, vars);
@@ -154,23 +160,30 @@ export async function resolveSystemPrompt(
 /**
  * Resolve the user prompt to use.
  *
- * Priority: loaded template > templatePath (file-based) > userPromptTemplate (inline) > built-in.
+ * Priority: loaded template (file-based) > userPromptTemplate (inline) > built-in.
+ * When a template file is configured (loadedTemplate provided or templatePath
+ * set), inline templates are ignored entirely: an empty file side falls
+ * straight through to the built-in prompt.
  */
 export async function resolveUserPrompt(
   vars: TemplateVars,
   config?: Config,
   loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
 ): Promise<string> {
-  // If a loaded template is provided, prefer it.
   if (loadedTemplate !== undefined) {
     if (loadedTemplate.userTemplate) {
       return substituteTemplateVars(loadedTemplate.userTemplate, vars);
     }
-  } else if (config?.templatePath) {
+    // File had only a system prompt (or was empty) — fall through to built-in
+    return buildUserPrompt(vars.diff);
+  }
+  if (config?.templatePath) {
     const { userTemplate } = await loadTemplateFile(config.templatePath);
     if (userTemplate) {
       return substituteTemplateVars(userTemplate, vars);
     }
+    // File had only a system prompt (or was empty) — fall through to built-in
+    return buildUserPrompt(vars.diff);
   }
   if (config?.userPromptTemplate) {
     return substituteTemplateVars(config.userPromptTemplate, vars);
