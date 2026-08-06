@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 
@@ -397,13 +399,16 @@ try {
   // pwsh not available — tests below will be skipped
 }
 
-test('completion powershell script is syntactically valid', async () => {
-  if (!_pwshAvailable) return;
+test('completion powershell script is syntactically valid', async (t) => {
+  if (!_pwshAvailable) {
+    t.skip('pwsh not available — skipping parse check');
+    return;
+  }
 
   const { stdout } = await runCompletion(['powershell']);
   assert.ok(stdout.includes('Register-ArgumentCompleter'), 'script registers an argument completer');
 
-  const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.ps1`;
+  const scriptPath = join(tmpdir(), `commit-echo-completion-${process.pid}-${Date.now()}.ps1`);
   try {
     await writeFile(scriptPath, stdout, 'utf8');
     const parseCommand = `$errors = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile('${scriptPath}', [ref]$null, [ref]$errors); if ($errors.Count -gt 0) { Write-Error ($errors | ForEach-Object { $_.Message }); exit 1 }`;

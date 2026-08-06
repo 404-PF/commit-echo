@@ -130,7 +130,7 @@ function zshEscape(s: string): string {
 
 /** Escapes single quotes for safe use inside PowerShell single-quoted strings. */
 function powershellEscape(s: string): string {
-  return s.replaceAll(/'/g, "''");
+  return s.replaceAll("''", "''");
 }
 
 /** Joins lines with ` \\` continuation, omitting the trailing backslash on the last line. */
@@ -349,14 +349,9 @@ compdef _commit_echo commit-echo
 
 /** Generates a fish completion script using `complete -c` with helper functions for subcommands and options. */
 function generateFishScript(): string {
-  const subcommandListLines = SUBCOMMANDS.map((s) => `    "${s.name}\\t${s.description}"`);
-  const subcommandList =
-    subcommandListLines
-      .slice(0, -1)
-      .map((l) => `${l} \\`)
-      .join('\n') +
-    '\n' +
-    subcommandListLines.at(-1)!;
+  const subcommandList = joinContinuationLines(
+    SUBCOMMANDS.map((s) => `    "${s.name}\\t${s.description}"`),
+  );
 
   const optionCases = SUBCOMMANDS.map((s) => {
     const rawOptionLines = s.options.flatMap((o) => {
@@ -609,7 +604,7 @@ ${subcommandOptions}
             $results = @(Get-ChildItem -Path $searchPath -Directory -Name -ErrorAction SilentlyContinue |
                 ForEach-Object { $prefix + $_ })
         } else {
-            $results = @(Get-ChildItem -Directory -Name)
+            $results = @(Get-ChildItem -Directory -Name -ErrorAction SilentlyContinue)
         }
     }
 
