@@ -401,12 +401,13 @@ test('completion powershell script is syntactically valid', async () => {
   if (!_pwshAvailable) return;
 
   const { stdout } = await runCompletion(['powershell']);
+  assert.ok(stdout.includes('Register-ArgumentCompleter'), 'script registers an argument completer');
+
   const scriptPath = `./.test-completion-${process.pid}-${Date.now()}.ps1`;
   try {
     await writeFile(scriptPath, stdout, 'utf8');
     const parseCommand = `$errors = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile('${scriptPath}', [ref]$null, [ref]$errors); if ($errors.Count -gt 0) { Write-Error ($errors | ForEach-Object { $_.Message }); exit 1 }`;
     await execFileAsync('pwsh', ['-NoProfile', '-Command', parseCommand]);
-    assert.ok(true, 'PowerShell parser found no syntax errors');
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
