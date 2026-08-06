@@ -88,7 +88,9 @@ export function substituteTemplateVars(template: string, vars: TemplateVars): st
  * dividing the system prompt (above) from the user prompt (below). If there
  * is no separator the entire file content is treated as the system prompt.
  */
-async function loadTemplateFile(templatePath: string): Promise<{ systemTemplate?: string; userTemplate?: string }> {
+export async function loadTemplateFile(
+  templatePath: string,
+): Promise<{ systemTemplate?: string; userTemplate?: string }> {
   let raw: string;
   try {
     raw = await readFile(templatePath, 'utf-8');
