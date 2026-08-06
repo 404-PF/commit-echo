@@ -437,7 +437,7 @@ test('completion powershell script completes directories under a typed path pref
   const { stdout } = await runCompletion(['powershell']);
   // ./src and ../x must resolve via the typed prefix, not bare-name filtering.
   assert.match(stdout, /LastIndexOfAny/);
-  assert.ok(stdout.includes("$backSep = $cur.LastIndexOf('\\')"));
+  assert.ok(stdout.includes(String.raw`$backSep = $cur.LastIndexOf('\\')`));
   assert.match(stdout, /Get-ChildItem -Path \$searchPath -Directory -Name/);
 });
 
