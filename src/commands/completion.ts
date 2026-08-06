@@ -350,19 +350,19 @@ compdef _commit_echo commit-echo
 /** Generates a fish completion script using `complete -c` with helper functions for subcommands and options. */
 function generateFishScript(): string {
   const subcommandList = joinContinuationLines(
-    SUBCOMMANDS.map((s) => `    "${s.name}\\t${s.description}"`),
+    SUBCOMMANDS.map((s) => String.raw`    "${s.name}\t${s.description}"`),
   );
 
   const optionCases = SUBCOMMANDS.map((s) => {
     const rawOptionLines = s.options.flatMap((o) => {
-      const lines = [`        "${o.flag}\\t${o.description}"`];
-      if (o.short) lines.push(`        "${o.short}\\t${o.description}"`);
+      const lines = [String.raw`        "${o.flag}\t${o.description}"`];
+      if (o.short) lines.push(String.raw`        "${o.short}\t${o.description}"`);
       return lines;
     });
     // The completion subcommand offers shell names as positional completions.
     if (s.name === 'completion') {
       for (const sh of VALID_SHELLS) {
-        rawOptionLines.push(`        "${sh}\\t${sh} completion script"`);
+        rawOptionLines.push(String.raw`        "${sh}\t${sh} completion script"`);
       }
     }
     const joined = joinContinuationLines(rawOptionLines);
@@ -372,8 +372,8 @@ ${joined}`;
   }).join('\n');
 
   const globalFishOptsLines = GLOBAL_OPTIONS.flatMap((o) => {
-    const lines = [`        "${o.flag}\\t${o.description}"`];
-    if (o.short) lines.push(`        "${o.short}\\t${o.description}"`);
+    const lines = [String.raw`        "${o.flag}\t${o.description}"`];
+    if (o.short) lines.push(String.raw`        "${o.short}\t${o.description}"`);
     return lines;
   });
   const globalFishOpts = joinContinuationLines(globalFishOptsLines);
