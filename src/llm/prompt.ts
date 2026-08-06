@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import type { StyleProfile, ChatMessage, TruncationInfo, Config } from '../types.js';
 
 function buildStyleGuidance(profile: StyleProfile): string {
@@ -83,12 +84,55 @@ export function substituteTemplateVars(template: string, vars: TemplateVars): st
 }
 
 /**
+ * Load a template file from disk. The file may contain a `---` separator
+ * dividing the system prompt (above) from the user prompt (below). If there
+ * is no separator the entire file content is treated as the system prompt.
+ */
+async function loadTemplateFile(templatePath: string): Promise<{ systemTemplate?: string; userTemplate?: string }> {
+  let raw: string;
+  try {
+    raw = await readFile(templatePath, 'utf-8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to read template file "${templatePath}": ${msg}`);
+  }
+
+  const content = raw.trim();
+
+  // Look for --- separator. It can appear as:
+  //   "system\n---\nuser"   (separator in the middle)
+  //   "---\nuser"           (separator at the start, empty system prompt)
+  let separatorIndex = content.indexOf('\n---\n');
+  if (separatorIndex === -1 && content.startsWith('---\n')) {
+    separatorIndex = 0;
+  }
+
+  if (separatorIndex === -1) {
+    return { systemTemplate: content };
+  }
+
+  const systemPart = content.slice(0, separatorIndex).trim();
+  const userPart = content.slice(separatorIndex + (separatorIndex === 0 ? 4 : 5)).trim(); // skip '---\n' or '\n---\n'
+
+  return {
+    systemTemplate: systemPart || undefined,
+    userTemplate: userPart || undefined,
+  };
+}
+
+/**
  * Resolve the system prompt to use.
  *
- * If config provides a `systemPromptTemplate`, it is used with template
- * variables substituted. Otherwise the built-in prompt is returned.
+ * Priority: templatePath (file-based) > systemPromptTemplate (inline) > built-in.
  */
-export function resolveSystemPrompt(profile: StyleProfile, vars: TemplateVars, config?: Config): string {
+export async function resolveSystemPrompt(profile: StyleProfile, vars: TemplateVars, config?: Config): Promise<string> {
+  if (config?.templatePath) {
+    const { systemTemplate } = await loadTemplateFile(config.templatePath);
+    if (systemTemplate) {
+      return substituteTemplateVars(systemTemplate, vars);
+    }
+    // File had only a user prompt (or was empty) — fall through to built-in
+  }
   if (config?.systemPromptTemplate) {
     return substituteTemplateVars(config.systemPromptTemplate, vars);
   }
@@ -98,10 +142,15 @@ export function resolveSystemPrompt(profile: StyleProfile, vars: TemplateVars, c
 /**
  * Resolve the user prompt to use.
  *
- * If config provides a `userPromptTemplate`, it is used with template
- * variables substituted. Otherwise the built-in prompt is returned.
+ * Priority: templatePath (file-based) > userPromptTemplate (inline) > built-in.
  */
-export function resolveUserPrompt(vars: TemplateVars, config?: Config): string {
+export async function resolveUserPrompt(vars: TemplateVars, config?: Config): Promise<string> {
+  if (config?.templatePath) {
+    const { userTemplate } = await loadTemplateFile(config.templatePath);
+    if (userTemplate) {
+      return substituteTemplateVars(userTemplate, vars);
+    }
+  }
   if (config?.userPromptTemplate) {
     return substituteTemplateVars(config.userPromptTemplate, vars);
   }

@@ -112,8 +112,7 @@ function updateConfigFromRawValue(config: Config, key: ConfigSetKey, rawValue: s
   // missing or invalid endpoint. The COMMIT_ECHO_BASE_URL override (applied by
   // loadConfig() but not by loadRawConfig()) is folded in, and the effective
   // endpoint is trimmed and validated with the same URL rules as baseUrl.
-  const affectsEndpoint =
-    updatedConfig.provider === CUSTOM_PROVIDER_KEY && (key === 'provider' || key === 'baseUrl');
+  const affectsEndpoint = updatedConfig.provider === CUSTOM_PROVIDER_KEY && (key === 'provider' || key === 'baseUrl');
   if (affectsEndpoint) {
     const rawEnvBaseUrl = process.env['COMMIT_ECHO_BASE_URL'];
     const envBaseUrl = rawEnvBaseUrl?.trim();

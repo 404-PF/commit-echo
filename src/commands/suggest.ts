@@ -210,8 +210,8 @@ export async function suggestCommand(
       formatDryRunOutput(
         truncatedDiff,
         vars.profile,
-        resolveSystemPrompt(profile, vars, config),
-        resolveUserPrompt(vars, config),
+        await resolveSystemPrompt(profile, vars, config),
+        await resolveUserPrompt(vars, config),
         truncation.wasTruncated ? truncation : undefined,
       ),
     );
@@ -257,13 +257,7 @@ export async function suggestCommand(
       model = config.model;
       let accumulated = '';
       try {
-        for await (const event of generateSuggestionsStream(
-          config,
-          diffResult.diff,
-          profile,
-          apiKey,
-          streamProvider,
-        )) {
+        for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
           if (event.kind === 'meta') {
             generatedTruncation = event.truncation;
             continue;

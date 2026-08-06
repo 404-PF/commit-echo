@@ -344,6 +344,82 @@ test('env var zero for numeric option throws', async () => {
   });
 });
 
+// --- templatePath tests ---
+
+test('loadConfig reads templatePath from config file', async () => {
+  await withTempConfig(async () => {
+    const config = {
+      provider: 'openai',
+      model: 'gpt-4.1',
+      templatePath: '/path/to/template.md',
+    };
+
+    await saveConfig(config);
+    const loaded = await loadConfig();
+
+    assert.equal(loaded.templatePath, '/path/to/template.md');
+  });
+});
+
+test('loadConfig templatePath defaults to undefined', async () => {
+  await withTempConfig(async () => {
+    await writeConfig(getConfigPath(), {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    const loaded = await loadConfig();
+
+    assert.equal(loaded.templatePath, undefined);
+  });
+});
+
+test('COMMIT_ECHO_TEMPLATE_PATH env var overrides config file', async () => {
+  await withTempConfig(async () => {
+    await writeConfig(getConfigPath(), {
+      provider: 'openai',
+      model: 'gpt-4.1',
+      templatePath: '/from/config.md',
+    });
+
+    const loaded = await loadConfig();
+
+    assert.equal(loaded.templatePath, '/from/env.md');
+  }, {
+    COMMIT_ECHO_TEMPLATE_PATH: '/from/env.md',
+  });
+});
+
+test('COMMIT_ECHO_TEMPLATE_PATH env var trims whitespace', async () => {
+  await withTempConfig(async () => {
+    await writeConfig(getConfigPath(), {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    const loaded = await loadConfig();
+
+    assert.equal(loaded.templatePath, '/trimmed/path.md');
+  }, {
+    COMMIT_ECHO_TEMPLATE_PATH: '  /trimmed/path.md  ',
+  });
+});
+
+test('empty COMMIT_ECHO_TEMPLATE_PATH env var results in undefined', async () => {
+  await withTempConfig(async () => {
+    await writeConfig(getConfigPath(), {
+      provider: 'openai',
+      model: 'gpt-4.1',
+    });
+
+    const loaded = await loadConfig();
+
+    assert.equal(loaded.templatePath, undefined);
+  }, {
+    COMMIT_ECHO_TEMPLATE_PATH: '  ',
+  });
+});
+
 // --- saveConfig permission tests (Unix only) ---
 
 const isWindows = platform() === 'win32';

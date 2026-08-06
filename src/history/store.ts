@@ -329,12 +329,7 @@ interface HistoryScanState {
 }
 
 /** Process one backward-read chunk, returning updated scan state. */
-function processChunk(
-  chunk: Buffer,
-  state: HistoryScanState,
-  position: number,
-  limit: number,
-): void {
+function processChunk(chunk: Buffer, state: HistoryScanState, position: number, limit: number): void {
   if (!chunk.includes(0x0a)) {
     state.remainderChunks.unshift(chunk);
     if (position === 0) {
@@ -358,7 +353,8 @@ function processChunk(
 
 /** Process the remaining partial-line bytes after the main scan loop. */
 function processRemainder(state: HistoryScanState, limit: number): void {
-  const remainder = state.remainderChunks.length === 1 ? state.remainderChunks[0]! : Buffer.concat(state.remainderChunks);
+  const remainder =
+    state.remainderChunks.length === 1 ? state.remainderChunks[0]! : Buffer.concat(state.remainderChunks);
   processHistoryLine(remainder, state.processedLineCount++, state.entries, state.corruptedLineIndexesFromEnd);
 }
 
@@ -395,7 +391,9 @@ export async function loadEntries(limit = 200): Promise<CommitEntry[]> {
     }
 
     for (const lineIndexFromEnd of state.corruptedLineIndexesFromEnd) {
-      corruptedLineNumbers.push(state.totalLineCount === undefined ? undefined : state.totalLineCount - lineIndexFromEnd);
+      corruptedLineNumbers.push(
+        state.totalLineCount === undefined ? undefined : state.totalLineCount - lineIndexFromEnd,
+      );
     }
   } finally {
     await history.close();

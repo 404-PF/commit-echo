@@ -1,4 +1,5 @@
 import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
+import { existsSync } from 'node:fs';
 import pc from 'picocolors';
 import {
   BUILTIN_PROVIDERS,
@@ -230,6 +231,40 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     }
   }
 
+  const useTemplateFile = await confirm({
+    message: 'Load templates from a file instead? (Advanced)',
+    initialValue: false,
+  });
+  if (isCancel(useTemplateFile)) {
+    outro('Setup cancelled.');
+    return;
+  }
+
+  let templatePath: string | undefined;
+
+  if (useTemplateFile) {
+    note(
+      `\nAvailable variables:\n${getAvailableTemplateVars()}\n` +
+        `Use --- on its own line to separate system prompt (above) from user prompt (below).\n` +
+        `Without a separator, the entire file is used as the system prompt.\n`,
+    );
+
+    const pathResult = await text({
+      message: 'Path to prompt template file:',
+      placeholder: '/path/to/commit-template.md',
+      initialValue: existingConfig?.templatePath,
+      validate: (value) => {
+        if (!value) return 'Path is required';
+        if (!existsSync(value)) return 'File not found. Enter an existing file path.';
+      },
+    });
+    if (isCancel(pathResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
+    templatePath = pathResult;
+  }
+
   const config: Config = {
     provider: providerKey as string,
     model: selectedModel as string,
@@ -239,6 +274,7 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     maxDiffSize: Number(maxDiffResult),
     systemPromptTemplate,
     userPromptTemplate,
+    templatePath,
   };
 
   const persistSetup = async () => {
@@ -294,8 +330,9 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   const displayKey = config.apiKey ? 'stored in config' : `$${apiKeyEnv}`;
   const displayUrl = providerKey === CUSTOM_PROVIDER_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
 
-  const templateInfo =
-    config.systemPromptTemplate || config.userPromptTemplate
+  const templateInfo = config.templatePath
+    ? `\n  Template file: ${pc.dim(config.templatePath)}`
+    : config.systemPromptTemplate || config.userPromptTemplate
       ? `\n  Custom prompts: ${pc.dim(config.systemPromptTemplate ? 'system ✓' : '')}${config.systemPromptTemplate && config.userPromptTemplate ? ', ' : ''}${pc.dim(config.userPromptTemplate ? 'user ✓' : '')}`
       : '';
 

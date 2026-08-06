@@ -15,6 +15,7 @@ export const CONFIG_ENV_VARS = [
   'COMMIT_ECHO_API_KEY',
   'COMMIT_ECHO_HISTORY_SIZE',
   'COMMIT_ECHO_MAX_DIFF_SIZE',
+  'COMMIT_ECHO_TEMPLATE_PATH',
 ] as const;
 
 /**
@@ -186,6 +187,7 @@ export function loadConfig(): Promise<Config> {
       maxDiffSize,
       systemPromptTemplate: parsed.systemPromptTemplate,
       userPromptTemplate: parsed.userPromptTemplate,
+      templatePath: (process.env['COMMIT_ECHO_TEMPLATE_PATH'] ?? parsed.templatePath)?.trim() || undefined,
     };
   })();
 

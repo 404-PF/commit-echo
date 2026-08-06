@@ -60,8 +60,8 @@ export async function generateSuggestions(
     message,
   };
 
-  const systemPrompt = resolveSystemPrompt(profile, vars, config);
-  const userPrompt = resolveUserPrompt(vars, config);
+  const systemPrompt = await resolveSystemPrompt(profile, vars, config);
+  const userPrompt = await resolveUserPrompt(vars, config);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 
@@ -130,8 +130,8 @@ export async function* generateSuggestionsStream(
     message,
   };
 
-  const systemPrompt = resolveSystemPrompt(profile, vars, config);
-  const userPrompt = resolveUserPrompt(vars, config);
+  const systemPrompt = await resolveSystemPrompt(profile, vars, config);
+  const userPrompt = await resolveUserPrompt(vars, config);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 

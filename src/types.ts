@@ -7,6 +7,7 @@ export interface Config {
   maxDiffSize: number;
   systemPromptTemplate?: string;
   userPromptTemplate?: string;
+  templatePath?: string;
 }
 
 export interface TruncationInfo {
