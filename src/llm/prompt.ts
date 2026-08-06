@@ -101,31 +101,44 @@ export async function loadTemplateFile(
 
   const content = raw.replace(/\r\n?/g, '\n').trim();
 
-  // Look for --- separator. It can appear as:
-  //   "system\n---\nuser"   (separator in the middle)
-  //   "---\nuser"           (separator at the start, empty system prompt)
-  //   "system\n---"         (separator at the end, empty user prompt)
-  let separatorIndex = content.indexOf('\n---\n');
-  let separatorWidth = 5; // '\n---\n'
-  if (separatorIndex === -1 && (content === '---' || content.startsWith('---\n'))) {
-    separatorIndex = 0;
-    separatorWidth = 4; // '---\n'
-  } else if (separatorIndex === -1 && content.endsWith('\n---')) {
-    separatorIndex = content.length - 4;
-    separatorWidth = 4; // '\n---'
+  // A bare or leading "---" marks an empty system side. Consume it before
+  // searching for the real separator so a leading marker cannot leak into
+  // the system prompt.
+  if (content === '---') {
+    return { systemTemplate: undefined, userTemplate: undefined };
   }
 
-  if (separatorIndex === -1) {
-    return { systemTemplate: content };
+  let body = content;
+  let hadLeadingSeparator = false;
+  if (body.startsWith('---\n')) {
+    body = body.slice(4); // drop the leading "---\n"
+    hadLeadingSeparator = true;
   }
 
-  const systemPart = content.slice(0, separatorIndex).trim();
-  const userPart = content.slice(separatorIndex + separatorWidth).trim();
+  // Middle separator: "system\n---\nuser"
+  const separatorIndex = body.indexOf('\n---\n');
+  if (separatorIndex !== -1) {
+    return {
+      systemTemplate: body.slice(0, separatorIndex).trim() || undefined,
+      userTemplate: body.slice(separatorIndex + 5).trim() || undefined,
+    };
+  }
 
-  return {
-    systemTemplate: systemPart || undefined,
-    userTemplate: userPart || undefined,
-  };
+  // Trailing separator: "system\n---"
+  if (body.endsWith('\n---')) {
+    return {
+      systemTemplate: body.slice(0, body.length - 4).trim() || undefined,
+      userTemplate: undefined,
+    };
+  }
+
+  // A leading separator with no other separator: the rest is the user prompt.
+  if (hadLeadingSeparator) {
+    return { systemTemplate: undefined, userTemplate: body.trim() || undefined };
+  }
+
+  // No separator: the whole file is the system prompt.
+  return { systemTemplate: content };
 }
 
 /**

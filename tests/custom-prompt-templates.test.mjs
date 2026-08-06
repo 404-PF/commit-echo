@@ -446,6 +446,52 @@ test('bare --- separator yields no system or user template', async () => {
   });
 });
 
+test('leading --- followed by a later separator splits at the second separator', async () => {
+  await withTempFile('---\nSystem: {{branch}}\n---\nUser: {{diff}}', async (filePath) => {
+    const loaded = await loadTemplateFile(filePath);
+    assert.equal(loaded.systemTemplate, 'System: {{branch}}');
+    assert.equal(loaded.userTemplate, 'User: {{diff}}');
+
+    const systemPrompt = await resolveSystemPrompt(EMPTY_PROFILE, {
+      diff: '',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+    });
+    assert.equal(systemPrompt, 'System: main');
+    assert.ok(!systemPrompt.startsWith('---'));
+  });
+});
+
+test('leading --- without a later separator leaves only the user template', async () => {
+  await withTempFile('---\nUser prompt for {{diff}}', async (filePath) => {
+    const loaded = await loadTemplateFile(filePath);
+    assert.equal(loaded.systemTemplate, undefined);
+    assert.equal(loaded.userTemplate, 'User prompt for {{diff}}');
+
+    const userPrompt = await resolveUserPrompt({
+      diff: 'frontmatter diff',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+    });
+    assert.equal(userPrompt, 'User prompt for frontmatter diff');
+    assert.ok(!userPrompt.includes('---'));
+  });
+});
+
 // --- resolvePrompts (shared-load) tests ---
 
 const PROMPT_CONFIG = (filePath) => ({
