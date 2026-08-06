@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 
@@ -64,11 +66,11 @@ test('completion fish script includes all subcommands', async () => {
 
 test('completion prints error and exits for unsupported shell', async () => {
   try {
-    await runCompletion(['powershell']);
+    await runCompletion(['tcsh']);
     assert.fail('Expected process to exit with error');
   } catch (err) {
     assert.match(err.stderr || '', /Unsupported shell/);
-    assert.match(err.stderr || '', /powershell/);
+    assert.match(err.stderr || '', /tcsh/);
   }
 });
 
@@ -146,10 +148,15 @@ test('completion fish script includes suggest subcommand options', async () => {
   }
 });
 
+test('completion powershell is case-insensitive for shell name', async () => {
+  const { stdout } = await runCompletion(['POWERSHELL']);
+  assert.match(stdout, /Register-ArgumentCompleter -Native -CommandName commit-echo/);
+});
+
 test('completion --help shows command usage', async () => {
   const { stdout } = await runCompletion(['--help']);
   assert.match(stdout, /Usage: commit-echo completion/);
-  assert.match(stdout, /Target shell: bash, zsh, or fish/);
+  assert.match(stdout, /Target shell: bash, zsh, fish, or powershell/);
 });
 
 test('completion bash script includes short flag aliases', async () => {
@@ -184,17 +191,18 @@ test('completion fish script includes short flag aliases', async () => {
 });
 
 test('completion scripts suggest shell names for the completion subcommand', async () => {
-  // Bash: compgen -W "bash zsh fish" in the completion case
+  // Bash: compgen -W "bash zsh fish powershell" in the completion case
   const { stdout: bashScript } = await runCompletion(['bash']);
-  assert.match(bashScript, /completion\)[\s\S]*compgen -W.*bash.*zsh.*fish/);
-  // Zsh: '1:shell:(bash zsh fish)' positional arg
+  assert.match(bashScript, /completion\)[\s\S]*compgen -W.*bash.*zsh.*fish.*powershell/);
+  // Zsh: '1:shell:(bash zsh fish powershell)' positional arg
   const { stdout: zshScript } = await runCompletion(['zsh']);
-  assert.match(zshScript, /'1:shell:\(bash zsh fish\)'/);
+  assert.match(zshScript, /'1:shell:\(bash zsh fish powershell\)'/);
   // Fish: printf lines for each shell name in the completion case
   const { stdout: fishScript } = await runCompletion(['fish']);
   assert.match(fishScript, /case completion[\s\S]*"bash\\t/);
   assert.match(fishScript, /case completion[\s\S]*"zsh\\t/);
   assert.match(fishScript, /case completion[\s\S]*"fish\\t/);
+  assert.match(fishScript, /case completion[\s\S]*"powershell\\t/);
 });
 
 test('completion bash script handles --flag=value glued form', async () => {
@@ -238,7 +246,7 @@ test('completion fish script suggests global options when typing flags before su
 test('completion error path does not emit ANSI when --no-color is set', async () => {
   const ansiPattern = /\u001b\[[0-9;]*m/;
   try {
-    await runCompletion(['powershell']);
+    await runCompletion(['tcsh']);
     assert.fail('Expected process to exit with error');
   } catch (err) {
     const stderr = (err.stderr || '').toString();
@@ -253,7 +261,7 @@ test('NO_COLOR disables color even when set to an empty string (no-color.org spe
   const ansiPattern = /\u001b\[[0-9;]*m/;
 
   try {
-    await execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'completion', 'powershell'], {
+    await execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'completion', 'tcsh'], {
       env: { ...process.env, NO_COLOR: '' },
     });
     assert.fail('Expected process to exit with error');
@@ -317,6 +325,128 @@ test('completion fish script is syntactically valid fish (if fish is available)'
   }
 });
 
+test('completion powershell outputs a powershell completion script', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  assert.match(stdout, /Register-ArgumentCompleter -Native -CommandName commit-echo/);
+  assert.match(stdout, /param\(\$wordToComplete/);
+});
+
+test('completion powershell script includes all subcommands', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  const expectedSubcommands = ['init', 'config', 'suggest', 'history', 'batch', 'completion', 'help'];
+  for (const subcmd of expectedSubcommands) {
+    assert.ok(stdout.includes(`'${subcmd}'`), `Expected stdout to contain subcommand: ${subcmd}`);
+  }
+});
+
+test('completion powershell script includes global options', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  assert.match(stdout, /'--yes'/);
+  assert.match(stdout, /'--auto'/);
+  assert.match(stdout, /'--no-color'/);
+});
+
+test('completion powershell script includes suggest subcommand options', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  const expected = [
+    '--commit',
+    '--yes',
+    '--verbose',
+    '--show-diff',
+    '--model',
+    '--max-diff-size',
+    '--stream',
+    '--dry-run',
+    '--no-commit',
+    '--auto',
+    '--help',
+  ];
+  for (const opt of expected) {
+    assert.ok(stdout.includes(`'${opt}'`), `Expected powershell script to include option: ${opt}`);
+  }
+});
+
+test('completion powershell script includes short flag aliases', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // Short aliases for suggest: -y, -v, -d, -m, -n and batch: -r
+  assert.match(stdout, /'-y'/);
+  assert.match(stdout, /'-v'/);
+  assert.match(stdout, /'-d'/);
+  assert.match(stdout, /'-m'/);
+  assert.match(stdout, /'-n'/);
+  assert.match(stdout, /'-r'/);
+});
+
+test('completion powershell script guards value-taking flags', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // --model and -m consume a value; the completer must not fill the next slot.
+  assert.match(stdout, /'--model'/);
+  assert.match(stdout, /'-m'/);
+  assert.match(stdout, /\$valueFlags -contains/);
+});
+
+test('completion powershell script suggests shell names for the completion subcommand', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  assert.match(stdout, /\$shellNames = @\('bash', 'zsh', 'fish', 'powershell'\)/);
+  assert.match(stdout, /if \(\$subcmd -eq 'completion'\)/);
+});
+
+let _pwshAvailable = false;
+try {
+  await execFileAsync('pwsh', ['-NoProfile', '-Command', 'exit 0']);
+  _pwshAvailable = true;
+} catch {
+  // pwsh not available — tests below will be skipped
+}
+
+test('completion powershell script is syntactically valid', async (t) => {
+  if (!_pwshAvailable) {
+    t.skip('pwsh not available — skipping parse check');
+    return;
+  }
+
+  const { stdout } = await runCompletion(['powershell']);
+  assert.ok(stdout.includes('Register-ArgumentCompleter'), 'script registers an argument completer');
+
+  const scriptPath = join(tmpdir(), `commit-echo-completion-${process.pid}-${Date.now()}.ps1`);
+  try {
+    await writeFile(scriptPath, stdout, 'utf8');
+    const parseCommand = `$errors = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile('${scriptPath}', [ref]$null, [ref]$errors); if ($errors.Count -gt 0) { Write-Error ($errors | ForEach-Object { $_.Message }); exit 1 }`;
+    await execFileAsync('pwsh', ['-NoProfile', '-Command', parseCommand]);
+  } finally {
+    await unlink(scriptPath).catch(() => {});
+  }
+});
+
+test('completion powershell script uses a working install instruction', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // Dot-sourcing the output of a parenthesized command does not register the
+  // completer; the piped Invoke-Expression form is the documented one.
+  assert.doesNotMatch(stdout, /\. \(commit-echo completion powershell\)/);
+  assert.match(stdout, /commit-echo completion powershell \| Out-String \| Invoke-Expression/);
+});
+
+test('completion powershell script guards the batch positional argument', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // Once a directory positional is present, batch dir completion must stop.
+  assert.match(stdout, /\$hasPositional = \$false/);
+  assert.match(stdout, /\$subcmd -eq 'batch' -and -not \$hasPositional/);
+});
+
+test('completion powershell script completes directories under a typed path prefix', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // ./src and ../x must resolve via the typed prefix, not bare-name filtering.
+  assert.match(stdout, /LastIndexOfAny/);
+  assert.ok(stdout.includes(String.raw`$backSep = $cur.LastIndexOf('\\')`));
+  assert.match(stdout, /Get-ChildItem -Path \$searchPath -Directory -Name/);
+});
+
+test('completion powershell script escapes wildcard characters in the current word', async () => {
+  const { stdout } = await runCompletion(['powershell']);
+  // Literal *, ?, [, ] typed by the user must not act as -like metacharacters.
+  assert.match(stdout, /WildcardPattern\]::Escape\(\$cur\)/);
+});
+
 test('completion zsh script skips _arguments for subcommands with no options', async () => {
   const { stdout } = await runCompletion(['zsh']);
   // The `help` subcommand has no options, so it should not have a dangling
@@ -354,12 +484,14 @@ test('completion scripts contain all options from every subcommand help', async 
   const { stdout: bashScript } = await runCompletion(['bash']);
   const { stdout: zshScript } = await runCompletion(['zsh']);
   const { stdout: fishScript } = await runCompletion(['fish']);
+  const { stdout: powershellScript } = await runCompletion(['powershell']);
 
-  // Every flag shown in any --help output must appear in all three scripts.
+  // Every flag shown in any --help output must appear in all four scripts.
   // If this test fails, update SUBCOMMANDS in src/commands/completion.ts.
   for (const flag of allHelpFlags) {
     assert.ok(bashScript.includes(flag), `Bash completion missing ${flag}`);
     assert.ok(zshScript.includes(flag), `Zsh completion missing ${flag}`);
     assert.ok(fishScript.includes(flag), `Fish completion missing ${flag}`);
+    assert.ok(powershellScript.includes(flag), `PowerShell completion missing ${flag}`);
   }
 });
