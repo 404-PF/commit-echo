@@ -194,3 +194,88 @@ test('formatProfile renders dominant tone, capitalization, scope, body, and pref
   assert.match(output, /Body usage: 50%/);
   assert.match(output, /Common prefixes: fix: \(75%\), feat: \(25%\)/);
 });
+
+test('buildProfile computes scope-usage ratio', async () => {
+  const originalHome = process.env.HOME;
+  const originalAppData = process.env.APPDATA;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
+
+  try {
+    process.env.HOME = tempHome;
+    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
+    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+    writeHistory(tempHome, [
+      'feat(auth): add login',
+      'fix: resolve crash',
+      'docs(readme): update',
+      'style: format code'
+    ]);
+
+    const profile = await buildProfile(10);
+
+    assert.equal(profile.totalCommits, 4);
+    assert.equal(profile.usesScopeRate, 0.5);
+  } finally {
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
+    rmSync(tempHome, { recursive: true, force: true });
+  }
+});
+
+test('buildProfile computes body-usage ratio', async () => {
+  const originalHome = process.env.HOME;
+  const originalAppData = process.env.APPDATA;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
+
+  try {
+    process.env.HOME = tempHome;
+    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
+    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+    writeHistory(tempHome, [
+      'feat: no body',
+      'fix: with body\n\nThis is a body.',
+      'docs: no body',
+      'style: with body\n\nBody line 1\nBody line 2'
+    ]);
+
+    const profile = await buildProfile(10);
+
+    assert.equal(profile.totalCommits, 4);
+    assert.equal(profile.usesBodyRate, 0.5);
+  } finally {
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
+    rmSync(tempHome, { recursive: true, force: true });
+  }
+});
+
+test('buildProfile handles empty history', async () => {
+  const originalHome = process.env.HOME;
+  const originalAppData = process.env.APPDATA;
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
+
+  try {
+    process.env.HOME = tempHome;
+    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
+    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+    writeHistory(tempHome, []);
+
+    const profile = await buildProfile(10);
+
+    assert.equal(profile.totalCommits, 0);
+    assert.equal(profile.usesScopeRate, 0);
+    assert.equal(profile.usesBodyRate, 0);
+    assert.equal(profile.imperativeRate, 0);
+    assert.equal(profile.sentenceCaseRate, 0);
+  } finally {
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
+    rmSync(tempHome, { recursive: true, force: true });
+  }
+});
