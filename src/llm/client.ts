@@ -1,7 +1,7 @@
 import type { Config, Provider, Suggestion, StyleProfile, TruncationInfo } from '../types.js';
 import { CUSTOM_API_KEY_ENV, CUSTOM_PROVIDER_KEY, getProviderInfo } from '../providers/index.js';
 import { complete, completeStream } from '../providers/index.js';
-import { resolveSystemPrompt, resolveUserPrompt, loadTemplateFile, parseSuggestions, truncateDiff } from './prompt.js';
+import { resolvePrompts, parseSuggestions, truncateDiff } from './prompt.js';
 import { buildProfile, formatProfile } from '../history/store.js';
 import { getBranchName, getLastCommitMessage } from '../git/diff.js';
 
@@ -60,13 +60,7 @@ export async function generateSuggestions(
     message,
   };
 
-  let systemPrompt: string;
-  let userPrompt: string;
-  const loadedTemplate = config.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
-  [systemPrompt, userPrompt] = await Promise.all([
-    resolveSystemPrompt(profile, vars, config, loadedTemplate),
-    resolveUserPrompt(vars, config, loadedTemplate),
-  ]);
+  const [systemPrompt, userPrompt] = await resolvePrompts(profile, vars, config);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 
@@ -135,13 +129,7 @@ export async function* generateSuggestionsStream(
     message,
   };
 
-  let systemPrompt: string;
-  let userPrompt: string;
-  const loadedTemplate = config.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
-  [systemPrompt, userPrompt] = await Promise.all([
-    resolveSystemPrompt(profile, vars, config, loadedTemplate),
-    resolveUserPrompt(vars, config, loadedTemplate),
-  ]);
+  const [systemPrompt, userPrompt] = await resolvePrompts(profile, vars, config);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 

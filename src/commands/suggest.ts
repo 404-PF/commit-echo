@@ -19,13 +19,7 @@ import {
 
 import { assertApiKeyAvailable, generateSuggestions, generateSuggestionsStream } from '../llm/client.js';
 
-import {
-  parseSuggestions,
-  resolveSystemPrompt,
-  resolveUserPrompt,
-  loadTemplateFile,
-  truncateDiff,
-} from '../llm/prompt.js';
+import { parseSuggestions, resolvePrompts, truncateDiff } from '../llm/prompt.js';
 
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
 
@@ -212,14 +206,10 @@ export async function suggestCommand(
       message: getLastCommitMessage(),
     };
 
-    let sysPrompt: string;
-    let usrPrompt: string;
+    let sysPrompt = '';
+    let usrPrompt = '';
     try {
-      const loadedTemplate = config.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
-      [sysPrompt, usrPrompt] = await Promise.all([
-        resolveSystemPrompt(profile, vars, config, loadedTemplate),
-        resolveUserPrompt(vars, config, loadedTemplate),
-      ]);
+      [sysPrompt, usrPrompt] = await resolvePrompts(profile, vars, config);
     } catch (err) {
       outro(pc.red(`Failed to load template: ${err instanceof Error ? err.message : String(err)}`));
       return;

@@ -178,6 +178,18 @@ export async function resolveUserPrompt(
   return buildUserPrompt(vars.diff);
 }
 
+export async function resolvePrompts(
+  profile: StyleProfile,
+  vars: TemplateVars,
+  config?: Config,
+): Promise<[string, string]> {
+  const loadedTemplate = config?.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
+  return Promise.all([
+    resolveSystemPrompt(profile, vars, config, loadedTemplate),
+    resolveUserPrompt(vars, config, loadedTemplate),
+  ]);
+}
+
 /**
  * Return a description of available template variables for documentation.
  */
