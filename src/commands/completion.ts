@@ -130,7 +130,7 @@ function zshEscape(s: string): string {
 
 /** Escapes single quotes for safe use inside PowerShell single-quoted strings. */
 function powershellEscape(s: string): string {
-  return s.replaceAll("''", "''");
+  return s.replaceAll("'", "''");
 }
 
 /** Joins lines with ` \\` continuation, omitting the trailing backslash on the last line. */
