@@ -335,11 +335,15 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   const displayKey = config.apiKey ? 'stored in config' : `$${apiKeyEnv}`;
   const displayUrl = providerKey === CUSTOM_PROVIDER_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
 
-  const templateInfo = config.templatePath
-    ? `\n  Template file: ${pc.dim(config.templatePath)}`
-    : config.systemPromptTemplate || config.userPromptTemplate
-      ? `\n  Custom prompts: ${pc.dim(config.systemPromptTemplate ? 'system ✓' : '')}${config.systemPromptTemplate && config.userPromptTemplate ? ', ' : ''}${pc.dim(config.userPromptTemplate ? 'user ✓' : '')}`
-      : '';
+  let templateInfo = '';
+  if (config.templatePath) {
+    templateInfo = `\n  Template file: ${pc.dim(config.templatePath)}`;
+  } else if (config.systemPromptTemplate || config.userPromptTemplate) {
+    const parts: string[] = [];
+    if (config.systemPromptTemplate) parts.push(pc.dim('system ✓'));
+    if (config.userPromptTemplate) parts.push(pc.dim('user ✓'));
+    templateInfo = `\n  Custom prompts: ${parts.join(', ')}`;
+  }
 
   outro(
     `${pc.green('✓')} Configuration saved.\n` +
