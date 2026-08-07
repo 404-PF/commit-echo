@@ -84,16 +84,20 @@ export function substituteTemplateVars(template: string, vars: TemplateVars): st
 }
 
 /**
- * Strip stray leading/trailing `---` separator markers from a template part.
+ * Strip stray `---` separator markers from a template part.
  * Used to keep separator markers out of the LLM input when a template side is
  * empty or repeats the marker. Returns an empty string when only markers remain.
+ *
+ * By default also strips a leading `---` marker. Pass `preserveLeading` for the
+ * middle-separator branch, where a leading marker may be legitimate user
+ * content (e.g. a diff header) rather than a stray separator.
  */
-function stripSeparatorMarkers(part: string): string {
+function stripSeparatorMarkers(part: string, preserveLeading = false): string {
   let result = part.trim();
-  while (result === '---' || result.startsWith('---\n') || result.endsWith('\n---')) {
+  while (result === '---' || (!preserveLeading && result.startsWith('---\n')) || result.endsWith('\n---')) {
     if (result === '---') {
       result = '';
-    } else if (result.startsWith('---\n')) {
+    } else if (!preserveLeading && result.startsWith('---\n')) {
       result = result.slice(4).trim();
     } else {
       result = result.slice(0, -4).trim();
@@ -139,7 +143,9 @@ export async function loadTemplateFile(
   if (separatorIndex !== -1) {
     return {
       systemTemplate: body.slice(0, separatorIndex).trim() || undefined,
-      userTemplate: stripSeparatorMarkers(body.slice(separatorIndex + 5)) || undefined,
+      // A leading "---" after a real separator is legitimate user content;
+      // only strip bare or trailing markers here.
+      userTemplate: stripSeparatorMarkers(body.slice(separatorIndex + 5), true) || undefined,
     };
   }
 

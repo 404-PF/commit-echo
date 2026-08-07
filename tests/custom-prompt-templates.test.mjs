@@ -515,11 +515,11 @@ test('trailing --- after a middle separator does not leak into the user prompt',
   });
 });
 
-test('leading --- in the user side after a middle separator does not leak', async () => {
+test('leading --- in the user side after a middle separator is preserved as content', async () => {
   await withTempFile('System: {{branch}}\n---\n---\nUser: {{diff}}', async (filePath) => {
     const loaded = await loadTemplateFile(filePath);
     assert.equal(loaded.systemTemplate, 'System: {{branch}}');
-    assert.equal(loaded.userTemplate, 'User: {{diff}}');
+    assert.equal(loaded.userTemplate, '---\nUser: {{diff}}');
 
     const userPrompt = await resolveUserPrompt({
       diff: 'leading marker diff',
@@ -533,8 +533,7 @@ test('leading --- in the user side after a middle separator does not leak', asyn
       maxDiffSize: 0,
       templatePath: filePath,
     });
-    assert.equal(userPrompt, 'User: leading marker diff');
-    assert.ok(!userPrompt.includes('---'));
+    assert.equal(userPrompt, '---\nUser: leading marker diff');
   });
 });
 
