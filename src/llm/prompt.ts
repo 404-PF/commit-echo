@@ -118,9 +118,14 @@ export async function loadTemplateFile(
   // Middle separator: "system\n---\nuser"
   const separatorIndex = body.indexOf('\n---\n');
   if (separatorIndex !== -1) {
+    let userPart = body.slice(separatorIndex + 5).trim();
+    // A trailing "---" after the user slice is a stray marker, not content.
+    while (userPart.endsWith('\n---')) {
+      userPart = userPart.slice(0, userPart.length - 4).trim();
+    }
     return {
       systemTemplate: body.slice(0, separatorIndex).trim() || undefined,
-      userTemplate: body.slice(separatorIndex + 5).trim() || undefined,
+      userTemplate: userPart || undefined,
     };
   }
 

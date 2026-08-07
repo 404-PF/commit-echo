@@ -492,6 +492,29 @@ test('leading --- without a later separator leaves only the user template', asyn
   });
 });
 
+test('trailing --- after a middle separator does not leak into the user prompt', async () => {
+  await withTempFile('System: {{branch}}\n---\nUser: {{diff}}\n---', async (filePath) => {
+    const loaded = await loadTemplateFile(filePath);
+    assert.equal(loaded.systemTemplate, 'System: {{branch}}');
+    assert.equal(loaded.userTemplate, 'User: {{diff}}');
+
+    const userPrompt = await resolveUserPrompt({
+      diff: 'trailing marker diff',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+    });
+    assert.equal(userPrompt, 'User: trailing marker diff');
+    assert.ok(!userPrompt.includes('---'));
+  });
+});
+
 // --- resolvePrompts (shared-load) tests ---
 
 const PROMPT_CONFIG = (filePath) => ({
