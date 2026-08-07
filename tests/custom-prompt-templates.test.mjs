@@ -538,6 +538,29 @@ test('empty user side with trailing --- does not leak into the user prompt', asy
   });
 });
 
+test('leading --- with only separator markers does not leak into the user prompt', async () => {
+  await withTempFile('---\n---', async (filePath) => {
+    const loaded = await loadTemplateFile(filePath);
+    assert.equal(loaded.systemTemplate, undefined);
+    assert.equal(loaded.userTemplate, undefined);
+
+    const userPrompt = await resolveUserPrompt({
+      diff: 'markers only',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+    });
+    assert.ok(userPrompt.includes('Generate 3 commit message suggestions'));
+    assert.ok(!userPrompt.includes('---'));
+  });
+});
+
 // --- resolvePrompts (shared-load) tests ---
 
 const PROMPT_CONFIG = (filePath) => ({

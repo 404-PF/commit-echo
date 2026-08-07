@@ -139,7 +139,19 @@ export async function loadTemplateFile(
 
   // A leading separator with no other separator: the rest is the user prompt.
   if (hadLeadingSeparator) {
-    return { systemTemplate: undefined, userTemplate: body.trim() || undefined };
+    let userPart = body.trim();
+    // Strip stray leading/trailing separator markers so an empty user side
+    // falls back to the built-in prompt.
+    while (userPart === '---' || userPart.startsWith('---\n') || userPart.endsWith('\n---')) {
+      if (userPart === '---') {
+        userPart = '';
+      } else if (userPart.startsWith('---\n')) {
+        userPart = userPart.slice(4).trim();
+      } else {
+        userPart = userPart.slice(0, -4).trim();
+      }
+    }
+    return { systemTemplate: undefined, userTemplate: userPart || undefined };
   }
 
   // No separator: the whole file is the system prompt.
