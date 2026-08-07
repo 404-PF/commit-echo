@@ -120,8 +120,8 @@ export async function loadTemplateFile(
   if (separatorIndex !== -1) {
     let userPart = body.slice(separatorIndex + 5).trim();
     // A trailing "---" after the user slice is a stray marker, not content.
-    while (userPart.endsWith('\n---')) {
-      userPart = userPart.slice(0, userPart.length - 4).trim();
+    while (userPart === '---' || userPart.endsWith('\n---')) {
+      userPart = userPart === '---' ? '' : userPart.slice(0, userPart.length - 4).trim();
     }
     return {
       systemTemplate: body.slice(0, separatorIndex).trim() || undefined,
