@@ -89,7 +89,7 @@ function resolveGitExecutable(): string {
   return normalize(executable);
 }
 
-function getGitExecutable(): string {
+export function getGitExecutable(): string {
   gitExecutable ??= resolveGitExecutable();
   return gitExecutable;
 }

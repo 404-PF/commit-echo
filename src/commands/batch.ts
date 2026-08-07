@@ -1,12 +1,13 @@
 import { existsSync, readdirSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { execSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { intro, outro, confirm, select, text, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
 import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { buildProfile, appendEntry } from '../history/store.js';
+import { getGitExecutable } from '../git/diff.js';
 import { showVerboseInfo } from './suggest.js';
 import type { Config, Suggestion, TruncationInfo } from '../types.js';
 
@@ -66,7 +67,7 @@ export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean
   let unstaged = false;
 
   try {
-    execSync('git diff --cached --quiet', { cwd, stdio: 'pipe' });
+    execFileSync(getGitExecutable(), ['diff', '--cached', '--quiet'], { cwd, stdio: 'pipe' });
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status !== 1) {
@@ -78,7 +79,7 @@ export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean
   }
 
   try {
-    execSync('git diff --quiet', { cwd, stdio: 'pipe' });
+    execFileSync(getGitExecutable(), ['diff', '--quiet'], { cwd, stdio: 'pipe' });
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status !== 1) {
@@ -96,9 +97,9 @@ export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean
  * Get the git diff for a repository at `cwd`.
  */
 export function getGitDiff(cwd: string, staged: boolean): string {
-  const cmd = staged ? 'git diff --cached' : 'git diff';
+  const args = staged ? ['diff', '--cached'] : ['diff'];
   try {
-    return execSync(cmd, { cwd, encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }).trim();
+    return execFileSync(getGitExecutable(), args, { cwd, encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }).trim();
   } catch (err) {
     throw new Error(`Failed to get diff: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -113,7 +114,7 @@ export function gitCommit(cwd: string, message: string, body?: string): { hash: 
 
   try {
     writeFileSync(tmpFile, fullMessage, 'utf-8');
-    const result = spawnSync('git', ['commit', '-F', tmpFile], {
+    const result = spawnSync(getGitExecutable(), ['commit', '-F', tmpFile], {
       cwd,
       encoding: 'utf-8',
       shell: false,
