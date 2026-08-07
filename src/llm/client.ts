@@ -1,7 +1,7 @@
 import type { Config, Provider, Suggestion, StyleProfile, TruncationInfo } from '../types.js';
 import { CUSTOM_API_KEY_ENV, CUSTOM_PROVIDER_KEY, getProviderInfo } from '../providers/index.js';
 import { complete, completeStream } from '../providers/index.js';
-import { resolveSystemPrompt, resolveUserPrompt, parseSuggestions, truncateDiff } from './prompt.js';
+import { resolvePrompts, parseSuggestions, truncateDiff } from './prompt.js';
 import { buildProfile, formatProfile } from '../history/store.js';
 import { getBranchName, getLastCommitMessage } from '../git/diff.js';
 
@@ -60,8 +60,7 @@ export async function generateSuggestions(
     message,
   };
 
-  const systemPrompt = resolveSystemPrompt(profile, vars, config);
-  const userPrompt = resolveUserPrompt(vars, config);
+  const [systemPrompt, userPrompt] = await resolvePrompts(profile, vars, config);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 
@@ -130,8 +129,7 @@ export async function* generateSuggestionsStream(
     message,
   };
 
-  const systemPrompt = resolveSystemPrompt(profile, vars, config);
-  const userPrompt = resolveUserPrompt(vars, config);
+  const [systemPrompt, userPrompt] = await resolvePrompts(profile, vars, config);
 
   const apiKey = apiKeyParam ?? assertApiKeyAvailable(config);
 

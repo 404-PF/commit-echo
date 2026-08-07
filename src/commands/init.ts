@@ -1,4 +1,6 @@
 import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
+import { existsSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import pc from 'picocolors';
 import {
   BUILTIN_PROVIDERS,
@@ -25,6 +27,22 @@ export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
     message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
     placeholder: existingKey ? '•••••••• (already configured)' : '',
   };
+}
+
+/**
+ * A template file takes precedence over inline templates at runtime, so drop
+ * inline values when a templatePath is set to keep the saved config consistent
+ * with the effective behavior.
+ */
+export function withTemplateFilePrecedence(
+  systemPromptTemplate: string | undefined,
+  userPromptTemplate: string | undefined,
+  templatePath: string | undefined,
+): { systemPromptTemplate?: string; userPromptTemplate?: string } {
+  if (templatePath) {
+    return { systemPromptTemplate: undefined, userPromptTemplate: undefined };
+  }
+  return { systemPromptTemplate, userPromptTemplate };
 }
 
 export async function initCommand(options: { installHook?: boolean } = {}): Promise<void> {
@@ -188,45 +206,88 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     return;
   }
 
-  const useCustomPrompts = await confirm({
-    message: 'Set custom prompt templates? (Advanced)',
-    initialValue: false,
+  const useTemplateFile = await confirm({
+    message: 'Load templates from a file instead? (Advanced)',
+    initialValue: Boolean(existingConfig?.templatePath),
   });
-  if (isCancel(useCustomPrompts)) {
+  if (isCancel(useTemplateFile)) {
     outro('Setup cancelled.');
     return;
+  }
+
+  let templatePath: string | undefined;
+
+  if (useTemplateFile) {
+    note(
+      `\nAvailable variables:\n${getAvailableTemplateVars()}\n` +
+        `Use --- on its own line to separate system prompt (above) from user prompt (below).\n` +
+        `Without a separator, the entire file is used as the system prompt.\n`,
+    );
+
+    const pathResult = await text({
+      message: 'Path to prompt template file:',
+      placeholder: '/path/to/commit-template.md',
+      initialValue: existingConfig?.templatePath,
+      validate: (value) => {
+        if (!value) return 'Path is required';
+        if (!existsSync(value)) return 'File not found. Enter an existing file path.';
+        try {
+          if (!statSync(value).isFile()) return 'Path is not a regular file';
+        } catch {
+          return 'Invalid file path';
+        }
+      },
+    });
+    if (isCancel(pathResult)) {
+      outro('Setup cancelled.');
+      return;
+    }
+    // Store an absolute path so the config works regardless of the CWD when
+    // commit-echo is run later.
+    templatePath = resolve(pathResult);
   }
 
   let systemPromptTemplate: string | undefined;
   let userPromptTemplate: string | undefined;
 
-  if (useCustomPrompts) {
-    note(`\nAvailable variables:\n${getAvailableTemplateVars()}\n` + `Leave empty to use the built-in prompt.\n`);
-
-    const sysResult = await text({
-      message: 'Custom system prompt template (optional):',
-      placeholder: 'You are a commit assistant...',
-      initialValue: existingConfig?.systemPromptTemplate,
+  if (!useTemplateFile) {
+    const useCustomPrompts = await confirm({
+      message: 'Set custom prompt templates? (Advanced)',
+      initialValue: false,
     });
-    if (isCancel(sysResult)) {
+    if (isCancel(useCustomPrompts)) {
       outro('Setup cancelled.');
       return;
     }
-    if (sysResult) {
-      systemPromptTemplate = sysResult;
-    }
 
-    const userResult = await text({
-      message: 'Custom user prompt template (optional):',
-      placeholder: 'Generate commit messages for:\n{{diff}}',
-      initialValue: existingConfig?.userPromptTemplate,
-    });
-    if (isCancel(userResult)) {
-      outro('Setup cancelled.');
-      return;
-    }
-    if (userResult) {
-      userPromptTemplate = userResult;
+    if (useCustomPrompts) {
+      note(`\nAvailable variables:\n${getAvailableTemplateVars()}\n` + `Leave empty to use the built-in prompt.\n`);
+
+      const sysResult = await text({
+        message: 'Custom system prompt template (optional):',
+        placeholder: 'You are a commit assistant...',
+        initialValue: existingConfig?.systemPromptTemplate,
+      });
+      if (isCancel(sysResult)) {
+        outro('Setup cancelled.');
+        return;
+      }
+      if (sysResult) {
+        systemPromptTemplate = sysResult;
+      }
+
+      const userResult = await text({
+        message: 'Custom user prompt template (optional):',
+        placeholder: 'Generate commit messages for:\n{{diff}}',
+        initialValue: existingConfig?.userPromptTemplate,
+      });
+      if (isCancel(userResult)) {
+        outro('Setup cancelled.');
+        return;
+      }
+      if (userResult) {
+        userPromptTemplate = userResult;
+      }
     }
   }
 
@@ -237,8 +298,8 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
     apiKey: apiKey ?? undefined,
     historySize: Number(historyResult),
     maxDiffSize: Number(maxDiffResult),
-    systemPromptTemplate,
-    userPromptTemplate,
+    ...withTemplateFilePrecedence(systemPromptTemplate, userPromptTemplate, templatePath),
+    templatePath,
   };
 
   const persistSetup = async () => {
@@ -294,10 +355,15 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   const displayKey = config.apiKey ? 'stored in config' : `$${apiKeyEnv}`;
   const displayUrl = providerKey === CUSTOM_PROVIDER_KEY ? baseUrl : getProviderInfo(providerKey as string)?.baseUrl;
 
-  const templateInfo =
-    config.systemPromptTemplate || config.userPromptTemplate
-      ? `\n  Custom prompts: ${pc.dim(config.systemPromptTemplate ? 'system ✓' : '')}${config.systemPromptTemplate && config.userPromptTemplate ? ', ' : ''}${pc.dim(config.userPromptTemplate ? 'user ✓' : '')}`
-      : '';
+  let templateInfo = '';
+  if (config.templatePath) {
+    templateInfo = `\n  Template file: ${pc.dim(config.templatePath)}`;
+  } else if (config.systemPromptTemplate || config.userPromptTemplate) {
+    const parts: string[] = [];
+    if (config.systemPromptTemplate) parts.push(pc.dim('system ✓'));
+    if (config.userPromptTemplate) parts.push(pc.dim('user ✓'));
+    templateInfo = `\n  Custom prompts: ${parts.join(', ')}`;
+  }
 
   outro(
     `${pc.green('✓')} Configuration saved.\n` +

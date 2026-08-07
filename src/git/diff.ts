@@ -71,9 +71,7 @@ function getUnixGitCandidates(): string[] {
 
 function getPathGitCandidates(): string[] {
   const pathValue = process.env.PATH ?? process.env.Path ?? '';
-  return pathValue
-    .split(delimiter)
-    .map((directory) => resolve(process.cwd(), directory || '.', GIT_EXECUTABLE_NAME));
+  return pathValue.split(delimiter).map((directory) => resolve(process.cwd(), directory || '.', GIT_EXECUTABLE_NAME));
 }
 
 function resolveGitExecutable(): string {

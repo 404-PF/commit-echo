@@ -349,9 +349,7 @@ compdef _commit_echo commit-echo
 
 /** Generates a fish completion script using `complete -c` with helper functions for subcommands and options. */
 function generateFishScript(): string {
-  const subcommandList = joinContinuationLines(
-    SUBCOMMANDS.map((s) => String.raw`    "${s.name}\t${s.description}"`),
-  );
+  const subcommandList = joinContinuationLines(SUBCOMMANDS.map((s) => String.raw`    "${s.name}\t${s.description}"`));
 
   const optionCases = SUBCOMMANDS.map((s) => {
     const rawOptionLines = s.options.flatMap((o) => {

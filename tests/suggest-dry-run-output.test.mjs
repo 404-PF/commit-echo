@@ -36,7 +36,7 @@ test('formats dry-run output with the LLM inputs and truncation info', () => {
   assert.match(output, /sent in full/);
 });
 
-test('dry-run prompt construction matches template substitution path', () => {
+test('dry-run prompt construction matches template substitution path', async () => {
   const vars = {
     diff: 'trimmed diff',
     profile: 'profile summary',
@@ -54,8 +54,8 @@ test('dry-run prompt construction matches template substitution path', () => {
   const output = formatDryRunOutput(
     vars.diff,
     vars.profile,
-    resolveSystemPrompt(EMPTY_PROFILE, vars, config),
-    resolveUserPrompt(vars, config),
+    await resolveSystemPrompt(EMPTY_PROFILE, vars, config),
+    await resolveUserPrompt(vars, config),
   );
 
   assert.match(output, /system feature\/dry-run :: profile summary/);

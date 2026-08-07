@@ -19,7 +19,7 @@ import {
 
 import { assertApiKeyAvailable, generateSuggestions, generateSuggestionsStream } from '../llm/client.js';
 
-import { parseSuggestions, resolveSystemPrompt, resolveUserPrompt, truncateDiff } from '../llm/prompt.js';
+import { parseSuggestions, resolvePrompts, truncateDiff } from '../llm/prompt.js';
 
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
 
@@ -206,12 +206,21 @@ export async function suggestCommand(
       message: getLastCommitMessage(),
     };
 
+    let sysPrompt = '';
+    let usrPrompt = '';
+    try {
+      [sysPrompt, usrPrompt] = await resolvePrompts(profile, vars, config);
+    } catch (err) {
+      outro(pc.red(`Failed to load template: ${err instanceof Error ? err.message : String(err)}`));
+      return;
+    }
+
     console.log(
       formatDryRunOutput(
         truncatedDiff,
         vars.profile,
-        resolveSystemPrompt(profile, vars, config),
-        resolveUserPrompt(vars, config),
+        sysPrompt,
+        usrPrompt,
         truncation.wasTruncated ? truncation : undefined,
       ),
     );
@@ -257,13 +266,7 @@ export async function suggestCommand(
       model = config.model;
       let accumulated = '';
       try {
-        for await (const event of generateSuggestionsStream(
-          config,
-          diffResult.diff,
-          profile,
-          apiKey,
-          streamProvider,
-        )) {
+        for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
           if (event.kind === 'meta') {
             generatedTruncation = event.truncation;
             continue;

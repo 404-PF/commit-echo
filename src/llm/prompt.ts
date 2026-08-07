@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import type { StyleProfile, ChatMessage, TruncationInfo, Config } from '../types.js';
 
 function buildStyleGuidance(profile: StyleProfile): string {
@@ -83,12 +84,117 @@ export function substituteTemplateVars(template: string, vars: TemplateVars): st
 }
 
 /**
+ * Strip stray `---` separator markers from a template part.
+ * Used to keep separator markers out of the LLM input when a template side is
+ * empty or repeats the marker. Returns an empty string when only markers remain.
+ *
+ * By default also strips a leading `---` marker. Pass `preserveLeading` for the
+ * middle-separator branch, where a leading marker may be legitimate user
+ * content (e.g. a diff header) rather than a stray separator.
+ */
+function stripSeparatorMarkers(part: string, preserveLeading = false): string {
+  let result = part.trim();
+  while (result === '---' || (!preserveLeading && result.startsWith('---\n')) || result.endsWith('\n---')) {
+    if (result === '---') {
+      result = '';
+    } else if (!preserveLeading && result.startsWith('---\n')) {
+      result = result.slice(4).trim();
+    } else {
+      result = result.slice(0, -4).trim();
+    }
+  }
+  return result;
+}
+
+/**
+ * Load a template file from disk. The file may contain a `---` separator
+ * dividing the system prompt (above) from the user prompt (below). If there
+ * is no separator the entire file content is treated as the system prompt.
+ */
+export async function loadTemplateFile(
+  templatePath: string,
+): Promise<{ systemTemplate?: string; userTemplate?: string }> {
+  let raw: string;
+  try {
+    raw = await readFile(templatePath, 'utf-8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to read template file "${templatePath}": ${msg}`);
+  }
+
+  const content = raw.replace(/\r\n?/g, '\n').trim();
+
+  // A bare or leading "---" marks an empty system side. Consume it before
+  // searching for the real separator so a leading marker cannot leak into
+  // the system prompt.
+  if (content === '---') {
+    return { systemTemplate: undefined, userTemplate: undefined };
+  }
+
+  let body = content;
+  let hadLeadingSeparator = false;
+  if (body.startsWith('---\n')) {
+    body = body.slice(4); // drop the leading "---\n"
+    hadLeadingSeparator = true;
+  }
+
+  // Middle separator: "system\n---\nuser"
+  const separatorIndex = body.indexOf('\n---\n');
+  if (separatorIndex !== -1) {
+    return {
+      systemTemplate: body.slice(0, separatorIndex).trim() || undefined,
+      // A leading "---" after a real separator is legitimate user content;
+      // only strip bare or trailing markers here.
+      userTemplate: stripSeparatorMarkers(body.slice(separatorIndex + 5), true) || undefined,
+    };
+  }
+
+  // Trailing separator: "system\n---"
+  if (body.endsWith('\n---')) {
+    return {
+      systemTemplate: body.slice(0, -4).trim() || undefined,
+      userTemplate: undefined,
+    };
+  }
+
+  // A leading separator with no other separator: the rest is the user prompt.
+  if (hadLeadingSeparator) {
+    return { systemTemplate: undefined, userTemplate: stripSeparatorMarkers(body) || undefined };
+  }
+
+  // No separator: the whole file is the system prompt.
+  return { systemTemplate: content };
+}
+
+/**
  * Resolve the system prompt to use.
  *
- * If config provides a `systemPromptTemplate`, it is used with template
- * variables substituted. Otherwise the built-in prompt is returned.
+ * Priority: loaded template (file-based) > systemPromptTemplate (inline) > built-in.
+ * When a template file is configured (loadedTemplate provided or templatePath
+ * set), inline templates are ignored entirely: an empty file side falls
+ * straight through to the built-in prompt.
  */
-export function resolveSystemPrompt(profile: StyleProfile, vars: TemplateVars, config?: Config): string {
+export async function resolveSystemPrompt(
+  profile: StyleProfile,
+  vars: TemplateVars,
+  config?: Config,
+  loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
+): Promise<string> {
+  if (loadedTemplate !== undefined) {
+    if (loadedTemplate.systemTemplate) {
+      return substituteTemplateVars(loadedTemplate.systemTemplate, vars);
+    }
+    // File had only a user prompt (or was empty) — fall through to built-in
+    return buildSystemPrompt(profile);
+  }
+  if (config?.templatePath) {
+    const { systemTemplate } = await loadTemplateFile(config.templatePath);
+    if (systemTemplate) {
+      return substituteTemplateVars(systemTemplate, vars);
+    }
+    // File had only a user prompt (or was empty) — fall through to built-in
+    return buildSystemPrompt(profile);
+  }
   if (config?.systemPromptTemplate) {
     return substituteTemplateVars(config.systemPromptTemplate, vars);
   }
@@ -98,14 +204,47 @@ export function resolveSystemPrompt(profile: StyleProfile, vars: TemplateVars, c
 /**
  * Resolve the user prompt to use.
  *
- * If config provides a `userPromptTemplate`, it is used with template
- * variables substituted. Otherwise the built-in prompt is returned.
+ * Priority: loaded template (file-based) > userPromptTemplate (inline) > built-in.
+ * When a template file is configured (loadedTemplate provided or templatePath
+ * set), inline templates are ignored entirely: an empty file side falls
+ * straight through to the built-in prompt.
  */
-export function resolveUserPrompt(vars: TemplateVars, config?: Config): string {
+export async function resolveUserPrompt(
+  vars: TemplateVars,
+  config?: Config,
+  loadedTemplate?: { systemTemplate?: string; userTemplate?: string },
+): Promise<string> {
+  if (loadedTemplate !== undefined) {
+    if (loadedTemplate.userTemplate) {
+      return substituteTemplateVars(loadedTemplate.userTemplate, vars);
+    }
+    // File had only a system prompt (or was empty) — fall through to built-in
+    return buildUserPrompt(vars.diff);
+  }
+  if (config?.templatePath) {
+    const { userTemplate } = await loadTemplateFile(config.templatePath);
+    if (userTemplate) {
+      return substituteTemplateVars(userTemplate, vars);
+    }
+    // File had only a system prompt (or was empty) — fall through to built-in
+    return buildUserPrompt(vars.diff);
+  }
   if (config?.userPromptTemplate) {
     return substituteTemplateVars(config.userPromptTemplate, vars);
   }
   return buildUserPrompt(vars.diff);
+}
+
+export async function resolvePrompts(
+  profile: StyleProfile,
+  vars: TemplateVars,
+  config?: Config,
+): Promise<[string, string]> {
+  const loadedTemplate = config?.templatePath ? await loadTemplateFile(config.templatePath) : undefined;
+  return Promise.all([
+    resolveSystemPrompt(profile, vars, config, loadedTemplate),
+    resolveUserPrompt(vars, config, loadedTemplate),
+  ]);
 }
 
 /**

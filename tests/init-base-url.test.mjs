@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { normalizeBaseUrl, resolveBaseUrl } from '../dist/commands/init.js';
+import { normalizeBaseUrl, resolveBaseUrl, withTemplateFilePrecedence } from '../dist/commands/init.js';
 
 test('uses the selected built-in provider URL instead of a stale custom URL', () => {
   assert.equal(resolveBaseUrl('openai', 'https://custom.example.com/v1'), 'https://api.openai.com/v1');
@@ -25,6 +25,27 @@ test('preserves custom base URLs without trailing slashes', () => {
 
 test('preserves URL with path segments', () => {
   assert.equal(normalizeBaseUrl('https://api.example.com/api/v1/'), 'https://api.example.com/api/v1');
+});
+
+test('clears inline templates when a template file is configured', () => {
+  assert.deepEqual(
+    withTemplateFilePrecedence('Sys', 'User', '/path/template.md'),
+    { systemPromptTemplate: undefined, userPromptTemplate: undefined },
+  );
+});
+
+test('preserves inline templates when no template file is configured', () => {
+  assert.deepEqual(
+    withTemplateFilePrecedence('Sys', 'User', undefined),
+    { systemPromptTemplate: 'Sys', userPromptTemplate: 'User' },
+  );
+});
+
+test('preserves undefined inline templates when no template file is configured', () => {
+  assert.deepEqual(
+    withTemplateFilePrecedence(undefined, undefined, undefined),
+    { systemPromptTemplate: undefined, userPromptTemplate: undefined },
+  );
 });
 
 test('handles root URL with trailing slash', () => {
