@@ -515,6 +515,29 @@ test('trailing --- after a middle separator does not leak into the user prompt',
   });
 });
 
+test('leading --- in the user side after a middle separator does not leak', async () => {
+  await withTempFile('System: {{branch}}\n---\n---\nUser: {{diff}}', async (filePath) => {
+    const loaded = await loadTemplateFile(filePath);
+    assert.equal(loaded.systemTemplate, 'System: {{branch}}');
+    assert.equal(loaded.userTemplate, 'User: {{diff}}');
+
+    const userPrompt = await resolveUserPrompt({
+      diff: 'leading marker diff',
+      profile: '',
+      branch: 'main',
+      message: '',
+    }, {
+      provider: '',
+      model: '',
+      historySize: 0,
+      maxDiffSize: 0,
+      templatePath: filePath,
+    });
+    assert.equal(userPrompt, 'User: leading marker diff');
+    assert.ok(!userPrompt.includes('---'));
+  });
+});
+
 test('empty user side with trailing --- does not leak into the user prompt', async () => {
   await withTempFile('System: {{branch}}\n---\n---', async (filePath) => {
     const loaded = await loadTemplateFile(filePath);

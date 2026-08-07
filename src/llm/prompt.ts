@@ -84,6 +84,25 @@ export function substituteTemplateVars(template: string, vars: TemplateVars): st
 }
 
 /**
+ * Strip stray leading/trailing `---` separator markers from a template part.
+ * Used to keep separator markers out of the LLM input when a template side is
+ * empty or repeats the marker. Returns an empty string when only markers remain.
+ */
+function stripSeparatorMarkers(part: string): string {
+  let result = part.trim();
+  while (result === '---' || result.startsWith('---\n') || result.endsWith('\n---')) {
+    if (result === '---') {
+      result = '';
+    } else if (result.startsWith('---\n')) {
+      result = result.slice(4).trim();
+    } else {
+      result = result.slice(0, -4).trim();
+    }
+  }
+  return result;
+}
+
+/**
  * Load a template file from disk. The file may contain a `---` separator
  * dividing the system prompt (above) from the user prompt (below). If there
  * is no separator the entire file content is treated as the system prompt.
@@ -118,14 +137,9 @@ export async function loadTemplateFile(
   // Middle separator: "system\n---\nuser"
   const separatorIndex = body.indexOf('\n---\n');
   if (separatorIndex !== -1) {
-    let userPart = body.slice(separatorIndex + 5).trim();
-    // A trailing "---" after the user slice is a stray marker, not content.
-    while (userPart === '---' || userPart.endsWith('\n---')) {
-      userPart = userPart === '---' ? '' : userPart.slice(0, -4).trim();
-    }
     return {
       systemTemplate: body.slice(0, separatorIndex).trim() || undefined,
-      userTemplate: userPart || undefined,
+      userTemplate: stripSeparatorMarkers(body.slice(separatorIndex + 5)) || undefined,
     };
   }
 
@@ -139,19 +153,7 @@ export async function loadTemplateFile(
 
   // A leading separator with no other separator: the rest is the user prompt.
   if (hadLeadingSeparator) {
-    let userPart = body.trim();
-    // Strip stray leading/trailing separator markers so an empty user side
-    // falls back to the built-in prompt.
-    while (userPart === '---' || userPart.startsWith('---\n') || userPart.endsWith('\n---')) {
-      if (userPart === '---') {
-        userPart = '';
-      } else if (userPart.startsWith('---\n')) {
-        userPart = userPart.slice(4).trim();
-      } else {
-        userPart = userPart.slice(0, -4).trim();
-      }
-    }
-    return { systemTemplate: undefined, userTemplate: userPart || undefined };
+    return { systemTemplate: undefined, userTemplate: stripSeparatorMarkers(body) || undefined };
   }
 
   // No separator: the whole file is the system prompt.
