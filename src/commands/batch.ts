@@ -71,6 +71,7 @@ export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status !== 1) {
+      if (status === undefined) throw err;
       const stderr = (err as { stderr?: Buffer | string }).stderr;
       const detail = stderr ? String(stderr).trim() : `git diff --cached --quiet exited with code ${status}`;
       throw new Error(`Staged diff check failed: ${detail}`);
@@ -83,6 +84,7 @@ export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status !== 1) {
+      if (status === undefined) throw err;
       const stderr = (err as { stderr?: Buffer | string }).stderr;
       const detail = stderr ? String(stderr).trim() : `git diff --quiet exited with code ${status}`;
       throw new Error(`Unstaged diff check failed: ${detail}`);
