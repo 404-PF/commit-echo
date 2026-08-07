@@ -121,7 +121,7 @@ export async function loadTemplateFile(
     let userPart = body.slice(separatorIndex + 5).trim();
     // A trailing "---" after the user slice is a stray marker, not content.
     while (userPart === '---' || userPart.endsWith('\n---')) {
-      userPart = userPart === '---' ? '' : userPart.slice(0, userPart.length - 4).trim();
+      userPart = userPart === '---' ? '' : userPart.slice(0, -4).trim();
     }
     return {
       systemTemplate: body.slice(0, separatorIndex).trim() || undefined,
@@ -132,7 +132,7 @@ export async function loadTemplateFile(
   // Trailing separator: "system\n---"
   if (body.endsWith('\n---')) {
     return {
-      systemTemplate: body.slice(0, body.length - 4).trim() || undefined,
+      systemTemplate: body.slice(0, -4).trim() || undefined,
       userTemplate: undefined,
     };
   }
