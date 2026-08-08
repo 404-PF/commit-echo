@@ -57,42 +57,36 @@ export function findGitRepositories(rootDir: string, recursive: boolean): string
 }
 
 /**
- * Check whether a git repository at `cwd` has staged or unstaged changes.
+ * Run a `git diff` quiet check and report whether changes exist.
  *
- * Exit code 1 from `git diff --quiet` means changes exist (normal).
- * Any other non-zero exit code signals a fatal Git error and is thrown.
+ * Exit code 1 means changes exist (normal). Any other non-zero exit code
+ * signals a fatal Git error and is thrown. If git itself cannot run (e.g.
+ * the executable cannot be resolved), the original error is rethrown.
+ */
+function hasDiffChanges(cwd: string, args: string[], label: 'Staged' | 'Unstaged'): boolean {
+  try {
+    execFileSync(getGitExecutable(), args, { cwd, stdio: 'pipe' });
+    return false;
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === undefined) throw err;
+    if (status !== 1) {
+      const stderr = (err as { stderr?: Buffer | string }).stderr;
+      const detail = stderr ? String(stderr).trim() : `git ${args.join(' ')} exited with code ${status}`;
+      throw new Error(`${label} diff check failed: ${detail}`);
+    }
+    return true;
+  }
+}
+
+/**
+ * Check whether a git repository at `cwd` has staged or unstaged changes.
  */
 export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean } {
-  let staged = false;
-  let unstaged = false;
-
-  try {
-    execFileSync(getGitExecutable(), ['diff', '--cached', '--quiet'], { cwd, stdio: 'pipe' });
-  } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status !== 1) {
-      if (status === undefined) throw err;
-      const stderr = (err as { stderr?: Buffer | string }).stderr;
-      const detail = stderr ? String(stderr).trim() : `git diff --cached --quiet exited with code ${status}`;
-      throw new Error(`Staged diff check failed: ${detail}`);
-    }
-    staged = true;
-  }
-
-  try {
-    execFileSync(getGitExecutable(), ['diff', '--quiet'], { cwd, stdio: 'pipe' });
-  } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status !== 1) {
-      if (status === undefined) throw err;
-      const stderr = (err as { stderr?: Buffer | string }).stderr;
-      const detail = stderr ? String(stderr).trim() : `git diff --quiet exited with code ${status}`;
-      throw new Error(`Unstaged diff check failed: ${detail}`);
-    }
-    unstaged = true;
-  }
-
-  return { staged, unstaged };
+  return {
+    staged: hasDiffChanges(cwd, ['diff', '--cached', '--quiet'], 'Staged'),
+    unstaged: hasDiffChanges(cwd, ['diff', '--quiet'], 'Unstaged'),
+  };
 }
 
 /**
