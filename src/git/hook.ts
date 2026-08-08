@@ -1,10 +1,10 @@
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
-import { checkGitRepo, getStagedDiff } from './diff.js';
+import { checkGitRepo, getGitExecutable, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
 import { loadConfig } from '../config/store.js';
 import { appendEntry, buildProfile } from '../history/store.js';
@@ -44,7 +44,7 @@ export interface PrepareCommitMsgHookDeps {
 }
 
 function resolveGitPath(gitPath: string): string {
-  return execFileSync('git', ['rev-parse', '--git-path', gitPath], { encoding: 'utf-8' }).trim();
+  return execFileSync(getGitExecutable(), ['rev-parse', '--git-path', gitPath], { encoding: 'utf-8' }).trim();
 }
 
 function resolveHookPath(hookName: string): string {
@@ -216,7 +216,8 @@ export async function runPrepareCommitMsgHook(
 export async function runPostCommitHook(
   deps: PostCommitHookDeps = {
     checkGitRepo,
-    readLatestCommitMessage: () => execSync('git log -1 --pretty=%B', { encoding: 'utf-8' }).trim(),
+    readLatestCommitMessage: () =>
+      execFileSync(getGitExecutable(), ['log', '-1', '--pretty=%B'], { encoding: 'utf-8' }).trim(),
     readPendingEntryFile: async () => readFile(resolvePendingEntryPath(), 'utf-8'),
     appendHistoryEntry: appendEntry,
     removePendingEntryFile: async () => rm(resolvePendingEntryPath(), { force: true }),

@@ -1,12 +1,13 @@
 import { existsSync, readdirSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { execSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { intro, outro, confirm, select, text, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
 import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { buildProfile, appendEntry } from '../history/store.js';
+import { getGitExecutable } from '../git/diff.js';
 import { showVerboseInfo } from './suggest.js';
 import type { Config, Suggestion, TruncationInfo } from '../types.js';
 
@@ -56,49 +57,45 @@ export function findGitRepositories(rootDir: string, recursive: boolean): string
 }
 
 /**
- * Check whether a git repository at `cwd` has staged or unstaged changes.
+ * Run a `git diff` quiet check and report whether changes exist.
  *
- * Exit code 1 from `git diff --quiet` means changes exist (normal).
- * Any other non-zero exit code signals a fatal Git error and is thrown.
+ * Exit code 1 means changes exist (normal). Any other non-zero exit code
+ * signals a fatal Git error and is thrown. If git itself cannot run (e.g.
+ * the executable cannot be resolved), the original error is rethrown.
+ */
+function hasDiffChanges(cwd: string, args: string[], label: 'Staged' | 'Unstaged'): boolean {
+  try {
+    execFileSync(getGitExecutable(), args, { cwd, stdio: 'pipe' });
+    return false;
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === undefined) throw err;
+    if (status !== 1) {
+      const stderr = (err as { stderr?: Buffer | string }).stderr;
+      const detail = stderr ? String(stderr).trim() : `git ${args.join(' ')} exited with code ${status}`;
+      throw new Error(`${label} diff check failed: ${detail}`);
+    }
+    return true;
+  }
+}
+
+/**
+ * Check whether a git repository at `cwd` has staged or unstaged changes.
  */
 export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean } {
-  let staged = false;
-  let unstaged = false;
-
-  try {
-    execSync('git diff --cached --quiet', { cwd, stdio: 'pipe' });
-  } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status !== 1) {
-      const stderr = (err as { stderr?: Buffer | string }).stderr;
-      const detail = stderr ? String(stderr).trim() : `git diff --cached --quiet exited with code ${status}`;
-      throw new Error(`Staged diff check failed: ${detail}`);
-    }
-    staged = true;
-  }
-
-  try {
-    execSync('git diff --quiet', { cwd, stdio: 'pipe' });
-  } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status !== 1) {
-      const stderr = (err as { stderr?: Buffer | string }).stderr;
-      const detail = stderr ? String(stderr).trim() : `git diff --quiet exited with code ${status}`;
-      throw new Error(`Unstaged diff check failed: ${detail}`);
-    }
-    unstaged = true;
-  }
-
-  return { staged, unstaged };
+  return {
+    staged: hasDiffChanges(cwd, ['diff', '--cached', '--quiet'], 'Staged'),
+    unstaged: hasDiffChanges(cwd, ['diff', '--quiet'], 'Unstaged'),
+  };
 }
 
 /**
  * Get the git diff for a repository at `cwd`.
  */
 export function getGitDiff(cwd: string, staged: boolean): string {
-  const cmd = staged ? 'git diff --cached' : 'git diff';
+  const args = staged ? ['diff', '--cached'] : ['diff'];
   try {
-    return execSync(cmd, { cwd, encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }).trim();
+    return execFileSync(getGitExecutable(), args, { cwd, encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }).trim();
   } catch (err) {
     throw new Error(`Failed to get diff: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -113,7 +110,7 @@ export function gitCommit(cwd: string, message: string, body?: string): { hash: 
 
   try {
     writeFileSync(tmpFile, fullMessage, 'utf-8');
-    const result = spawnSync('git', ['commit', '-F', tmpFile], {
+    const result = spawnSync(getGitExecutable(), ['commit', '-F', tmpFile], {
       cwd,
       encoding: 'utf-8',
       shell: false,
