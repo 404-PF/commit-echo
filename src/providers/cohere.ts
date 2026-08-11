@@ -76,7 +76,7 @@ export class CohereProvider implements Provider {
     );
 
     if (!response.ok) {
-      return ['command-r-plus', 'command-r', 'command-xlarge', 'command-large'];
+      throw new Error(`Failed to fetch models (${response.status}): ${response.statusText}`);
     }
 
     const data = (await response.json()) as {
