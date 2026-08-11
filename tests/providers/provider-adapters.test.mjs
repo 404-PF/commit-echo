@@ -247,6 +247,20 @@ test('CohereProvider complete surfaces API errors with the response body', async
   );
 });
 
+test('CohereProvider fetchModels surfaces API errors', async (t) => {
+  const provider = new CohereProvider();
+
+  mockFetch(t, async () => new Response('unauthorized', {
+    status: 401,
+    statusText: 'Unauthorized',
+  }));
+
+  await assert.rejects(
+    provider.fetchModels('https://cohere.example.com', 'test-key'),
+    /Failed to fetch models \(401\): Unauthorized/,
+  );
+});
+
 test('CohereProvider complete rejects empty text responses', async (t) => {
   const provider = new CohereProvider();
 
