@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm publish --access public
         if: github.event_name == 'release'
@@ -45,7 +45,7 @@ jobs:
           node-version: 24
           registry-url: https://npm.pkg.github.com
           scope: "@404-pf"
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm publish
         if: github.event_name == 'release'
@@ -79,7 +79,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npx pkg dist/index.js --targets ${{ matrix.pkg-target }} --output commit-echo-${{ matrix.label }}${{ matrix.label == 'win-x64' && '.exe' || '' }}
         shell: bash
