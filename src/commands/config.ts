@@ -1,4 +1,6 @@
 import { intro, outro } from '@clack/prompts';
+import { accessSync, constants, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import pc from 'picocolors';
 import {
   configExists,
@@ -33,6 +35,7 @@ const CONFIG_SET_KEYS = [
   'maxDiffSize',
   'systemPromptTemplate',
   'userPromptTemplate',
+  'templatePath',
 ] as const;
 
 type ConfigSetKey = (typeof CONFIG_SET_KEYS)[number];
@@ -67,6 +70,30 @@ function parseConfigSetValue<K extends ConfigSetKey>(key: K, rawValue: string): 
     } catch {
       throw new Error('baseUrl must be a valid URL.');
     }
+  }
+
+  if (key === 'templatePath') {
+    if (!rawValue) {
+      return undefined as ConfigSetValueMap[K];
+    }
+    let templateStats;
+    try {
+      templateStats = statSync(rawValue);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        throw new Error(`templatePath does not exist: ${rawValue}`);
+      }
+      throw new Error(`templatePath is not readable: ${rawValue}`);
+    }
+    if (!templateStats.isFile()) {
+      throw new Error(`templatePath is not a file: ${rawValue}`);
+    }
+    try {
+      accessSync(rawValue, constants.R_OK);
+    } catch {
+      throw new Error(`templatePath is not readable: ${rawValue}`);
+    }
+    return resolve(rawValue) as ConfigSetValueMap[K];
   }
 
   if (!NUMERIC_CONFIG_KEYS.has(key)) {
@@ -237,6 +264,7 @@ export async function configSetCommand(key: string, value: string): Promise<void
     maxDiffSize: config.maxDiffSize ?? DEFAULT_MAX_DIFF_SIZE,
     systemPromptTemplate: config.systemPromptTemplate,
     userPromptTemplate: config.userPromptTemplate,
+    templatePath: config.templatePath,
   };
 
   let updatedConfig: Config;

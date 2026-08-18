@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -600,6 +600,140 @@ test('config set normalizes valid base URLs before saving', async () => {
     const config = readConfig(homeDir);
 
     assert.equal(config.baseUrl, 'https://api.example.test/v1');
+  });
+});
+
+test('config set preserves templatePath when updating another key', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+
+    await runConfigWithArgs(homeDir, ['set', 'model', 'gpt-4.1-mini']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.model, 'gpt-4.1-mini');
+    assert.equal(config.templatePath, '/tmp/commit-echo-template.md');
+  });
+});
+
+test('config set updates templatePath when the file exists', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+    const templatePath = join(homeDir, 'prompt-template.md');
+    writeFileSync(templatePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+
+    const { stdout, stderr } = await runConfigWithArgs(homeDir, ['set', 'templatePath', templatePath]);
+    const config = readConfig(homeDir);
+
+    assert.match(stdout + stderr, /Updated templatePath/);
+    assert.equal(config.templatePath, templatePath);
+  });
+});
+
+test('config set stores relative templatePath values as absolute paths', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir);
+    const cliPath = join(process.cwd(), 'dist/index.js');
+    const templatePath = join(homeDir, 'relative-template.md');
+    writeFileSync(templatePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+
+    await execFileAsync(process.execPath, [cliPath, '--no-color', 'config', 'set', 'templatePath', 'relative-template.md'], {
+      cwd: homeDir,
+      env: envFor(homeDir),
+    });
+
+    const config = readConfig(homeDir);
+    assert.equal(config.templatePath, realpathSync(templatePath));
+  });
+});
+
+test('config set rejects directory templatePath values', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'templatePath', homeDir]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /templatePath is not a file/);
+        assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects missing templatePath files', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+    const missingPath = join(homeDir, 'missing-template.md');
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['set', 'templatePath', missingPath]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stdout + error.stderr, /templatePath does not exist/);
+        assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+        return true;
+      },
+    );
+  });
+});
+
+test('config set rejects unreadable templatePath files without changing existing config', async (t) => {
+  if (platform() === 'win32') {
+    t.skip('POSIX permission-mode unreadable file check is not portable on Windows');
+    return;
+  }
+
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+    const unreadablePath = join(homeDir, 'unreadable-template.md');
+    writeFileSync(unreadablePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+    chmodSync(unreadablePath, 0o000);
+
+    try {
+      await assert.rejects(
+        () => runConfigWithArgs(homeDir, ['set', 'templatePath', unreadablePath]),
+        (error) => {
+          assert.equal(error.code, 1);
+          assert.match(error.stdout + error.stderr, /templatePath is not readable/);
+          assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+          return true;
+        },
+      );
+    } finally {
+      chmodSync(unreadablePath, 0o600);
+    }
+  });
+});
+
+test('config set reports unreadable templatePath when parent directory is inaccessible', async (t) => {
+  if (platform() === 'win32') {
+    t.skip('POSIX permission-mode unreadable directory check is not portable on Windows');
+    return;
+  }
+
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, { templatePath: '/tmp/commit-echo-template.md' });
+    const privateDir = join(homeDir, 'private-templates');
+    mkdirSync(privateDir);
+    const unreadablePath = join(privateDir, 'prompt-template.md');
+    writeFileSync(unreadablePath, 'System: {{branch}}\nUser: {{diff}}\n', 'utf-8');
+    chmodSync(privateDir, 0o000);
+
+    try {
+      await assert.rejects(
+        () => runConfigWithArgs(homeDir, ['set', 'templatePath', unreadablePath]),
+        (error) => {
+          assert.equal(error.code, 1);
+          assert.match(error.stdout + error.stderr, /templatePath is not readable/);
+          assert.equal(readConfig(homeDir).templatePath, '/tmp/commit-echo-template.md');
+          return true;
+        },
+      );
+    } finally {
+      chmodSync(privateDir, 0o700);
+    }
   });
 });
 
