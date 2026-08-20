@@ -43,7 +43,7 @@ function restoreEnv(name, value) {
   }
 }
 
-test('buildProfile counts descriptive verb forms in the imperative-rate denominator', async () => {
+async function withTempHome(callback) {
   const originalHome = process.env.HOME;
   const originalAppData = process.env.APPDATA;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -53,90 +53,57 @@ test('buildProfile counts descriptive verb forms in the imperative-rate denomina
     process.env.HOME = tempHome;
     process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
     process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+    return await callback(tempHome);
+  } finally {
+    restoreEnv('HOME', originalHome);
+    restoreEnv('APPDATA', originalAppData);
+    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
+    rmSync(tempHome, { recursive: true, force: true });
+  }
+}
+
+test('buildProfile counts descriptive verb forms in the imperative-rate denominator', async () => {
+  await withTempHome(async (tempHome) => {
     writeHistory(tempHome, ['fix: add retries', 'fix: added retries', 'fix: adding retries']);
 
     const profile = await buildProfile(10);
 
     assert.equal(profile.totalCommits, 3);
     assert.equal(profile.imperativeRate, 1 / 3);
-  } finally {
-    restoreEnv('HOME', originalHome);
-    restoreEnv('APPDATA', originalAppData);
-    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
-    rmSync(tempHome, { recursive: true, force: true });
-  }
+  });
 });
 
 test('buildProfile recognizes base-form verbs that end in descriptive suffixes', async () => {
-  const originalHome = process.env.HOME;
-  const originalAppData = process.env.APPDATA;
-  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
-
-  try {
-    process.env.HOME = tempHome;
-    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
-    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+  await withTempHome(async (tempHome) => {
     writeHistory(tempHome, ['fix: add retries', 'fix: Bring retries', 'fix: added retries']);
 
     const profile = await buildProfile(10);
 
     assert.equal(profile.totalCommits, 3);
     assert.equal(profile.imperativeRate, 2 / 3);
-  } finally {
-    restoreEnv('HOME', originalHome);
-    restoreEnv('APPDATA', originalAppData);
-    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
-    rmSync(tempHome, { recursive: true, force: true });
-  }
+  });
 });
 
 test('buildProfile recognizes prefix-derived base-form verbs as imperative', async () => {
-  const originalHome = process.env.HOME;
-  const originalAppData = process.env.APPDATA;
-  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
-
-  try {
-    process.env.HOME = tempHome;
-    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
-    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+  await withTempHome(async (tempHome) => {
     writeHistory(tempHome, ['fix: reseed database', 'fix: preseed retries', 'fix: adding retries']);
 
     const profile = await buildProfile(10);
 
     assert.equal(profile.totalCommits, 3);
     assert.equal(profile.imperativeRate, 2 / 3);
-  } finally {
-    restoreEnv('HOME', originalHome);
-    restoreEnv('APPDATA', originalAppData);
-    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
-    rmSync(tempHome, { recursive: true, force: true });
-  }
+  });
 });
 
 test('buildProfile recognizes ed-suffix base-form verbs not in the base allowlist', async () => {
-  const originalHome = process.env.HOME;
-  const originalAppData = process.env.APPDATA;
-  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
-
-  try {
-    process.env.HOME = tempHome;
-    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
-    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+  await withTempHome(async (tempHome) => {
     writeHistory(tempHome, ['fix: succeed after retry', 'fix: weed stale entries', 'fix: adding retries']);
 
     const profile = await buildProfile(10);
 
     assert.equal(profile.totalCommits, 3);
     assert.equal(profile.imperativeRate, 2 / 3);
-  } finally {
-    restoreEnv('HOME', originalHome);
-    restoreEnv('APPDATA', originalAppData);
-    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
-    rmSync(tempHome, { recursive: true, force: true });
-  }
+  });
 });
 
 test('formatProfile reports the empty-history fallback', () => {
@@ -196,73 +163,39 @@ test('formatProfile renders dominant tone, capitalization, scope, body, and pref
 });
 
 test('buildProfile computes scope-usage ratio', async () => {
-  const originalHome = process.env.HOME;
-  const originalAppData = process.env.APPDATA;
-  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
-
-  try {
-    process.env.HOME = tempHome;
-    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
-    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+  await withTempHome(async (tempHome) => {
     writeHistory(tempHome, [
       'feat(auth): add login',
       'fix: resolve crash',
       'docs(readme): update',
-      'style: format code'
+      'style: format code',
     ]);
 
     const profile = await buildProfile(10);
 
     assert.equal(profile.totalCommits, 4);
     assert.equal(profile.usesScopeRate, 0.5);
-  } finally {
-    restoreEnv('HOME', originalHome);
-    restoreEnv('APPDATA', originalAppData);
-    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
-    rmSync(tempHome, { recursive: true, force: true });
-  }
+  });
 });
 
 test('buildProfile computes body-usage ratio', async () => {
-  const originalHome = process.env.HOME;
-  const originalAppData = process.env.APPDATA;
-  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
-
-  try {
-    process.env.HOME = tempHome;
-    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
-    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+  await withTempHome(async (tempHome) => {
     writeHistory(tempHome, [
       'feat: no body',
       'fix: with body\n\nThis is a body.',
       'docs: no body',
-      'style: with body\n\nBody line 1\nBody line 2'
+      'style: with body\n\nBody line 1\nBody line 2',
     ]);
 
     const profile = await buildProfile(10);
 
     assert.equal(profile.totalCommits, 4);
     assert.equal(profile.usesBodyRate, 0.5);
-  } finally {
-    restoreEnv('HOME', originalHome);
-    restoreEnv('APPDATA', originalAppData);
-    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
-    rmSync(tempHome, { recursive: true, force: true });
-  }
+  });
 });
 
 test('buildProfile handles empty history', async () => {
-  const originalHome = process.env.HOME;
-  const originalAppData = process.env.APPDATA;
-  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const tempHome = mkdtempSync(join(tmpdir(), 'commit-echo-home-'));
-
-  try {
-    process.env.HOME = tempHome;
-    process.env.APPDATA = join(tempHome, 'AppData', 'Roaming');
-    process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
+  await withTempHome(async (tempHome) => {
     writeHistory(tempHome, []);
 
     const profile = await buildProfile(10);
@@ -272,10 +205,5 @@ test('buildProfile handles empty history', async () => {
     assert.equal(profile.usesBodyRate, 0);
     assert.equal(profile.imperativeRate, 0);
     assert.equal(profile.sentenceCaseRate, 0);
-  } finally {
-    restoreEnv('HOME', originalHome);
-    restoreEnv('APPDATA', originalAppData);
-    restoreEnv('XDG_CONFIG_HOME', originalXdgConfigHome);
-    rmSync(tempHome, { recursive: true, force: true });
-  }
+  });
 });
