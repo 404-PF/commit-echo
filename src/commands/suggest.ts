@@ -230,7 +230,6 @@ export async function suggestCommand(
     }
   }
 
-  const analysisPreview = options.showDiff ? getPreview() : undefined;
   let apiKey: string;
   try {
     apiKey = assertApiKeyAvailable(config);
@@ -257,13 +256,7 @@ export async function suggestCommand(
       model = config.model;
       let accumulated = '';
       try {
-        for await (const event of generateSuggestionsStream(
-          config,
-          diffResult.diff,
-          profile,
-          apiKey,
-          streamProvider,
-        )) {
+        for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
           if (event.kind === 'meta') {
             generatedTruncation = event.truncation;
             continue;
