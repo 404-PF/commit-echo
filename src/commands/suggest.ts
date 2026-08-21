@@ -239,7 +239,6 @@ export async function suggestCommand(
     }
   }
 
-  const analysisPreview = options.showDiff ? getPreview() : undefined;
   let apiKey: string;
   try {
     apiKey = assertApiKeyAvailable(config);
