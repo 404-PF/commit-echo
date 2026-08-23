@@ -123,7 +123,8 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
   }
 
   if (needsApiKey) {
-    const existingKey = existingConfig?.apiKey ?? process.env[apiKeyEnv] ?? '';
+    const existingConfigKey = existingConfig?.apiKey ?? '';
+    const existingKey = existingConfigKey || process.env[apiKeyEnv] || '';
     const keyResult = await text(buildApiKeyPrompt(existingKey, apiKeyEnv));
     if (isCancel(keyResult)) {
       outro('Setup cancelled.');
@@ -132,8 +133,8 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
 
     if (keyResult) {
       apiKey = keyResult;
-    } else if (existingKey) {
-      apiKey = existingKey;
+    } else if (existingConfigKey) {
+      apiKey = existingConfigKey;
     } else {
       apiKey = '';
     }
