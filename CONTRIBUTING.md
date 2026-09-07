@@ -40,7 +40,7 @@ src/
 │   ├── init.ts           # Interactive setup wizard (clack/prompts) — provider, model, API key
 │   ├── suggest.ts        # Core suggestion flow: diff → LLM → display → optional commit
 │   ├── history.ts        # View learned style profile and recent commit history
-│   ├── config.ts         # View current config
+│   ├── config.ts         # View and set current config
 │   ├── batch.ts          # Process multiple git repos in batch mode
 │   └── completion.ts     # Generate shell completion scripts (bash, zsh, fish)
 ├── providers/
