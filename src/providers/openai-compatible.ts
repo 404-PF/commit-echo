@@ -1,5 +1,5 @@
 import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../types.js';
-import { fetchWithTimeout } from './request.js';
+import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
 import { parseOpenAiSseLine, streamSseResponse, SSE_STREAM_END } from './sse.js';
 
 function buildOpenAiRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
@@ -65,6 +65,7 @@ export class OpenAICompatibleProvider implements Provider {
 
   async *completeStream(params: ChatParams): AsyncIterable<ProviderStreamChunk> {
     const { apiKey, baseUrl } = params;
+    const controller = new AbortController();
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
@@ -83,6 +84,8 @@ export class OpenAICompatibleProvider implements Provider {
         body: JSON.stringify(buildOpenAiRequestBody(params, { stream: true })),
       },
       'OpenAI-compatible streaming request',
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      controller,
     );
 
     if (!response.ok) {
@@ -90,22 +93,30 @@ export class OpenAICompatibleProvider implements Provider {
       throw new Error(`OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
-    yield* streamSseResponse(response, (line) => {
-      const parsed = parseOpenAiSseLine(line);
-      if (parsed.error) throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
-      if (parsed.done) return SSE_STREAM_END;
-      const chunks: ProviderStreamChunk[] = [];
-      if (parsed.model) {
-        chunks.push({ kind: 'model', model: parsed.model });
-      }
-      if (parsed.text) {
-        chunks.push({ kind: 'text', text: parsed.text });
-      }
-      if (chunks.length > 0) {
-        return chunks;
-      }
-      return null;
-    });
+    yield* streamSseResponse(
+      response,
+      (line) => {
+        const parsed = parseOpenAiSseLine(line);
+        if (parsed.error) throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
+        if (parsed.done) return SSE_STREAM_END;
+        const chunks: ProviderStreamChunk[] = [];
+        if (parsed.model) {
+          chunks.push({ kind: 'model', model: parsed.model });
+        }
+        if (parsed.text) {
+          chunks.push({ kind: 'text', text: parsed.text });
+        }
+        if (chunks.length > 0) {
+          return chunks;
+        }
+        return null;
+      },
+      {
+        controller,
+        timeoutMs: DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+        label: 'OpenAI-compatible streaming request',
+      },
+    );
   }
 
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {

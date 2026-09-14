@@ -5,10 +5,67 @@ import {
   parseAnthropicSseLine,
   parseOpenAiSseLine,
   SSE_STREAM_END,
+  streamSseResponse,
 } from '../dist/providers/sse.js';
 import { AnthropicProvider } from '../dist/providers/anthropic.js';
 import { OpenAICompatibleProvider } from '../dist/providers/openai-compatible.js';
 import { streamFromChunks } from './helpers/stream-from-chunks.mjs';
+
+test('an SSE read that stalls after a partial result times out and aborts the request', async () => {
+  const controller = new AbortController();
+  let cancelled = false;
+  let streamController;
+  const response = new Response(new ReadableStream({
+    start(stream) {
+      streamController = stream;
+      stream.enqueue(new TextEncoder().encode('data: first\n'));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  }));
+  const chunks = [];
+  // Keep a broken implementation from leaving an unbounded read in the test runner.
+  const watchdog = setTimeout(() => { if (!cancelled) streamController.close(); }, 250);
+
+  try {
+    await assert.rejects(async () => {
+      for await (const chunk of streamSseResponse(response, (line) =>
+        line.startsWith('data:') ? { kind: 'text', text: line.slice(6) } : null,
+        { controller, timeoutMs: 20, label: 'Test stream' })) {
+        chunks.push(chunk);
+      }
+    }, /Test stream timed out after 20ms/);
+    assert.deepEqual(chunks, [{ kind: 'text', text: 'first' }]);
+    assert.equal(controller.signal.aborted, true);
+    assert.equal(cancelled, true);
+    assert.equal(response.body.locked, false);
+  } finally {
+    clearTimeout(watchdog);
+  }
+});
+
+test('SSE consumption releases the network stream when the consumer stops early', async () => {
+  const controller = new AbortController();
+  let cancelled = false;
+  const response = new Response(new ReadableStream({
+    start(stream) {
+      stream.enqueue(new TextEncoder().encode('data: first\n'));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  }));
+
+  for await (const _chunk of streamSseResponse(response, (line) =>
+    line.startsWith('data:') ? { kind: 'text', text: line.slice(6) } : null,
+    { controller, timeoutMs: 20 })) {
+    break;
+  }
+  assert.equal(cancelled, true);
+  assert.equal(controller.signal.aborted, true);
+  assert.equal(response.body.locked, false);
+});
 
 test('parseOpenAiSseLine extracts delta content', () => {
   const result = parseOpenAiSseLine(
