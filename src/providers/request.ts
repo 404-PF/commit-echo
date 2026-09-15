@@ -1,25 +1,30 @@
-const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
+export const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
 export async function fetchWithTimeout(
   url: string,
   init: RequestInit,
   label: string,
   timeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+  controller = new AbortController(),
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
     });
+    clearTimeout(timeout);
+    return response;
   } catch (error) {
-    if (controller.signal.aborted) {
+    clearTimeout(timeout);
+    if (timedOut) {
       throw new Error(`${label} timed out after ${timeoutMs}ms`);
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }

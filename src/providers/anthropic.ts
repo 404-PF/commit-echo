@@ -1,5 +1,5 @@
 import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../types.js';
-import { fetchWithTimeout } from './request.js';
+import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
 import { parseAnthropicSseLine, streamSseResponse } from './sse.js';
 
 function buildAnthropicRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
@@ -73,6 +73,7 @@ export class AnthropicProvider implements Provider {
 
   async *completeStream(params: ChatParams): AsyncIterable<ProviderStreamChunk> {
     const { apiKey, baseUrl } = params;
+    const controller = new AbortController();
 
     const url = `${baseUrl.replace(/\/+$/, '')}/messages`;
     const body = buildAnthropicRequestBody(params, { stream: true });
@@ -89,6 +90,8 @@ export class AnthropicProvider implements Provider {
         body: JSON.stringify(body),
       },
       'Anthropic streaming request',
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      controller,
     );
 
     if (!response.ok) {
@@ -97,7 +100,11 @@ export class AnthropicProvider implements Provider {
     }
 
     const sseState = { currentEvent: '' };
-    yield* streamSseResponse(response, (line) => parseAnthropicSseLine(line, sseState));
+    yield* streamSseResponse(response, (line) => parseAnthropicSseLine(line, sseState), {
+      controller,
+      timeoutMs: DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      label: 'Anthropic streaming request',
+    });
   }
 
   async fetchModels(_baseUrl: string, _apiKey: string): Promise<string[]> {

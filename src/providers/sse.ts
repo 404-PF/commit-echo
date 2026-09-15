@@ -18,6 +18,7 @@ export type SseLineParser = (
 export async function* streamSseResponse(
   response: Response,
   parseLine: SseLineParser,
+  options: { controller?: AbortController; timeoutMs?: number; label?: string } = {},
 ): AsyncIterable<ProviderStreamChunk> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('No response body');
@@ -25,10 +26,30 @@ export async function* streamSseResponse(
   const decoder = new TextDecoder();
   let buffer = '';
   let cancelled = false;
+  let completed = false;
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      // The fetch deadline ends at the response headers. Bound each body read
+      // separately so a slow but active SSE stream is not cut off mid-response.
+      const read = reader.read();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline =
+        options.timeoutMs === undefined
+          ? undefined
+          : new Promise<never>((_, reject) => {
+              timer = setTimeout(() => {
+                reject(new Error(`${options.label ?? 'Streaming request'} timed out after ${options.timeoutMs}ms`));
+                options.controller?.abort();
+              }, options.timeoutMs);
+            });
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        result = deadline ? await Promise.race([read, deadline]) : await read;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      const { done, value } = result;
 
       if (value) {
         buffer += decoder.decode(value, { stream: !done });
@@ -44,6 +65,7 @@ export async function* streamSseResponse(
         if (result === SSE_STREAM_END) {
           await reader.cancel();
           cancelled = true;
+          completed = true;
           return;
         }
         if (Array.isArray(result)) {
@@ -55,10 +77,23 @@ export async function* streamSseResponse(
         if (result) yield result;
       }
 
-      if (done) break;
+      if (done) {
+        completed = true;
+        break;
+      }
     }
   } finally {
-    if (!cancelled) reader.releaseLock();
+    if (!completed) {
+      options.controller?.abort();
+      if (!cancelled) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Preserve the parsing/read failure while still releasing the reader.
+        }
+      }
+    }
+    reader.releaseLock();
   }
 }
 
