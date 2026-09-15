@@ -14,16 +14,17 @@ export async function fetchWithTimeout(
   }, timeoutMs);
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal: controller.signal,
     });
+    clearTimeout(timeout);
+    return response;
   } catch (error) {
+    clearTimeout(timeout);
     if (timedOut) {
       throw new Error(`${label} timed out after ${timeoutMs}ms`);
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
