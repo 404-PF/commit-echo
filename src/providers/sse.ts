@@ -113,7 +113,7 @@ export function parseOpenAiSseLine(line: string): {
     const parsed = JSON.parse(payload) as {
       error?: { message?: string };
       model?: string;
-      choices?: { delta?: { content?: string } }[];
+      choices?: { delta?: { content?: string; reasoning_content?: string } }[];
     };
 
     if (parsed.error?.message) {
@@ -123,7 +123,8 @@ export function parseOpenAiSseLine(line: string): {
     const result: { text?: string; model?: string } = {};
     if (parsed.model) result.model = parsed.model;
 
-    const content = parsed.choices?.[0]?.delta?.content;
+    const delta = parsed.choices?.[0]?.delta;
+    const content = delta?.content || delta?.reasoning_content;
     if (content) result.text = content;
 
     return result;

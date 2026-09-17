@@ -84,6 +84,22 @@ test('parseOpenAiSseLine extracts model from stream chunk', () => {
   assert.equal(result.text, 'hello');
 });
 
+test('parseOpenAiSseLine falls back to reasoning content', () => {
+  const result = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}',
+  );
+
+  assert.equal(result.text, 'thinking');
+});
+
+test('parseOpenAiSseLine prefers visible content over reasoning content', () => {
+  const result = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"content":"answer","reasoning_content":"thinking"}}]}',
+  );
+
+  assert.equal(result.text, 'answer');
+});
+
 test('parseOpenAiSseLine detects stream completion', () => {
   assert.deepEqual(parseOpenAiSseLine('data: [DONE]'), { done: true });
 });
@@ -164,6 +180,36 @@ test('Anthropic completeStream reassembles event/data split across network chunk
     }
 
     assert.deepEqual(chunks, [{ kind: 'text', text: 'hi' }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('OpenAI completeStream emits reasoning-only deltas as text', async () => {
+  const originalFetch = globalThis.fetch;
+  const provider = new OpenAICompatibleProvider();
+
+  globalThis.fetch = async () =>
+    new Response(
+      streamFromChunks([
+        'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
+        'data: [DONE]\n',
+      ]),
+      { status: 200 },
+    );
+
+  try {
+    const chunks = [];
+    for await (const chunk of provider.completeStream({
+      model: 'o3-mini',
+      messages: [{ role: 'user', content: 'test' }],
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
+    })) {
+      chunks.push(chunk);
+    }
+
+    assert.deepEqual(chunks, [{ kind: 'text', text: 'thinking' }]);
   } finally {
     globalThis.fetch = originalFetch;
   }
