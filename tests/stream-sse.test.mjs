@@ -98,6 +98,10 @@ test('parseOpenAiSseLine rejects malformed data chunks', () => {
   );
 });
 
+test('parseOpenAiSseLine ignores valid JSON with an unsupported payload shape', () => {
+  assert.deepEqual(parseOpenAiSseLine('data: null'), {});
+});
+
 test('parseOpenAiSseLine ignores empty data payloads', () => {
   assert.deepEqual(parseOpenAiSseLine('data:'), {});
   assert.deepEqual(parseOpenAiSseLine('data:   '), {});
