@@ -11,6 +11,13 @@ import { AnthropicProvider } from '../dist/providers/anthropic.js';
 import { OpenAICompatibleProvider } from '../dist/providers/openai-compatible.js';
 import { streamFromChunks } from './helpers/stream-from-chunks.mjs';
 
+const OPENAI_TEST_PARAMS = {
+  model: 'gpt-4o',
+  messages: [{ role: 'user', content: 'test' }],
+  apiKey: 'test-key',
+  baseUrl: 'https://api.openai.com/v1',
+};
+
 test('an SSE read that stalls after a partial result times out and aborts the request', async () => {
   const controller = new AbortController();
   let cancelled = false;
@@ -196,12 +203,7 @@ test('OpenAI completeStream processes final line without trailing newline', asyn
 
   try {
     const chunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    })) {
+    for await (const chunk of provider.completeStream(OPENAI_TEST_PARAMS)) {
       chunks.push(chunk);
     }
 
@@ -230,12 +232,7 @@ test('OpenAI completeStream preserves empty data events', async () => {
 
   try {
     const chunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    })) {
+    for await (const chunk of provider.completeStream(OPENAI_TEST_PARAMS)) {
       chunks.push(chunk);
     }
 
@@ -262,12 +259,7 @@ test('OpenAI completeStream propagates malformed JSON and releases the response 
 
   try {
     await assert.rejects(async () => {
-      for await (const _chunk of provider.completeStream({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: 'test' }],
-        apiKey: 'test-key',
-        baseUrl: 'https://api.openai.com/v1',
-      })) {
+      for await (const _chunk of provider.completeStream(OPENAI_TEST_PARAMS)) {
         // Consume until the malformed payload reaches the parser.
       }
     }, /Malformed OpenAI SSE data: invalid JSON/);
@@ -294,12 +286,7 @@ test('OpenAI completeStream handles [DONE] in final buffer without trailing newl
 
   try {
     const chunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    })) {
+    for await (const chunk of provider.completeStream(OPENAI_TEST_PARAMS)) {
       chunks.push(chunk);
     }
 
