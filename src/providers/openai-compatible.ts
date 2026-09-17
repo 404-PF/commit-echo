@@ -129,7 +129,6 @@ export class OpenAICompatibleProvider implements Provider {
         label: 'OpenAI-compatible streaming request',
       },
     );
-
     if (!hasVisibleContent && reasoning) {
       yield { kind: 'text', text: reasoning };
     }
