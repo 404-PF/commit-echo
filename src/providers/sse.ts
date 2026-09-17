@@ -123,18 +123,22 @@ export function parseOpenAiSseLine(line: string): {
   const data = parsed as {
     error?: { message?: string };
     model?: string;
-    choices?: { delta?: { content?: string } }[];
+    choices?: { delta?: { content?: string; reasoning_content?: string } }[];
   };
 
   if (data.error?.message) {
     return { error: data.error.message };
   }
 
-  const result: { text?: string; model?: string } = {};
+  const result: { text?: string; reasoning?: string; model?: string } = {};
   if (data.model) result.model = data.model;
 
-  const content = data.choices?.[0]?.delta?.content;
-  if (content) result.text = content;
+  const delta = data.choices?.[0]?.delta;
+  if (typeof delta?.content === 'string' && delta.content.length > 0) {
+    result.text = delta.content;
+  } else if (typeof delta?.reasoning_content === 'string') {
+    result.reasoning = delta.reasoning_content;
+  }
 
   return result;
 }

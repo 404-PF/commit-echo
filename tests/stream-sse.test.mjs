@@ -132,6 +132,29 @@ test('parseOpenAiSseLine ignores empty data payloads', () => {
   assert.deepEqual(parseOpenAiSseLine('data:   '), {});
 });
 
+test('parseOpenAiSseLine extracts reasoning content separately', () => {
+  const result = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}',
+  );
+
+  assert.equal(result.reasoning, 'thinking');
+});
+
+test('parseOpenAiSseLine prefers visible content over reasoning content', () => {
+  const result = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"content":"answer","reasoning_content":"thinking"}}]}',
+  );
+
+  assert.equal(result.text, 'answer');
+  assert.equal(result.reasoning, undefined);
+
+  const reasoningAfterEmptyContent = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"content":"","reasoning_content":"thinking"}}]}',
+  );
+  assert.equal(reasoningAfterEmptyContent.text, undefined);
+  assert.equal(reasoningAfterEmptyContent.reasoning, 'thinking');
+});
+
 test('parseOpenAiSseLine detects stream completion', () => {
   assert.deepEqual(parseOpenAiSseLine('data: [DONE]'), { done: true });
 });
@@ -194,6 +217,36 @@ test('Anthropic completeStream reassembles event/data split across network chunk
       assert.deepEqual(chunks, [{ kind: 'text', text: 'hi' }]);
     },
   );
+});
+
+test('OpenAI completeStream emits reasoning-only deltas as text', async () => {
+  const originalFetch = globalThis.fetch;
+  const provider = new OpenAICompatibleProvider();
+
+  globalThis.fetch = async () =>
+    new Response(
+      streamFromChunks([
+        'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
+        'data: [DONE]\n',
+      ]),
+      { status: 200 },
+    );
+
+  try {
+    const chunks = [];
+    for await (const chunk of provider.completeStream({
+      model: 'o3-mini',
+      messages: [{ role: 'user', content: 'test' }],
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
+    })) {
+      chunks.push(chunk);
+    }
+
+    assert.deepEqual(chunks, [{ kind: 'text', text: 'thinking' }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('OpenAI completeStream processes final line without trailing newline', async () => {
