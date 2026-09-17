@@ -84,6 +84,13 @@ test('parseOpenAiSseLine extracts model from stream chunk', () => {
   assert.equal(result.text, 'hello');
 });
 
+test('parseOpenAiSseLine rejects malformed data chunks', () => {
+  assert.throws(
+    () => parseOpenAiSseLine('data: {not valid JSON}'),
+    /Malformed OpenAI SSE data: invalid JSON/,
+  );
+});
+
 test('parseOpenAiSseLine detects stream completion', () => {
   assert.deepEqual(parseOpenAiSseLine('data: [DONE]'), { done: true });
 });

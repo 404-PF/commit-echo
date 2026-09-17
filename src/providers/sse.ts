@@ -128,10 +128,8 @@ export function parseOpenAiSseLine(line: string): {
 
     return result;
   } catch {
-    // Skip malformed JSON chunks
+    throw new Error('Malformed OpenAI SSE data: invalid JSON');
   }
-
-  return {};
 }
 
 /**
