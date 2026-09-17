@@ -8,7 +8,7 @@ export const SSE_STREAM_END = Symbol('SSE_STREAM_END');
 
 export type SseLineParser = (
   line: string,
-) => ProviderStreamChunk | ProviderStreamChunk[] | typeof SSE_STREAM_END | null;
+) => ProviderStreamChunk | (ProviderStreamChunk | typeof SSE_STREAM_END)[] | typeof SSE_STREAM_END | null;
 
 /**
  * Read an SSE response body, split into lines, and yield parsed chunks.
@@ -70,6 +70,11 @@ export async function* streamSseResponse(
         }
         if (Array.isArray(result)) {
           for (const chunk of result) {
+            if (chunk === SSE_STREAM_END) {
+              await reader.cancel();
+              cancelled = true;
+              return;
+            }
             yield chunk;
           }
           continue;
@@ -99,6 +104,7 @@ export async function* streamSseResponse(
 
 export function parseOpenAiSseLine(line: string): {
   text?: string;
+  reasoning?: string;
   model?: string;
   done?: boolean;
   error?: string;
@@ -142,7 +148,6 @@ export function parseOpenAiSseLine(line: string): {
 
   return result;
 }
-
 /**
  * Parse a single Anthropic SSE line. Call repeatedly for each line in a batch,
  * passing shared `state` to track event types across event/data line pairs.
