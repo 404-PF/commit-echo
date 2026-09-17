@@ -91,6 +91,11 @@ test('parseOpenAiSseLine rejects malformed data chunks', () => {
   );
 });
 
+test('parseOpenAiSseLine ignores empty data payloads', () => {
+  assert.deepEqual(parseOpenAiSseLine('data:'), {});
+  assert.deepEqual(parseOpenAiSseLine('data:   '), {});
+});
+
 test('parseOpenAiSseLine detects stream completion', () => {
   assert.deepEqual(parseOpenAiSseLine('data: [DONE]'), { done: true });
 });
@@ -204,6 +209,71 @@ test('OpenAI completeStream processes final line without trailing newline', asyn
       { kind: 'text', text: 'hel' },
       { kind: 'text', text: 'lo' },
     ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('OpenAI completeStream preserves empty data events', async () => {
+  const originalFetch = globalThis.fetch;
+  const provider = new OpenAICompatibleProvider();
+
+  globalThis.fetch = async () =>
+    new Response(
+      streamFromChunks([
+        'data:\n',
+        'data: {"choices":[{"delta":{"content":"hello"}}]}\n',
+        'data: [DONE]',
+      ]),
+      { status: 200 },
+    );
+
+  try {
+    const chunks = [];
+    for await (const chunk of provider.completeStream({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: 'test' }],
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
+    })) {
+      chunks.push(chunk);
+    }
+
+    assert.deepEqual(chunks, [{ kind: 'text', text: 'hello' }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('OpenAI completeStream propagates malformed JSON and releases the response stream', async () => {
+  const originalFetch = globalThis.fetch;
+  const provider = new OpenAICompatibleProvider();
+  let cancelled = false;
+  const response = new Response(new ReadableStream({
+    start(stream) {
+      stream.enqueue(new TextEncoder().encode('data: {not valid JSON}\n'));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  }), { status: 200 });
+
+  globalThis.fetch = async () => response;
+
+  try {
+    await assert.rejects(async () => {
+      for await (const _chunk of provider.completeStream({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'test' }],
+        apiKey: 'test-key',
+        baseUrl: 'https://api.openai.com/v1',
+      })) {
+        // Consume until the malformed payload reaches the parser.
+      }
+    }, /Malformed OpenAI SSE data: invalid JSON/);
+
+    assert.equal(cancelled, true);
+    assert.equal(response.body.locked, false);
   } finally {
     globalThis.fetch = originalFetch;
   }

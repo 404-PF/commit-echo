@@ -107,6 +107,8 @@ export function parseOpenAiSseLine(line: string): {
   if (!trimmed || !trimmed.startsWith('data:')) return {};
 
   const payload = trimmed.slice(5).trim();
+  if (!payload) return {};
+
   if (payload === '[DONE]') return { done: true };
 
   try {
