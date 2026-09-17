@@ -84,12 +84,12 @@ test('parseOpenAiSseLine extracts model from stream chunk', () => {
   assert.equal(result.text, 'hello');
 });
 
-test('parseOpenAiSseLine falls back to reasoning content', () => {
+test('parseOpenAiSseLine extracts reasoning content separately', () => {
   const result = parseOpenAiSseLine(
     'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}',
   );
 
-  assert.equal(result.text, 'thinking');
+  assert.equal(result.reasoning, 'thinking');
 });
 
 test('parseOpenAiSseLine prefers visible content over reasoning content', () => {
@@ -98,6 +98,7 @@ test('parseOpenAiSseLine prefers visible content over reasoning content', () => 
   );
 
   assert.equal(result.text, 'answer');
+  assert.equal(result.reasoning, undefined);
 });
 
 test('parseOpenAiSseLine detects stream completion', () => {
@@ -185,31 +186,39 @@ test('Anthropic completeStream reassembles event/data split across network chunk
   }
 });
 
-test('OpenAI completeStream emits reasoning-only deltas as text', async () => {
+test('OpenAI completeStream handles reasoning-only and visible-content precedence', async () => {
   const originalFetch = globalThis.fetch;
   const provider = new OpenAICompatibleProvider();
+  const responses = [
+    ['data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n', 'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}\n', 'data: [DONE]\n'],
+    ['data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n', 'data: {"choices":[{"delta":{"content":"answer"}}]}\n', 'data: [DONE]\n'],
+  ];
 
   globalThis.fetch = async () =>
-    new Response(
-      streamFromChunks([
-        'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
-        'data: [DONE]\n',
-      ]),
-      { status: 200 },
-    );
+    new Response(streamFromChunks(responses.shift()), { status: 200 });
 
   try {
-    const chunks = [];
+    const reasoningChunks = [];
     for await (const chunk of provider.completeStream({
       model: 'o3-mini',
       messages: [{ role: 'user', content: 'test' }],
       apiKey: 'test-key',
       baseUrl: 'https://api.openai.com/v1',
     })) {
-      chunks.push(chunk);
+      reasoningChunks.push(chunk);
     }
+    assert.deepEqual(reasoningChunks, [{ kind: 'text', text: 'think more' }]);
 
-    assert.deepEqual(chunks, [{ kind: 'text', text: 'thinking' }]);
+    const visibleChunks = [];
+    for await (const chunk of provider.completeStream({
+      model: 'o3-mini',
+      messages: [{ role: 'user', content: 'test' }],
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
+    })) {
+      visibleChunks.push(chunk);
+    }
+    assert.deepEqual(visibleChunks, [{ kind: 'text', text: 'answer' }]);
   } finally {
     globalThis.fetch = originalFetch;
   }

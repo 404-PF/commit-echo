@@ -93,18 +93,30 @@ export class OpenAICompatibleProvider implements Provider {
       throw new Error(`OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
+    let reasoning = '';
+    let hasVisibleContent = false;
+
     yield* streamSseResponse(
       response,
       (line) => {
         const parsed = parseOpenAiSseLine(line);
         if (parsed.error) throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
-        if (parsed.done) return SSE_STREAM_END;
+        if (parsed.done) {
+          if (!hasVisibleContent && reasoning) {
+            return [{ kind: 'text', text: reasoning }, SSE_STREAM_END];
+          }
+          return SSE_STREAM_END;
+        }
         const chunks: ProviderStreamChunk[] = [];
         if (parsed.model) {
           chunks.push({ kind: 'model', model: parsed.model });
         }
         if (parsed.text) {
+          hasVisibleContent = true;
+          reasoning = '';
           chunks.push({ kind: 'text', text: parsed.text });
+        } else if (parsed.reasoning) {
+          reasoning += parsed.reasoning;
         }
         if (chunks.length > 0) {
           return chunks;
@@ -117,6 +129,10 @@ export class OpenAICompatibleProvider implements Provider {
         label: 'OpenAI-compatible streaming request',
       },
     );
+
+    if (!hasVisibleContent && reasoning) {
+      yield { kind: 'text', text: reasoning };
+    }
   }
 
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
