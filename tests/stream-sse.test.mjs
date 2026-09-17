@@ -190,8 +190,17 @@ test('OpenAI completeStream handles reasoning-only and visible-content precedenc
   const originalFetch = globalThis.fetch;
   const provider = new OpenAICompatibleProvider();
   const responses = [
-    ['data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n', 'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}\n', 'data: [DONE]\n'],
-    ['data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n', 'data: {"choices":[{"delta":{"content":"answer"}}]}\n', 'data: [DONE]\n'],
+    [
+      'data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n',
+      'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}\n',
+      'data: [DONE]\n',
+    ],
+    [
+      'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
+      'data: {"choices":[{"delta":{"content":"answer"}}]}\n',
+      'data: {"choices":[{"delta":{"reasoning_content":" leaked"}}]}\n',
+      'data: [DONE]\n',
+    ],
   ];
 
   globalThis.fetch = async () =>
@@ -209,16 +218,47 @@ test('OpenAI completeStream handles reasoning-only and visible-content precedenc
     }
     assert.deepEqual(reasoningChunks, [{ kind: 'text', text: 'think more' }]);
 
-    const visibleChunks = [];
+    const visibleStream = provider.completeStream({
+      model: 'o3-mini',
+      messages: [{ role: 'user', content: 'test' }],
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
+    });
+    assert.deepEqual(await visibleStream.next(), {
+      done: false,
+      value: { kind: 'text', text: 'answer' },
+    });
+    assert.deepEqual(await visibleStream.next(), { done: true, value: undefined });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('OpenAI completeStream emits reasoning after an EOF-terminated stream', async () => {
+  const originalFetch = globalThis.fetch;
+  const provider = new OpenAICompatibleProvider();
+
+  globalThis.fetch = async () =>
+    new Response(
+      streamFromChunks([
+        'data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n',
+        'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}',
+      ]),
+      { status: 200 },
+    );
+
+  try {
+    const chunks = [];
     for await (const chunk of provider.completeStream({
       model: 'o3-mini',
       messages: [{ role: 'user', content: 'test' }],
       apiKey: 'test-key',
       baseUrl: 'https://api.openai.com/v1',
     })) {
-      visibleChunks.push(chunk);
+      chunks.push(chunk);
     }
-    assert.deepEqual(visibleChunks, [{ kind: 'text', text: 'answer' }]);
+
+    assert.deepEqual(chunks, [{ kind: 'text', text: 'think more' }]);
   } finally {
     globalThis.fetch = originalFetch;
   }

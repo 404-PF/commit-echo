@@ -130,9 +130,9 @@ export function parseOpenAiSseLine(line: string): {
     if (parsed.model) result.model = parsed.model;
 
     const delta = parsed.choices?.[0]?.delta;
-    if (delta?.content) {
+    if (typeof delta?.content === 'string') {
       result.text = delta.content;
-    } else if (delta?.reasoning_content) {
+    } else if (typeof delta?.reasoning_content === 'string') {
       result.reasoning = delta.reasoning_content;
     }
 
