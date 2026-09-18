@@ -7,23 +7,24 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 if (process.platform === 'win32') {
-  test.skip('commit writes message to temp file and invokes git -F (mocked) - skipped on Windows', () => {});
+  test.skip('commit pipes message to git -F - (mocked) - skipped on Windows', () => {});
 } else {
-  test('commit writes message to temp file and invokes git -F (mocked)', () => {
+  test('commit pipes message to git -F - (mocked)', () => {
   const tmpRoot = mkdtempSync(join(tmpdir(), 'fakegit-'));
   const isWin = process.platform === 'win32';
   const gitPath = isWin ? join(tmpRoot, 'git.cmd') : join(tmpRoot, 'git');
 
   if (isWin) {
-    // Batch script: %1=commit %2=-F %3=<file>
-    writeFileSync(gitPath, '@echo off\r\ntype %3\r\n', 'utf-8');
+    // The POSIX mock below is the assertion-bearing path; this test is skipped on Windows.
+    writeFileSync(gitPath, '@echo off\r\n', 'utf-8');
   } else {
     writeFileSync(
       gitPath,
       '#!/usr/bin/env node\n' +
         'const fs = require("fs");\n' +
-        'const p = process.argv.at(-1);\n' +
-        'const c = fs.readFileSync(p, "utf8");\n' +
+        'const assert = require("node:assert/strict");\n' +
+        'assert.deepEqual(process.argv.slice(2), ["commit", "-F", "-"]);\n' +
+        'const c = fs.readFileSync(0, "utf8");\n' +
         'if (!c.includes("feat: add temp-file test") || !c.includes("line-one\\nline-two")) process.exit(3);\n' +
         'console.log("[main abc1234] feat: add temp-file test");\n',
       'utf-8'
