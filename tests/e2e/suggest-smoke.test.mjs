@@ -656,6 +656,22 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
   assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
 });
 
+test('suggest --commit --yes rejects unstaged-only changes without a raw stack trace', async (t) => {
+  const { home, repo } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-auto-commit-unstaged-',
+    content: '1. feat: reject unstaged auto-commit',
+    staged: false,
+  });
+
+  const result = await runCli(['suggest', '--commit', '--yes'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+
+  assert.equal(result.code, 1);
+  assert.equal(result.stderr, '');
+  assert.match(stdout, /Auto-commit requires staged changes/);
+  assert.doesNotMatch(stdout, /at (?:file|node:)/);
+});
+
 test('suggest --show-diff uses the truncated diff for streamed suggestions', async (t) => {
   const { home, repo, requests } = await setupShowDiffFixture(t, {
     rootPrefix: 'commit-echo-show-diff-stream-',

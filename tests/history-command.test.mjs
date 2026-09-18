@@ -5,6 +5,7 @@ import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
+import { assertFriendlyCommandError, assertJsonCommandError, writeInvalidConfig } from './cli-error-helpers.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -135,38 +136,22 @@ test('history --json returns empty JSON when no history exists', async () => {
 
 test('history reports corrupted config without a raw stack trace', async () => {
   await withTempHome(async (homeDir) => {
-    const configDir = configDirFor(homeDir);
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(join(configDir, 'config.json'), '{not valid json', 'utf-8');
+    writeInvalidConfig(join(configDirFor(homeDir), 'config.json'));
 
     await assert.rejects(
       () => runHistory(homeDir),
-      (error) => {
-        const output = error.stdout + error.stderr;
-        assert.equal(error.code, 1);
-        assert.match(output, /Invalid JSON in config file/);
-        assert.doesNotMatch(output, /^\s*at\s+/m);
-        return true;
-      },
+      (error) => assertFriendlyCommandError(error, /Invalid JSON in config file/),
     );
   });
 });
 
 test('history --json reports corrupted config as JSON and exits non-zero', async () => {
   await withTempHome(async (homeDir) => {
-    const configDir = configDirFor(homeDir);
-    mkdirSync(configDir, { recursive: true });
-    writeFileSync(join(configDir, 'config.json'), '{not valid json', 'utf-8');
+    writeInvalidConfig(join(configDirFor(homeDir), 'config.json'));
 
     await assert.rejects(
       () => runHistory(homeDir, ['--json']),
-      (error) => {
-        assert.equal(error.code, 1);
-        assert.equal(error.stderr, '');
-        const data = JSON.parse(error.stdout);
-        assert.match(data.error, /Invalid JSON in config file/);
-        return true;
-      },
+      (error) => assertJsonCommandError(error, /Invalid JSON in config file/),
     );
   });
 });

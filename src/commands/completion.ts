@@ -698,7 +698,8 @@ export function completionCommand(shell?: string): void {
   if (!isSupportedShell(normalized)) {
     const error = `Unsupported shell: "${shell}". Supported shells: ${VALID_SHELLS.join(', ')}`;
     console.error(useColor ? pc.red(error) : error);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   process.stdout.write(getCompletionScript(normalized));
