@@ -225,6 +225,15 @@ test('countEntries handles empty CRLF rows and a final row without a newline', a
   );
 });
 
+test('countEntries preserves standalone carriage returns inside LF-delimited rows', async () => {
+  await withIsolatedHistory(
+    [validEntry('fix: first entry', '2026-06-01T00:00:00Z'), 'malformed\rrow'],
+    async () => {
+      assert.equal(await countEntries(), 2);
+    },
+  );
+});
+
 test('loadEntries preserves UTF-8 characters split across backward-read chunks', async () => {
   const prefix = '{"timestamp":"2026-06-01T00:00:00Z","message":"a';
   const suffix = '","diff":"","model":"test-model","provider":"local"}';

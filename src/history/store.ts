@@ -1,7 +1,6 @@
 import { readFile, writeFile, appendFile, mkdir, open, unlink, rename } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { createReadStream, existsSync } from 'node:fs';
-import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 import type { CommitEntry, StyleProfile } from '../types.js';
 import { getHistoryPath, getConfigDir } from '../config/store.js';
@@ -428,17 +427,31 @@ export async function countEntries(): Promise<number> {
   if (!existsSync(historyPath)) return 0;
 
   const historyStream = createReadStream(historyPath, { encoding: 'utf-8' });
-  const lines = createInterface({ input: historyStream, crlfDelay: Infinity });
   let count = 0;
+  let lineHasContent = false;
+  let pendingCarriageReturn = false;
 
   try {
-    for await (const line of lines) {
-      if (line.length > 0) count++;
+    for await (const chunk of historyStream) {
+      for (const character of chunk) {
+        if (character === '\n') {
+          if (lineHasContent) count++;
+          lineHasContent = false;
+          pendingCarriageReturn = false;
+          continue;
+        }
+
+        if (pendingCarriageReturn) lineHasContent = true;
+        pendingCarriageReturn = character === '\r';
+        if (character !== '\r') lineHasContent = true;
+      }
     }
   } finally {
-    lines.close();
     historyStream.destroy();
   }
+
+  if (pendingCarriageReturn) lineHasContent = true;
+  if (lineHasContent) count++;
 
   return count;
 }
