@@ -13,6 +13,20 @@ const OPENAI_TEST_PARAMS = {
   baseUrl: 'https://api.openai.com/v1',
 };
 
+const openAiParams = (model = 'o3-mini') => ({
+  model,
+  messages: [{ role: 'user', content: 'test' }],
+  apiKey: 'test-key',
+  baseUrl: 'https://api.openai.com/v1',
+});
+
+const anthropicParams = {
+  model: 'claude-sonnet-4',
+  messages: [{ role: 'user', content: 'test' }],
+  apiKey: 'test-key',
+  baseUrl: 'https://api.anthropic.com/v1',
+};
+
 async function withMockedFetch(fetchImpl, run) {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = fetchImpl;
@@ -35,6 +49,28 @@ async function collectChunks(provider, params) {
   return chunks;
 }
 
+const collectStream = collectChunks;
+
+async function collectWithMockedFetch(provider, chunks, params) {
+  return withMockedFetch(
+    async () => responseFromChunks(chunks),
+    () => collectChunks(provider, params),
+  );
+}
+
+async function collectWithMockedFetchSequence(provider, responses, paramsList) {
+  let responseIndex = 0;
+  return withMockedFetch(
+    async () => responseFromChunks(responses[responseIndex++]),
+    async () => {
+      const results = [];
+      for (const params of paramsList) {
+        results.push(await collectChunks(provider, params));
+      }
+      return results;
+    },
+  );
+}
 test('an SSE read that stalls after a partial result times out and aborts the request', async () => {
   const controller = new AbortController();
   let cancelled = false;
@@ -147,7 +183,6 @@ test('parseOpenAiSseLine prefers visible content over reasoning content', () => 
 
   assert.equal(result.text, 'answer');
   assert.equal(result.reasoning, undefined);
-
   const reasoningAfterEmptyContent = parseOpenAiSseLine(
     'data: {"choices":[{"delta":{"content":"","reasoning_content":"thinking"}}]}',
   );
@@ -216,10 +251,8 @@ test('Anthropic completeStream reassembles event/data split across network chunk
       assert.deepEqual(chunks, [{ kind: 'text', text: 'hi' }]);
     },
   );
-});
-
+ });
 test('OpenAI completeStream handles reasoning-only and visible-content precedence', async () => {
-  const originalFetch = globalThis.fetch;
   const provider = new OpenAICompatibleProvider();
   const responses = [
     [
@@ -235,65 +268,26 @@ test('OpenAI completeStream handles reasoning-only and visible-content precedenc
     ],
   ];
 
-  globalThis.fetch = async () =>
-    new Response(streamFromChunks(responses.shift()), { status: 200 });
-
-  try {
-    const reasoningChunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'o3-mini',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    })) {
-      reasoningChunks.push(chunk);
-    }
-    assert.deepEqual(reasoningChunks, [{ kind: 'text', text: 'think more' }]);
-
-    const visibleStream = provider.completeStream({
-      model: 'o3-mini',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    });
-    assert.deepEqual(await visibleStream.next(), {
-      done: false,
-      value: { kind: 'text', text: 'answer' },
-    });
-    assert.deepEqual(await visibleStream.next(), { done: true, value: undefined });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const [reasoningChunks, visibleChunks] = await collectWithMockedFetchSequence(
+    provider,
+    responses,
+    [openAiParams(), openAiParams()],
+  );
+  assert.deepEqual(reasoningChunks, [{ kind: 'text', text: 'think more' }]);
+  assert.deepEqual(visibleChunks, [{ kind: 'text', text: 'answer' }]);
 });
 
 test('OpenAI completeStream emits reasoning after an EOF-terminated stream', async () => {
-  const originalFetch = globalThis.fetch;
   const provider = new OpenAICompatibleProvider();
-
-  globalThis.fetch = async () =>
-    new Response(
-      streamFromChunks([
-        'data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n',
-        'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}',
-      ]),
-      { status: 200 },
-    );
-
-  try {
-    const chunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'o3-mini',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    })) {
-      chunks.push(chunk);
-    }
-
-    assert.deepEqual(chunks, [{ kind: 'text', text: 'think more' }]);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const chunks = await collectWithMockedFetch(
+    provider,
+    [
+      'data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n',
+      'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}',
+    ],
+    openAiParams(),
+  );
+  assert.deepEqual(chunks, [{ kind: 'text', text: 'think more' }]);
 });
 
 test('OpenAI completeStream processes final line without trailing newline', async () => {
@@ -371,5 +365,19 @@ test('OpenAI completeStream handles [DONE] in final buffer without trailing newl
 
       assert.deepEqual(chunks, [{ kind: 'text', text: 'done' }]);
     },
+  );
+});
+
+test('OpenAI completeStream rejects an oversized reasoning-only stream', async () => {
+  const provider = new OpenAICompatibleProvider();
+  const reasoning = 'x'.repeat(1024 * 1024 + 1);
+
+  await assert.rejects(
+    collectWithMockedFetch(
+      provider,
+      [`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning } }] })}\n`],
+      openAiParams(),
+    ),
+    /reasoning stream exceeded the 1 MiB buffer limit/,
   );
 });

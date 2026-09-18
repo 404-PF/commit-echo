@@ -685,6 +685,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
     rootPrefix: 'commit-echo-show-diff-unstaged-',
     content: '1. feat: inspect unstaged diff',
     staged: false,
+    readme: '# fixture\n\nSuggestions generated:\nStreaming suggestions\nupdated\n',
   });
 
   const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
