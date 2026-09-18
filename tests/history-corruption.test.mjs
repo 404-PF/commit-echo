@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import { getConfigDir } from '../dist/config/store.js';
 import { countEntries, loadEntries, readHistoryChunk } from '../dist/history/store.js';
 
-function writeHistory(lines) {
+function writeHistory(lines, { trailingNewline = true, lineEnding = '\n' } = {}) {
   const configDir = getConfigDir();
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(join(configDir, 'history.jsonl'), `${lines.join('\n')}\n`, 'utf-8');
+  const content = lines.join(lineEnding) + (trailingNewline ? lineEnding : '');
+  writeFileSync(join(configDir, 'history.jsonl'), content, 'utf-8');
 }
 
 function restoreEnv(name, value) {
@@ -59,7 +60,7 @@ test('readHistoryChunk retries short reads from the unread offset', async () => 
   );
 });
 
-async function withIsolatedHistory(lines, assertion) {
+async function withIsolatedHistory(lines, assertion, writeOptions) {
   const originalHome = process.env.HOME;
   const originalAppData = process.env.APPDATA;
   const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
@@ -73,7 +74,7 @@ async function withIsolatedHistory(lines, assertion) {
     process.env.XDG_CONFIG_HOME = join(tempHome, '.config');
     console.warn = (message) => warnings.push(String(message));
 
-    writeHistory(lines);
+    writeHistory(lines, writeOptions);
     await assertion({ warnings });
   } finally {
     console.warn = originalWarn;
@@ -211,6 +212,16 @@ test('countEntries counts raw non-empty history rows, including malformed JSON l
       // countEntries reports stored JSONL rows; parsing validity is handled by loadEntries.
       assert.equal(await countEntries(), 3);
     },
+  );
+});
+
+test('countEntries handles empty CRLF rows and a final row without a newline', async () => {
+  await withIsolatedHistory(
+    [validEntry('fix: first entry', '2026-06-01T00:00:00Z'), '', validEntry('feat: final entry', '2026-06-01T00:00:01Z')],
+    async () => {
+      assert.equal(await countEntries(), 2);
+    },
+    { trailingNewline: false, lineEnding: '\r\n' },
   );
 });
 

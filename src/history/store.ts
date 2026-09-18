@@ -1,6 +1,7 @@
 import { readFile, writeFile, appendFile, mkdir, open, unlink, rename } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 import type { CommitEntry, StyleProfile } from '../types.js';
 import { getHistoryPath, getConfigDir } from '../config/store.js';
@@ -426,8 +427,20 @@ export async function countEntries(): Promise<number> {
   const historyPath = getHistoryPath();
   if (!existsSync(historyPath)) return 0;
 
-  const raw = await readFile(historyPath, 'utf-8');
-  return raw.split('\n').filter(Boolean).length;
+  const historyStream = createReadStream(historyPath, { encoding: 'utf-8' });
+  const lines = createInterface({ input: historyStream, crlfDelay: Infinity });
+  let count = 0;
+
+  try {
+    for await (const line of lines) {
+      if (line.length > 0) count++;
+    }
+  } finally {
+    lines.close();
+    historyStream.destroy();
+  }
+
+  return count;
 }
 
 /** Build a style profile from recent commit history entries. */
