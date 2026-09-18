@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, chmod, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getGitExecutable, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
@@ -52,6 +52,7 @@ export interface UninstalledCommitHooks {
   restored: string[];
   removed: string[];
   skipped: string[];
+  missing: string[];
 }
 
 function resolveGitPath(gitPath: string): string {
@@ -59,7 +60,7 @@ function resolveGitPath(gitPath: string): string {
 }
 
 function resolveHookPath(hookName: string): string {
-  return resolveGitPath(`hooks/${hookName}`);
+  return resolve(resolveGitPath(`hooks/${hookName}`));
 }
 
 function resolvePendingEntryPath(): string {
@@ -140,6 +141,8 @@ async function installManagedHook(hookName: string, cliPath: string): Promise<st
     const existingHook = await readFile(hookPath, 'utf-8').catch(() => '');
     if (!existingHook.includes(marker) && !existsSync(backupPath)) {
       await copyFile(hookPath, backupPath);
+      const originalMode = (await stat(hookPath)).mode & 0o7777;
+      await chmod(backupPath, originalMode);
     }
   }
 
@@ -150,7 +153,7 @@ async function installManagedHook(hookName: string, cliPath: string): Promise<st
   return hookPath;
 }
 
-type HookUninstallAction = 'restored' | 'removed' | 'skipped';
+type HookUninstallAction = 'restored' | 'removed' | 'skipped' | 'missing';
 
 async function uninstallManagedHook(hookName: string): Promise<{ path: string; action: HookUninstallAction }> {
   const hookPath = resolveHookPath(hookName);
@@ -163,7 +166,9 @@ async function uninstallManagedHook(hookName: string): Promise<{ path: string; a
 
   if (isManagedHook || (!hookExists && backupExists)) {
     if (backupExists) {
+      const originalMode = (await stat(backupPath)).mode & 0o7777;
       await copyFile(backupPath, hookPath);
+      await chmod(hookPath, originalMode);
       await rm(backupPath, { force: true });
       return { path: hookPath, action: 'restored' };
     }
@@ -172,7 +177,11 @@ async function uninstallManagedHook(hookName: string): Promise<{ path: string; a
     return { path: hookPath, action: 'removed' };
   }
 
-  return { path: hookPath, action: 'skipped' };
+  if (backupExists) {
+    await rm(backupPath, { force: true });
+  }
+
+  return { path: hookPath, action: hookExists ? 'skipped' : 'missing' };
 }
 
 export async function installCommitHooks(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<InstalledCommitHooks> {
@@ -203,6 +212,7 @@ export async function uninstallCommitHooks(): Promise<UninstalledCommitHooks> {
     restored: results.filter((result) => result.action === 'restored').map((result) => result.path),
     removed: results.filter((result) => result.action === 'removed').map((result) => result.path),
     skipped: results.filter((result) => result.action === 'skipped').map((result) => result.path),
+    missing: results.filter((result) => result.action === 'missing').map((result) => result.path),
   };
 }
 

@@ -55,12 +55,14 @@ export async function initCommand(options: { installHook?: boolean; uninstallHoo
       const result = await uninstallCommitHooks();
       const changedPaths = [...result.restored, ...result.removed];
 
-      if (changedPaths.length === 0) {
+      if (changedPaths.length === 0 && result.skipped.length === 0) {
         console.log(pc.yellow('No commit-echo-managed hooks found.'));
       } else {
-        console.log(pc.green('Removed commit-echo hooks:'));
-        for (const hookPath of changedPaths) {
-          console.log(`  ${hookPath}`);
+        if (changedPaths.length > 0) {
+          console.log(pc.green('Removed commit-echo hooks:'));
+          for (const hookPath of changedPaths) {
+            console.log(`  ${hookPath}`);
+          }
         }
         if (result.restored.length > 0) {
           console.log(pc.dim(`Restored ${result.restored.length} existing hook(s).`));
