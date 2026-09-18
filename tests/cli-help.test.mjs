@@ -48,7 +48,7 @@ test('CLI command errors render without a raw stack trace', async () => {
       const output = error.stdout + error.stderr;
       assert.equal(error.code, 1);
       assert.match(output, /Unsupported hook: unsupported/);
-      assert.doesNotMatch(output, /at (?:file|node:)/);
+      assert.doesNotMatch(output, /^\s*at\s+/m);
       return true;
     },
   );

@@ -959,7 +959,7 @@ test('suggest --stream fails fast for unsupported providers', async (t) => {
   });
 
   const result = await onceExit(child);
-  assert.equal(result.code, 0);
+  assert.equal(result.code, 1);
   assert.match(stdout, /Streaming is not supported for the 'cohere' provider/);
   assert.doesNotMatch(stdout, /Streaming suggestions/);
 });
@@ -1024,7 +1024,7 @@ test('suggest --stream reports parse failure for unparseable streamed output', a
   });
 
   const result = await onceExit(child);
-  assert.equal(result.code, 0);
+  assert.equal(result.code, 1);
   assert.match(stdout, /not a numbered suggestion list/);
   assert.match(stdout, /Could not parse any suggestions from LLM response/);
 });

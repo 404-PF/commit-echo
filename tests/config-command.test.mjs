@@ -269,7 +269,26 @@ test('config reports corrupted config without a raw stack trace', async () => {
         const output = error.stdout + error.stderr;
         assert.equal(error.code, 1);
         assert.match(output, /Invalid JSON in config file/);
-        assert.doesNotMatch(output, /at (?:file|node:)/);
+        assert.doesNotMatch(output, /^\s*at\s+/m);
+        return true;
+      },
+    );
+  });
+});
+
+test('config --json reports corrupted config as JSON and exits non-zero', async () => {
+  await withTempHome(async (homeDir) => {
+    const configDir = configDirFor(homeDir);
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'config.json'), '{not valid json', 'utf-8');
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['--json']),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.equal(error.stderr, '');
+        const data = JSON.parse(error.stdout);
+        assert.match(data.error, /Invalid JSON in config file/);
         return true;
       },
     );

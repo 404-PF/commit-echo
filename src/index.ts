@@ -15,12 +15,22 @@ import { completionCommand } from './commands/completion.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
 import { runPostCommitHook, runPrepareCommitMsgHook } from './git/hook.js';
 
-async function runCliCommand(action: () => void | Promise<void>): Promise<void> {
+type CliCommandResult = void | boolean;
+type CliCommandAction = () => CliCommandResult | Promise<CliCommandResult>;
+
+async function runCliCommand(action: CliCommandAction, options: { json?: boolean } = {}): Promise<void> {
   try {
-    await action();
+    const result = await action();
+    if (result === false) {
+      process.exitCode = 1;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    outro(pc.red(message));
+    if (options.json) {
+      console.log(JSON.stringify({ error: message }, null, 2));
+    } else {
+      outro(pc.red(message));
+    }
     process.exitCode = 1;
   }
 }
@@ -84,7 +94,7 @@ const configCliCommand = program
   .description('View current configuration')
   .option('--json', 'Output the configuration as JSON')
   .action(async (options) => {
-    await runCliCommand(() => configCommand({ json: Boolean(options.json) }));
+    await runCliCommand(() => configCommand({ json: Boolean(options.json) }), { json: Boolean(options.json) });
   });
 
 configCliCommand
@@ -117,7 +127,7 @@ program
     await runCliCommand(async () => {
       const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
       const noCommit = command.getOptionValueSource('commit') === 'cli' && options.commit === false;
-      await suggestCommand({
+      return suggestCommand({
         commit: options.commit,
         autoCommit: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
         verbose: Boolean(options.verbose),
@@ -136,7 +146,7 @@ program
   .description('View learned style profile and recent commit history')
   .option('--json', 'Output the style profile and recent commits as JSON')
   .action(async (options) => {
-    await runCliCommand(() => historyCommand({ json: Boolean(options.json) }));
+    await runCliCommand(() => historyCommand({ json: Boolean(options.json) }), { json: Boolean(options.json) });
   });
 
 program
@@ -150,7 +160,7 @@ program
   .action(async (directory, options) => {
     await runCliCommand(async () => {
       const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
-      await batchCommand({
+      return batchCommand({
         directory: directory || undefined,
         recursive: Boolean(options.recursive),
         verbose: Boolean(options.verbose),
@@ -197,7 +207,7 @@ program.addCommand(hookCommand, { hidden: true });
 program.action(async () => {
   await runCliCommand(async () => {
     const opts = program.opts();
-    await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto) });
+    return suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto) });
   });
 });
 

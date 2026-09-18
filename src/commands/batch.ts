@@ -155,14 +155,14 @@ export async function batchCommand(
     verbose?: boolean;
     yes?: boolean;
   } = {},
-): Promise<void> {
+): Promise<boolean> {
   intro(pc.bold(pc.cyan('commit-echo batch')));
 
   const dir = options.directory ?? process.cwd();
 
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
     outro(pc.red(`Directory not found: ${dir}`));
-    return;
+    return false;
   }
 
   // Discover git repositories in the target directory
@@ -170,7 +170,7 @@ export async function batchCommand(
 
   if (repos.length === 0) {
     outro(pc.yellow(`No git repositories found in ${dir}`));
-    return;
+    return true;
   }
 
   console.log(`\n  Found ${pc.bold(String(repos.length))} repo(s) — checking for changes...\n`);
@@ -181,7 +181,7 @@ export async function batchCommand(
     config = await loadOrPromptConfig();
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Configuration error'));
-    return;
+    return false;
   }
 
   // Verify API key once
@@ -190,7 +190,7 @@ export async function batchCommand(
     apiKey = assertApiKeyAvailable(config);
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Missing API key'));
-    return;
+    return false;
   }
 
   // Build style profile once (shared across all repos)
@@ -491,4 +491,5 @@ export async function batchCommand(
     `\n  ${pc.green(String(succeeded.length))} succeeded, ${pc.yellow(String(skipped.length))} skipped, ${pc.red(String(failed.length))} failed`,
   );
   outro('Batch processing complete.');
+  return failed.length === 0;
 }

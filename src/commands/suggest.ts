@@ -105,7 +105,7 @@ export async function suggestCommand(
     dryRun?: boolean;
     noCommit?: boolean;
   } = {},
-): Promise<void> {
+): Promise<boolean> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
   const shouldCommit = options.commit === true;
@@ -118,14 +118,14 @@ export async function suggestCommand(
     checkGitRepo();
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Not a git repository.'));
-    return;
+    return false;
   }
 
   if (!hasCommits()) {
     outro(
       pc.yellow('This repository has no commits yet. commit-echo needs at least one commit to analyze your style.'),
     );
-    return;
+    return true;
   }
 
   let config: Config;
@@ -133,7 +133,7 @@ export async function suggestCommand(
     config = await loadOrPromptConfig();
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Configuration error'));
-    return;
+    return false;
   }
 
   if (options.model) {
@@ -145,7 +145,7 @@ export async function suggestCommand(
     if (!Number.isInteger(parsed) || parsed <= 0) {
       outro(pc.red('Invalid --max-diff-size value. Expected a positive integer.'));
       process.exitCode = 1;
-      return;
+      return false;
     }
     config.maxDiffSize = parsed;
   }
@@ -159,7 +159,7 @@ export async function suggestCommand(
       const unstagedDiff = getUnstagedDiff();
       if (!unstagedDiff.hasChanges) {
         outro(pc.yellow('No changes detected in your working directory.'));
-        return;
+        return true;
       }
 
       if (!options.autoCommit) {
@@ -171,12 +171,12 @@ export async function suggestCommand(
           });
         } catch {
           outro(pc.yellow('Cancelled. Stage changes with `git add` and try again.'));
-          return;
+          return true;
         }
 
         if (isCancel(useUnstaged) || !useUnstaged) {
           outro(pc.yellow('Cancelled. Stage changes with `git add` and try again.'));
-          return;
+          return true;
         }
       }
 
@@ -184,7 +184,7 @@ export async function suggestCommand(
     }
   } catch (err) {
     outro(pc.red(`Failed to read git diff: ${err instanceof Error ? err.message : String(err)}`));
-    return;
+    return false;
   }
 
   const profile = await buildProfile(config.historySize);
@@ -212,7 +212,7 @@ export async function suggestCommand(
       [sysPrompt, usrPrompt] = await resolvePrompts(profile, vars, config);
     } catch (err) {
       outro(pc.red(`Failed to load template: ${err instanceof Error ? err.message : String(err)}`));
-      return;
+      return false;
     }
 
     console.log(
@@ -225,7 +225,7 @@ export async function suggestCommand(
       ),
     );
     outro(pc.green('Dry run complete.'));
-    return;
+    return true;
   }
 
   if (options.showDiff) {
@@ -244,7 +244,7 @@ export async function suggestCommand(
     apiKey = assertApiKeyAvailable(config);
   } catch (err) {
     outro(pc.red(err instanceof Error ? err.message : 'Missing API key'));
-    return;
+    return false;
   }
   while (true) {
     let suggestions: Suggestion[];
@@ -257,7 +257,7 @@ export async function suggestCommand(
         streamProvider = getStreamingProvider(config.provider);
       } catch (err) {
         outro(pc.red(err instanceof Error ? err.message : 'Streaming not supported'));
-        return;
+        return false;
       }
 
       console.log(pc.dim('Streaming suggestions...\n'));
@@ -283,7 +283,7 @@ export async function suggestCommand(
         process.stdout.write('\n');
         const message = err instanceof Error ? err.message : 'Unknown error';
         outro(pc.red(`Streaming failed: ${message}`));
-        return;
+        return false;
       }
       process.stdout.write('\n\n');
 
@@ -298,7 +298,7 @@ export async function suggestCommand(
         outro(
           pc.red('Could not parse any suggestions from LLM response. The model may need a different prompt format.'),
         );
-        return;
+        return false;
       }
     } else {
       const genSpinner = spinner();
@@ -314,7 +314,7 @@ export async function suggestCommand(
         genSpinner.stop(pc.red('Failed to generate suggestions.'));
         const message = err instanceof Error ? err.message : 'Unknown error';
         outro(pc.red(message));
-        return;
+        return false;
       }
     }
 
@@ -335,16 +335,17 @@ export async function suggestCommand(
       if (shouldCommit) {
         if (!diffResult.staged) {
           outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
-          process.exit(1);
+          process.exitCode = 1;
+          return false;
         }
-        await acceptAndCommit(first, config, diffResult.diff, true);
+        return acceptAndCommit(first, config, diffResult.diff, true);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
         if (first.body) {
           console.log(`  ${pc.dim(first.body)}`);
         }
       }
-      return;
+      return true;
     }
 
     try {
@@ -359,7 +360,7 @@ export async function suggestCommand(
 
       if (isCancel(action) || action === 'cancel') {
         outro('Cancelled.');
-        return;
+        return true;
       }
 
       if (action === 'regenerate') {
@@ -378,17 +379,20 @@ export async function suggestCommand(
 
       if (isCancel(selectedIndex)) {
         outro('Cancelled.');
-        return;
+        return true;
       }
 
       const selected = suggestions.find((s) => s.index === selectedIndex);
       if (!selected) {
         outro(pc.red('Invalid selection.'));
-        return;
+        return false;
       }
 
       if (shouldCommit) {
-        await acceptAndCommit(selected, config, diffResult.diff);
+        const committed = await acceptAndCommit(selected, config, diffResult.diff);
+        if (!committed) {
+          return false;
+        }
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
         if (selected.body) {
@@ -399,12 +403,14 @@ export async function suggestCommand(
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       outro(pc.red(message));
-      return;
+      return false;
     }
   }
+
+  return true;
 }
 
-async function acceptAndCommit(selected: Suggestion, config: Config, diff: string, auto = false): Promise<void> {
+async function acceptAndCommit(selected: Suggestion, config: Config, diff: string, auto = false): Promise<boolean> {
   console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
   if (selected.body) {
     console.log(`  ${pc.dim(selected.body)}`);
@@ -417,7 +423,8 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       outro(pc.red(`Commit failed: ${msg}`));
-      process.exit(1);
+      process.exitCode = 1;
+      return false;
     }
 
     try {
@@ -434,7 +441,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     }
 
     outro(pc.green('Commit completed.'));
-    return;
+    return true;
   }
 
   const edit = await confirm({
@@ -443,7 +450,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
   });
   if (isCancel(edit)) {
     outro('Cancelled.');
-    return;
+    return true;
   }
 
   let finalMessage = selected.message;
@@ -456,7 +463,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     });
     if (isCancel(editedMessage)) {
       outro('Cancelled.');
-      return;
+      return true;
     }
     finalMessage = editedMessage;
 
@@ -466,7 +473,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     });
     if (isCancel(editedBody)) {
       outro('Cancelled.');
-      return;
+      return true;
     }
     finalBody = editedBody || undefined;
   }
@@ -478,7 +485,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
 
   if (isCancel(confirmCommit) || !confirmCommit) {
     outro('Commit skipped.');
-    return;
+    return true;
   }
 
   let result;
@@ -488,7 +495,8 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
   } catch (err) {
     outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
-    return;
+    process.exitCode = 1;
+    return false;
   }
 
   try {
@@ -505,4 +513,5 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
   }
 
   outro(pc.green('Commit completed.'));
+  return true;
 }
