@@ -351,6 +351,36 @@ test("commit parses detached HEAD commit output", () => {
   }
 });
 
+test("commit passes the message to git through stdin", () => {
+  const distModule = new URL("../dist/git/diff.js", import.meta.url).href;
+  const script = [
+    'import { createRequire, syncBuiltinESMExports } from "node:module";',
+    '',
+    'const require = createRequire(import.meta.url);',
+    'const childProcess = require("node:child_process");',
+    'const calls = [];',
+    'childProcess.spawnSync = (file, args, options) => {',
+    '  calls.push({ file, args, input: options?.input });',
+    '  return { error: undefined, status: 0, stderr: "", stdout: "[main abc1234] test: message\\n" };',
+    '};',
+    'syncBuiltinESMExports();',
+    '',
+    'const { commit } = await import(' + JSON.stringify(distModule) + ');',
+    'const result = commit("test: message", "body text");',
+    'process.stdout.write(JSON.stringify({ result, calls }));',
+  ].join("\n");
+
+  const output = execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+    encoding: "utf-8",
+  });
+  const { result, calls } = JSON.parse(output);
+
+  assert.equal(result.summary, "test: message");
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, ["commit", "-F", "-"]);
+  assert.equal(calls[0].input, "test: message\n\nbody text");
+});
+
 test("getRepoRoot returns the absolute path of the repository root", () => {
   const repoDir = initRepo();
   const nestedDir = join(repoDir, "src", "nested");
