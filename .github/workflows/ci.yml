@@ -3,6 +3,7 @@ name: CI
 # Run the project checks for every pull request update.
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
