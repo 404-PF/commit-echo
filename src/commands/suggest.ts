@@ -335,7 +335,8 @@ export async function suggestCommand(
       if (shouldCommit) {
         if (!diffResult.staged) {
           outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
-          process.exit(1);
+          process.exitCode = 1;
+          return;
         }
         await acceptAndCommit(first, config, diffResult.diff, true);
       } else {
@@ -417,7 +418,8 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       outro(pc.red(`Commit failed: ${msg}`));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     try {

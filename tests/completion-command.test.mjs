@@ -69,8 +69,10 @@ test('completion prints error and exits for unsupported shell', async () => {
     await runCompletion(['tcsh']);
     assert.fail('Expected process to exit with error');
   } catch (err) {
+    assert.equal(err.code, 1);
     assert.match(err.stderr || '', /Unsupported shell/);
     assert.match(err.stderr || '', /tcsh/);
+    assert.doesNotMatch(err.stderr || '', /at (?:file|node:)/);
   }
 });
 
