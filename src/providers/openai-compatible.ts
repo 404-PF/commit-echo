@@ -2,6 +2,8 @@ import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../t
 import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
 import { parseOpenAiSseLine, streamSseResponse, SSE_STREAM_END } from './sse.js';
 
+const MAX_BUFFERED_REASONING_CHARS = 1024 * 1024;
+
 function buildOpenAiRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
   const { model, messages, temperature = 0.7, maxTokens = 1024 } = params;
 
@@ -115,7 +117,10 @@ export class OpenAICompatibleProvider implements Provider {
           hasVisibleContent = true;
           reasoning = '';
           chunks.push({ kind: 'text', text: parsed.text });
-        } else if (parsed.reasoning) {
+        } else if (parsed.reasoning && !hasVisibleContent) {
+          if (reasoning.length + parsed.reasoning.length > MAX_BUFFERED_REASONING_CHARS) {
+            throw new Error('OpenAI-compatible reasoning stream exceeded the 1 MiB buffer limit');
+          }
           reasoning += parsed.reasoning;
         }
         if (chunks.length > 0) {

@@ -35,11 +35,9 @@ function extractShownDiff(stdout) {
     return preview.slice(0, truncationIndex).trimEnd();
   }
 
-  const markerIndexes = ['Suggestions generated:', 'Streaming suggestions']
-    .map((marker) => preview.indexOf(marker))
-    .filter((index) => index !== -1);
-  const markerIndex = Math.min(...markerIndexes);
-  assert.ok(Number.isFinite(markerIndex), `Could not find suggestion output in stdout:\n${stdout}`);
+  const markerMatch = preview.match(/(?:^|\n)(?:[|•◐◓◑o][^\r\n]*?)?(?:Suggestions generated:|Streaming suggestions)/);
+  assert.ok(markerMatch, `Could not find suggestion output in stdout:\n${stdout}`);
+  const markerIndex = (markerMatch.index ?? 0) + (markerMatch[0].startsWith('\n') ? 1 : 0);
 
   const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
   return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
@@ -654,6 +652,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
     rootPrefix: 'commit-echo-show-diff-unstaged-',
     content: '1. feat: inspect unstaged diff',
     staged: false,
+    readme: '# fixture\n\nSuggestions generated:\nStreaming suggestions\nupdated\n',
   });
 
   const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
