@@ -35,7 +35,7 @@ function extractShownDiff(stdout) {
     return preview.slice(0, truncationIndex).trimEnd();
   }
 
-  const markerMatch = preview.match(/(?:^|\n)(?:[|•◐◓◑o][^\r\n]*?)?(?:Suggestions generated:|Streaming suggestions)/);
+  const markerMatch = preview.match(/(?:^|\n)(?![+ \-@])[^\r\n]*?(?:Suggestions generated:|Streaming suggestions)/);
   assert.ok(markerMatch, `Could not find suggestion output in stdout:\n${stdout}`);
   const markerIndex = (markerMatch.index ?? 0) + (markerMatch[0].startsWith('\n') ? 1 : 0);
 
