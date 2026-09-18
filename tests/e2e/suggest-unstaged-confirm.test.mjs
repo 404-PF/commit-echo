@@ -94,7 +94,7 @@ async function runSuggest(args, fixture, input = '') {
 
 test('suggest does not use unstaged changes without confirmation', async (t) => {
   const fixture = await setupFixture(t, 'commit-echo-unstaged-confirm-');
-  const result = await runSuggest(['--dry-run'], fixture, '\n');
+  const result = await runSuggest(['--dry-run'], fixture, 'n');
 
   assert.equal(result.code, 0);
   assert.match(result.stdout, /Cancelled\. Stage changes with `git add` and try again\./);
