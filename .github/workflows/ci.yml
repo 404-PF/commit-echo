@@ -1,5 +1,7 @@
 name: CI
 
+# Run the project checks for every pull request update.
+
 on:
   pull_request:
   push:
