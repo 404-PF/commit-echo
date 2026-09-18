@@ -208,8 +208,7 @@ function getConfigJsonOutput(config: Config): ConfigJsonOutput {
 export async function configCommand(options: ConfigCommandOptions = {}): Promise<void> {
   if (!configExists()) {
     if (options.json) {
-      console.log(JSON.stringify({ error: 'No configuration found. Run commit-echo init first.' }, null, 2));
-      process.exit(1);
+      throw new Error('No configuration found. Run commit-echo init first.');
     }
     intro(pc.bold(pc.cyan('commit-echo config')));
     outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));
@@ -245,13 +244,15 @@ export async function configSetCommand(key: string, value: string): Promise<void
   if (!configExists()) {
     intro(pc.bold(pc.cyan('commit-echo config')));
     outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   if (!isConfigSetKey(key)) {
     intro(pc.bold(pc.cyan('commit-echo config')));
     outro(pc.red(`Unknown config key: ${key}. Valid keys: ${CONFIG_SET_KEYS.join(', ')}`));
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const config = await loadRawConfig();
@@ -273,7 +274,8 @@ export async function configSetCommand(key: string, value: string): Promise<void
   } catch (error) {
     intro(pc.bold(pc.cyan('commit-echo config')));
     outro(pc.red(error instanceof Error ? error.message : String(error)));
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   await saveConfig(updatedConfig);
