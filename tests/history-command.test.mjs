@@ -133,6 +133,25 @@ test('history --json returns empty JSON when no history exists', async () => {
   });
 });
 
+test('history reports corrupted config without a raw stack trace', async () => {
+  await withTempHome(async (homeDir) => {
+    const configDir = configDirFor(homeDir);
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'config.json'), '{not valid json', 'utf-8');
+
+    await assert.rejects(
+      () => runHistory(homeDir),
+      (error) => {
+        const output = error.stdout + error.stderr;
+        assert.equal(error.code, 1);
+        assert.match(output, /Invalid JSON in config file/);
+        assert.doesNotMatch(output, /at (?:file|node:)/);
+        return true;
+      },
+    );
+  });
+});
+
 test('history command renders the style profile and recent commit messages', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir);
