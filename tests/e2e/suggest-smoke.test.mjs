@@ -24,11 +24,25 @@ function stripAnsi(text) {
 }
 
 function extractShownDiff(stdout) {
-  const match = stdout.match(
-    /Diff being analyzed:\n([\s\S]*?)\n\n(?:[\u007c\u2022\u25d0\u25d3\u25d1\u25d2\s]*Generating commit suggestions[\s\S]*?Suggestions generated:|The diff above is truncated|Streaming suggestions|Suggestions generated:)/,
-  );
-  assert.ok(match, `Could not find shown diff in stdout:\n${stdout}`);
-  return match[1];
+  const prefix = 'Diff being analyzed:\n';
+  const start = stdout.indexOf(prefix);
+  assert.notEqual(start, -1, `Could not find shown diff in stdout:\n${stdout}`);
+
+  const preview = stdout.slice(start + prefix.length);
+  const truncationNote = '\nThe diff above is truncated to match maxDiffSize.';
+  const truncationIndex = preview.indexOf(truncationNote);
+  if (truncationIndex !== -1) {
+    return preview.slice(0, truncationIndex).trimEnd();
+  }
+
+  const markerIndexes = ['Suggestions generated:', 'Streaming suggestions']
+    .map((marker) => preview.indexOf(marker))
+    .filter((index) => index !== -1);
+  const markerIndex = Math.min(...markerIndexes);
+  assert.ok(Number.isFinite(markerIndex), `Could not find suggestion output in stdout:\n${stdout}`);
+
+  const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
+  return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
 }
 
 function extractPromptDiff(content) {
