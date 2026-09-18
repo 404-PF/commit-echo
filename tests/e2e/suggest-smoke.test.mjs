@@ -35,11 +35,11 @@ function extractShownDiff(stdout) {
     return preview.slice(0, truncationIndex).trimEnd();
   }
 
-  const markerIndexes = ['Suggestions generated:', 'Streaming suggestions']
-    .map((marker) => preview.indexOf(marker))
-    .filter((index) => index !== -1);
-  const markerIndex = Math.min(...markerIndexes);
-  assert.ok(Number.isFinite(markerIndex), `Could not find suggestion output in stdout:\n${stdout}`);
+  const markerPattern =
+    /^(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?|[\u007c\u2022\u25d0\u25d3\u25d1\u25d2\u2502\u25c7]\s+(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?))$/gm;
+  const markerMatch = [...preview.matchAll(markerPattern)].at(-1);
+  assert.ok(markerMatch, `Could not find suggestion output in stdout:\n${stdout}`);
+  const markerIndex = markerMatch.index;
 
   const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
   return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
@@ -606,6 +606,23 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
   assert.match(stderr, /Diff truncated:/);
   assert.match(requests.at(-1).messages[1].content, /\[\.\.\.truncated 1 file\.\.\.\]/);
   assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
+});
+
+test('suggest --show-diff ignores suggestion markers inside the displayed diff', async (t) => {
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-show-diff-marker-text-',
+    content: '1. feat: preserve marker text',
+    readme: '# fixture\n\nSuggestions generated:\nStreaming suggestions...\n',
+  });
+
+  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+  const shownDiff = extractShownDiff(stdout);
+
+  assert.equal(result.code, 0);
+  assert.match(shownDiff, /\+Suggestions generated:/);
+  assert.match(shownDiff, /\+Streaming suggestions\.\.\./);
+  assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), shownDiff);
 });
 
 test('suggest --max-diff-size overrides configured diff limit for one invocation', async (t) => {

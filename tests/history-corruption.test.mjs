@@ -226,10 +226,19 @@ test('countEntries handles empty CRLF rows and a final row without a newline', a
 });
 
 test('countEntries preserves standalone carriage returns inside LF-delimited rows', async () => {
+  const timestamp = '2026-06-01T00:00:00Z';
+  const firstEntry = validEntry('x'.repeat(65525 - Buffer.byteLength(validEntry('', timestamp), 'utf8')), timestamp);
+  assert.equal(Buffer.byteLength(firstEntry, 'utf8'), 65525);
+
   await withIsolatedHistory(
-    [validEntry('fix: first entry', '2026-06-01T00:00:00Z'), 'malformed\rrow'],
-    async () => {
+    [firstEntry, 'malformed\rrow'],
+    async ({ warnings }) => {
       assert.equal(await countEntries(), 2);
+
+      const entries = await loadEntries();
+      assert.equal(entries.length, 1);
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /\(line 2\)\.$/);
     },
   );
 });
