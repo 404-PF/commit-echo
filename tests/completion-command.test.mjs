@@ -275,6 +275,14 @@ test('NO_COLOR disables color even when set to an empty string (no-color.org spe
 });
 
 test('completion bash script is syntactically valid bash', { skip: process.platform === 'win32' }, async () => {
+  // Bash is optional on Windows and may be absent from minimal CI images.
+  try {
+    await execFileAsync('bash', ['-c', 'exit 0']);
+  } catch (err) {
+    if (err.code === 'ENOENT') return; // bash not installed — skip silently
+    throw err;
+  }
+
   const { stdout } = await runCompletion(['bash']);
   // Use a relative path in cwd — Git Bash on Windows mangles absolute Windows
   // paths (backslashes get stripped). The cwd of the test runner is the repo

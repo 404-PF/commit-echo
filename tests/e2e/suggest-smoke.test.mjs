@@ -25,7 +25,7 @@ function stripAnsi(text) {
 
 function extractShownDiff(stdout) {
   const match = stdout.match(
-    /Diff being analyzed:\n([\s\S]*?)\n\n(?:[\u007c\u2022\u25d0\u25d3\u25d1\u25d2\s]*Generating commit suggestions[\s\S]*?Suggestions generated:|The diff above is truncated|Streaming suggestions|Suggestions generated:)/,
+    /Diff being analyzed:\n([\s\S]*?)\n\n(?:[\u007c\u2022\u25d0\u25d3\u25d1\u25d2\s]*(?:Generating commit suggestions[\s\S]*?Suggestions generated:|Suggestions generated:)|The diff above is truncated|Streaming suggestions)/,
   );
   assert.ok(match, `Could not find shown diff in stdout:\n${stdout}`);
   return match[1];
