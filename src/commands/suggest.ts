@@ -389,6 +389,10 @@ export async function suggestCommand(
       }
 
       if (shouldCommit) {
+        if (!diffResult.staged) {
+          outro(pc.red('Commit requires staged changes. Stage your changes with `git add` and try again.'));
+          return;
+        }
         await acceptAndCommit(selected, config, diffResult.diff);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
