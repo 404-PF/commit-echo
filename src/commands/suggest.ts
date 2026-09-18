@@ -93,6 +93,32 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
+export function stagedDiffMatches(analyzed: DiffResult, current: DiffResult): boolean {
+  return analyzed.staged && current.staged && current.hasChanges && analyzed.diff === current.diff;
+}
+
+function getVerifiedCommitDiff(analyzed: DiffResult): string | undefined {
+  let current: DiffResult;
+  try {
+    current = getStagedDiff();
+  } catch (err) {
+    outro(pc.red(`Failed to read current staged diff: ${err instanceof Error ? err.message : String(err)}`));
+    return undefined;
+  }
+
+  if (!current.hasChanges) {
+    outro(pc.red('Commit requires staged changes. Stage your changes with git add and try again.'));
+    return undefined;
+  }
+
+  if (!stagedDiffMatches(analyzed, current)) {
+    outro(pc.red('Staged changes changed while generating suggestions. Run the command again before committing.'));
+    return undefined;
+  }
+
+  return current.diff;
+}
+
 export async function suggestCommand(
   options: {
     commit?: boolean;
@@ -333,12 +359,12 @@ export async function suggestCommand(
     if (options.autoCommit && suggestions.length > 0) {
       const first = suggestions[0]!;
       if (shouldCommit) {
-        if (!diffResult.staged) {
-          outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
+        const verifiedDiff = getVerifiedCommitDiff(diffResult);
+        if (verifiedDiff === undefined) {
           process.exitCode = 1;
           return false;
         }
-        return acceptAndCommit(first, config, diffResult.diff, true);
+        return acceptAndCommit(first, config, verifiedDiff, true);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
         if (first.body) {
@@ -389,7 +415,12 @@ export async function suggestCommand(
       }
 
       if (shouldCommit) {
-        const committed = await acceptAndCommit(selected, config, diffResult.diff);
+        const verifiedDiff = getVerifiedCommitDiff(diffResult);
+        if (verifiedDiff === undefined) {
+          process.exitCode = 1;
+          return false;
+        }
+        const committed = await acceptAndCommit(selected, config, verifiedDiff);
         if (!committed) {
           return false;
         }
