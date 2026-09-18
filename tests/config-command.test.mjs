@@ -203,6 +203,7 @@ test('config --json returns error JSON and exits non-zero when no configuration 
       (error) => {
         assert.equal(error.code, 1);
         assert.equal(error.stderr, '');
+        assert.match(error.stdout, /\n}\s*$/);
         const data = JSON.parse(error.stdout);
         assert.deepEqual(data, { error: 'No configuration found. Run commit-echo init first.' });
         return true;
