@@ -1,7 +1,6 @@
-import { existsSync, readdirSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { intro, outro, confirm, select, text, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
@@ -106,36 +105,26 @@ export function getGitDiff(cwd: string, staged: boolean): string {
  */
 export function gitCommit(cwd: string, message: string, body?: string): { hash: string; summary: string } {
   const fullMessage = body ? `${message}\n\n${body}` : message;
-  const tmpFile = join(tmpdir(), `commit-echo-batch-${process.pid}-${Date.now()}.txt`);
+  const result = spawnSync(getGitExecutable(), ['commit', '-F', '-'], {
+    cwd,
+    encoding: 'utf-8',
+    input: fullMessage,
+    shell: false,
+  });
 
-  try {
-    writeFileSync(tmpFile, fullMessage, 'utf-8');
-    const result = spawnSync(getGitExecutable(), ['commit', '-F', tmpFile], {
-      cwd,
-      encoding: 'utf-8',
-      shell: false,
-    });
-
-    if (result.error) throw result.error;
-    if (result.status !== 0) {
-      const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
-      throw new Error(detail || `git commit exited with code ${result.status}`);
-    }
-
-    const summary = result.stdout.trim().split('\n').find(Boolean) ?? '';
-    const match = summary.match(/\[.*?([a-f0-9]{7,})\]\s+(.+)$/i);
-
-    return {
-      hash: match?.[1] ?? '',
-      summary: match?.[2] ?? summary,
-    };
-  } finally {
-    try {
-      unlinkSync(tmpFile);
-    } catch {
-      /* ignore */
-    }
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
+    throw new Error(detail || `git commit exited with code ${result.status}`);
   }
+
+  const summary = result.stdout.trim().split('\n').find(Boolean) ?? '';
+  const match = summary.match(/\[.*?([a-f0-9]{7,})\]\s+(.+)$/i);
+
+  return {
+    hash: match?.[1] ?? '',
+    summary: match?.[2] ?? summary,
+  };
 }
 
 /**

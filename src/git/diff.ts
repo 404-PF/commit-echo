@@ -1,15 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import {
-  accessSync,
-  copyFileSync,
-  existsSync,
-  constants,
-  mkdtempSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-  unlinkSync,
-} from 'node:fs';
+import { accessSync, copyFileSync, existsSync, constants, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, normalize, resolve } from 'node:path';
 
@@ -237,24 +227,17 @@ function parseCommitOutput(output: string): CommitResult {
 
 export function commit(message: string, body?: string): CommitResult {
   const fullMessage = body ? `${message}\n\n${body}` : message;
-  const tmpFile = join(tmpdir(), `commit-echo-msg-${process.pid}-${Date.now()}.txt`);
-  try {
-    writeFileSync(tmpFile, fullMessage, 'utf-8');
-    const result = spawnSync(getGitExecutable(), ['commit', '-F', tmpFile], {
-      encoding: 'utf-8',
-      shell: false,
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 0) {
-      const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
-      throw new Error(detail || `git commit exited with code ${result.status}`);
-    }
-    return parseCommitOutput(result.stdout);
-  } finally {
-    try {
-      unlinkSync(tmpFile);
-    } catch {}
+  const result = spawnSync(getGitExecutable(), ['commit', '-F', '-'], {
+    encoding: 'utf-8',
+    input: fullMessage,
+    shell: false,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
+    throw new Error(detail || `git commit exited with code ${result.status}`);
   }
+  return parseCommitOutput(result.stdout);
 }
 
 export function getRepoRoot(): string {
