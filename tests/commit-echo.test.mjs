@@ -6,94 +6,93 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
+function writeFakeGit(gitPath, unixScript, windowsScript) {
+  if (process.platform === 'win32') {
+    writeFileSync(gitPath, windowsScript, 'utf-8');
+    return;
+  }
+
+  writeFileSync(gitPath, unixScript, 'utf-8');
+  chmodSync(gitPath, 0o755);
+}
+
+function withFakeGit(run) {
+  const tmpRoot = mkdtempSync(join(tmpdir(), 'fakegit-'));
+  const gitPath = join(tmpRoot, process.platform === 'win32' ? 'git.cmd' : 'git');
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${tmpRoot}${delimiter}${originalPath ?? ''}`;
+
+  try {
+    return run({ tmpRoot, gitPath });
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = originalPath;
+    }
+    rmSync(tmpRoot, { recursive: true, force: true });
+  }
+}
+
+function runCommitChild(tmpRoot, commitSource) {
+  const runnerPath = join(tmpRoot, 'runner.mjs');
+  const diffUrl = pathToFileURL(join(process.cwd(), 'dist', 'git', 'diff.js')).href;
+  const runnerSrc = `(async ()=>{ const { commit } = await import(${JSON.stringify(
+    diffUrl,
+  )}); try{ ${commitSource} }catch(e){ console.error(e instanceof Error?e.message:String(e)); process.exit(2);} })();`;
+  writeFileSync(runnerPath, runnerSrc, 'utf-8');
+
+  const result = spawnSync(process.execPath, [runnerPath], {
+    env: { ...process.env },
+    encoding: 'utf-8',
+  });
+  if (result.error) throw result.error;
+  return result;
+}
+
 if (process.platform === 'win32') {
   test.skip('commit pipes message to git -F - (mocked) - skipped on Windows', () => {});
 } else {
   test('commit pipes message to git -F - (mocked)', () => {
-  const tmpRoot = mkdtempSync(join(tmpdir(), 'fakegit-'));
-  const isWin = process.platform === 'win32';
-  const gitPath = isWin ? join(tmpRoot, 'git.cmd') : join(tmpRoot, 'git');
+    withFakeGit(({ tmpRoot, gitPath }) => {
+      writeFakeGit(
+        gitPath,
+        '#!/usr/bin/env node\n' +
+          'const fs = require("fs");\n' +
+          'const assert = require("node:assert/strict");\n' +
+          'assert.deepEqual(process.argv.slice(2), ["commit", "-F", "-"]);\n' +
+          'const c = fs.readFileSync(0, "utf8");\n' +
+          'if (!c.includes("feat: add temp-file test") || !c.includes("line-one\\nline-two")) process.exit(3);\n' +
+          'console.log("[main abc1234] feat: add temp-file test");\n',
+        '@echo off\r\n',
+      );
 
-  if (isWin) {
-    // The POSIX mock below is the assertion-bearing path; this test is skipped on Windows.
-    writeFileSync(gitPath, '@echo off\r\n', 'utf-8');
-  } else {
-    writeFileSync(
-      gitPath,
-      '#!/usr/bin/env node\n' +
-        'const fs = require("fs");\n' +
-        'const assert = require("node:assert/strict");\n' +
-        'assert.deepEqual(process.argv.slice(2), ["commit", "-F", "-"]);\n' +
-        'const c = fs.readFileSync(0, "utf8");\n' +
-        'if (!c.includes("feat: add temp-file test") || !c.includes("line-one\\nline-two")) process.exit(3);\n' +
-        'console.log("[main abc1234] feat: add temp-file test");\n',
-      'utf-8'
-    );
-    chmodSync(gitPath, 0o755);
-  }
-
-  const origPath = process.env.PATH ?? '';
-  process.env.PATH = `${tmpRoot}${delimiter}${origPath}`;
-
-  try {
     const title = 'feat: add temp-file test';
     const body = 'line-one\nline-two';
 
-    // runner imports the compiled commit function and calls it so the child
-    // process inherits the modified PATH reliably on Windows
-    const runnerPath = join(tmpRoot, 'runner.mjs');
-    const diffAbs = join(process.cwd(), 'dist', 'git', 'diff.js');
-    const diffUrl = pathToFileURL(diffAbs).href;
-    const runnerSrc = `(async ()=>{ const { commit } = await import('${diffUrl}'); try{ const out = commit(${JSON.stringify(
-      title
-    )}, ${JSON.stringify(body)}); console.log(JSON.stringify(out)); process.exit(0);}catch(e){ console.error(e instanceof Error?e.message:String(e)); process.exit(2);} })();`;
-    writeFileSync(runnerPath, runnerSrc, 'utf-8');
-    const res = spawnSync(process.execPath, [runnerPath], { env: { ...process.env, PATH: process.env.PATH }, encoding: 'utf-8' });
-    if (res.error) throw res.error;
+    const res = runCommitChild(
+      tmpRoot,
+      `const out = commit(${JSON.stringify(title)}, ${JSON.stringify(body)}); console.log(JSON.stringify(out)); process.exit(0);`,
+    );
     assert.strictEqual(res.status, 0, `child exited non-zero: ${res.stderr || res.stdout}`);
     const parsed = JSON.parse(res.stdout);
     assert.equal(parsed.hash, 'abc1234');
     assert.equal(parsed.summary, title);
     assert.equal(parsed.output.trim(), `[main abc1234] ${title}`);
-  } finally {
-    process.env.PATH = origPath;
-    rmSync(tmpRoot, { recursive: true, force: true });
-  }
+    });
   });
 }
 
 test('commit throws when git exits non-zero', () => {
-  const tmpRoot = mkdtempSync(join(tmpdir(), 'fakegit-'));
-  const isWin = process.platform === 'win32';
-  const gitPath = isWin ? join(tmpRoot, 'git.cmd') : join(tmpRoot, 'git');
-
-  if (isWin) {
-    writeFileSync(gitPath, '@echo off\r\necho fail 1>&2\r\nexit /b 1\r\n', 'utf-8');
-  } else {
-    writeFileSync(
+  withFakeGit(({ tmpRoot, gitPath }) => {
+    writeFakeGit(
       gitPath,
-      '#!/usr/bin/env node\n' +
-        'console.error("fail");\n' +
-        'process.exit(1);\n',
-      'utf-8'
+      '#!/usr/bin/env node\n' + 'console.error("fail");\n' + 'process.exit(1);\n',
+      '@echo off\r\necho fail 1>&2\r\nexit /b 1\r\n',
     );
-    chmodSync(gitPath, 0o755);
-  }
 
-  const origPath = process.env.PATH ?? '';
-  process.env.PATH = `${tmpRoot}${delimiter}${origPath}`;
-
-  try {
-    const runnerPath = join(tmpRoot, 'runner.mjs');
-    const diffAbs = join(process.cwd(), 'dist', 'git', 'diff.js');
-    const diffUrl = pathToFileURL(diffAbs).href;
-    const runnerSrc = `(async ()=>{ const { commit } = await import('${diffUrl}'); try{ commit('msg','body'); console.log('OK'); process.exit(0);}catch(e){ console.error(e instanceof Error?e.message:String(e)); process.exit(2);} })();`;
-    writeFileSync(runnerPath, runnerSrc, 'utf-8');
-    const res = spawnSync(process.execPath, [runnerPath], { env: { ...process.env, PATH: process.env.PATH }, encoding: 'utf-8' });
+    const res = runCommitChild(tmpRoot, "commit('msg','body'); console.log('OK'); process.exit(0);");
     // child should exit non-zero
     assert.notStrictEqual(res.status, 0, 'child should exit with non-zero status');
-  } finally {
-    process.env.PATH = origPath;
-    rmSync(tmpRoot, { recursive: true, force: true });
-  }
+  });
 });
