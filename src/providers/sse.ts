@@ -18,7 +18,7 @@ export type SseLineParser = (
 export async function* streamSseResponse(
   response: Response,
   parseLine: SseLineParser,
-  options: { controller?: AbortController; timeoutMs?: number; label?: string } = {},
+  options: { controller?: AbortController; timeoutMs?: number; label?: string; maxLineLength?: number } = {},
 ): AsyncIterable<ProviderStreamChunk> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('No response body');
@@ -56,6 +56,12 @@ export async function* streamSseResponse(
       }
 
       const lines = buffer.split('\n');
+      const maxLineLength = options.maxLineLength;
+      if (maxLineLength !== undefined && lines.some((line) => line.length > maxLineLength)) {
+        throw new Error(
+          `${options.label ?? 'Streaming request'} exceeded the maximum SSE line length of ${maxLineLength} characters`,
+        );
+      }
       // When not done, the last element is an incomplete line — put it back.
       // When done, keep all elements so the final line is processed below.
       buffer = done ? '' : (lines.pop() ?? '');
