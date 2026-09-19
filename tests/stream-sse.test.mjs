@@ -116,6 +116,28 @@ test('SSE consumption releases the network stream when the consumer stops early'
   assert.equal(response.body.locked, false);
 });
 
+test('SSE reader rejects oversized lines before parsing them', async () => {
+  const response = new Response(streamFromChunks(['data: too long\n']));
+  let parsed = false;
+
+  await assert.rejects(
+    (async () => {
+      for await (const _chunk of streamSseResponse(
+        response,
+        () => {
+          parsed = true;
+          return null;
+        },
+        { maxLineLength: 8, label: 'Test stream' },
+      )) {
+        // The oversized line should be rejected before this loop yields.
+      }
+    })(),
+    /Test stream exceeded the maximum SSE line length of 8 characters/,
+  );
+  assert.equal(parsed, false);
+});
+
 test('parseOpenAiSseLine extracts delta content', () => {
   const result = parseOpenAiSseLine(
     'data: {"choices":[{"delta":{"content":"hello"}}]}',
@@ -291,9 +313,9 @@ test('OpenAI completeStream handles [DONE] in final buffer without trailing newl
   assert.deepEqual(chunks, [{ kind: 'text', text: 'done' }]);
 });
 
-test('OpenAI completeStream rejects an oversized reasoning-only stream', async () => {
+test('OpenAI completeStream rejects an oversized SSE line before JSON parsing', async () => {
   const provider = new OpenAICompatibleProvider();
-  const reasoning = 'x'.repeat(1024 * 1024 + 1);
+  const reasoning = 'x'.repeat(1024 * 1024);
 
   await assert.rejects(
     collectWithMockedFetch(
@@ -301,6 +323,19 @@ test('OpenAI completeStream rejects an oversized reasoning-only stream', async (
       [`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning } }] })}\n`],
       openAiParams(),
     ),
+    /maximum SSE line length/,
+  );
+});
+
+test('OpenAI completeStream rejects a reasoning buffer over 1 MiB', async () => {
+  const provider = new OpenAICompatibleProvider();
+  const reasoning = 'x'.repeat(2_048);
+  const chunks = Array.from({ length: 600 }, () =>
+    `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning } }] })}\n`,
+  );
+
+  await assert.rejects(
+    collectWithMockedFetch(provider, chunks, openAiParams()),
     /reasoning stream exceeded the 1 MiB buffer limit/,
   );
 });

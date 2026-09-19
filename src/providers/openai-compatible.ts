@@ -3,6 +3,7 @@ import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request
 import { parseOpenAiSseLine, streamSseResponse, SSE_STREAM_END } from './sse.js';
 
 const MAX_BUFFERED_REASONING_CHARS = 1024 * 1024;
+const MAX_SSE_LINE_LENGTH = 1024 * 1024;
 
 function buildOpenAiRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
   const { model, messages, temperature = 0.7, maxTokens = 1024 } = params;
@@ -103,12 +104,7 @@ export class OpenAICompatibleProvider implements Provider {
       (line) => {
         const parsed = parseOpenAiSseLine(line);
         if (parsed.error) throw new Error(`OpenAI-compatible streaming error: ${parsed.error}`);
-        if (parsed.done) {
-          if (!hasVisibleContent && reasoning) {
-            return [{ kind: 'text', text: reasoning }, SSE_STREAM_END];
-          }
-          return SSE_STREAM_END;
-        }
+        if (parsed.done) return SSE_STREAM_END;
         const chunks: ProviderStreamChunk[] = [];
         if (parsed.model) {
           chunks.push({ kind: 'model', model: parsed.model });
@@ -132,6 +128,7 @@ export class OpenAICompatibleProvider implements Provider {
         controller,
         timeoutMs: DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
         label: 'OpenAI-compatible streaming request',
+        maxLineLength: MAX_SSE_LINE_LENGTH,
       },
     );
     if (!hasVisibleContent && reasoning) {
