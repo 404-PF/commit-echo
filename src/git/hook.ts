@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { copyFile, mkdir, chmod, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, chmod, lstat, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
@@ -67,6 +66,21 @@ function resolvePendingEntryPath(): string {
   return resolveGitPath(PENDING_HOOK_ENTRY_FILE);
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+}
+
+async function lstatIfExists(path: string): Promise<Awaited<ReturnType<typeof lstat>> | null> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function buildManagedHookMarker(hookName: string): string {
   return `${MANAGED_HOOK_MARKER} ${hookName}`;
 }
@@ -129,6 +143,37 @@ export function buildPostCommitHookScript(cliPath: string, backupPath?: string):
   return buildHookScript(POST_COMMIT_HOOK_NAME, cliPath, backupPath);
 }
 
+async function backupHook(
+  hookPath: string,
+  backupPath: string,
+  hookStats: Awaited<ReturnType<typeof lstat>>,
+): Promise<void> {
+  if (hookStats.isSymbolicLink()) {
+    await symlink(await readlink(hookPath, 'utf8'), backupPath, 'file');
+    return;
+  }
+
+  await copyFile(hookPath, backupPath);
+  await chmod(backupPath, Number(hookStats.mode) & 0o7777);
+}
+
+async function restoreHookBackup(
+  hookPath: string,
+  backupPath: string,
+  backupStats: Awaited<ReturnType<typeof lstat>>,
+): Promise<void> {
+  await rm(hookPath, { force: true });
+
+  if (backupStats.isSymbolicLink()) {
+    await symlink(await readlink(backupPath, 'utf8'), hookPath, 'file');
+  } else {
+    await copyFile(backupPath, hookPath);
+    await chmod(hookPath, Number(backupStats.mode) & 0o7777);
+  }
+
+  await rm(backupPath, { force: true });
+}
+
 async function installManagedHook(hookName: string, cliPath: string): Promise<string> {
   const hookPath = resolveHookPath(hookName);
   const hookDir = dirname(hookPath);
@@ -137,16 +182,20 @@ async function installManagedHook(hookName: string, cliPath: string): Promise<st
 
   await mkdir(hookDir, { recursive: true });
 
-  if (existsSync(hookPath)) {
-    const existingHook = await readFile(hookPath, 'utf-8').catch(() => '');
-    if (!existingHook.includes(marker) && !existsSync(backupPath)) {
-      await copyFile(hookPath, backupPath);
-      const originalMode = (await stat(hookPath)).mode & 0o7777;
-      await chmod(backupPath, originalMode);
+  const hookStats = await lstatIfExists(hookPath);
+  const backupStats = await lstatIfExists(backupPath);
+  if (hookStats) {
+    const existingHook = hookStats.isSymbolicLink() ? '' : await readFile(hookPath, 'utf-8').catch(() => '');
+    if ((!existingHook.includes(marker) || hookStats.isSymbolicLink()) && !backupStats) {
+      await backupHook(hookPath, backupPath, hookStats);
     }
   }
 
-  const script = buildHookScript(hookName, cliPath, existsSync(backupPath) ? backupPath : undefined);
+  const latestBackupStats = await lstatIfExists(backupPath);
+  const script = buildHookScript(hookName, cliPath, latestBackupStats ? backupPath : undefined);
+  if (hookStats?.isSymbolicLink()) {
+    await rm(hookPath, { force: true });
+  }
   await writeFile(hookPath, `${script}\n`, 'utf-8');
   await chmod(hookPath, 0o755);
 
@@ -159,29 +208,34 @@ async function uninstallManagedHook(hookName: string): Promise<{ path: string; a
   const hookPath = resolveHookPath(hookName);
   const backupPath = `${hookPath}.commit-echo.bak`;
   const marker = buildManagedHookMarker(hookName);
-  const hookExists = existsSync(hookPath);
-  const backupExists = existsSync(backupPath);
-  const existingHook = hookExists ? await readFile(hookPath, 'utf-8').catch(() => '') : '';
-  const isManagedHook = existingHook.includes(marker);
+  const hookStats = await lstatIfExists(hookPath);
+  const backupStats = await lstatIfExists(backupPath);
+  let isManagedHook = false;
+  let hookReadFailed = false;
 
-  if (isManagedHook || (!hookExists && backupExists)) {
-    if (backupExists) {
-      const originalMode = (await stat(backupPath)).mode & 0o7777;
-      await copyFile(backupPath, hookPath);
-      await chmod(hookPath, originalMode);
-      await rm(backupPath, { force: true });
-      return { path: hookPath, action: 'restored' };
+  if (hookStats) {
+    try {
+      isManagedHook = (await readFile(hookPath, 'utf-8')).includes(marker);
+    } catch {
+      hookReadFailed = true;
     }
+  }
 
+  if (backupStats && (isManagedHook || !hookStats || hookReadFailed)) {
+    await restoreHookBackup(hookPath, backupPath, backupStats);
+    return { path: hookPath, action: 'restored' };
+  }
+
+  if (isManagedHook) {
     await rm(hookPath, { force: true });
     return { path: hookPath, action: 'removed' };
   }
 
-  if (backupExists) {
+  if (backupStats) {
     await rm(backupPath, { force: true });
   }
 
-  return { path: hookPath, action: hookExists ? 'skipped' : 'missing' };
+  return { path: hookPath, action: hookStats ? 'skipped' : 'missing' };
 }
 
 export async function installCommitHooks(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<InstalledCommitHooks> {
