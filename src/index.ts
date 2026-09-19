@@ -84,9 +84,15 @@ ${pc.dim('Custom prompt template variables:')}
 program
   .command('init')
   .description('Run interactive setup wizard to configure provider and model')
-  .option('--install-hook', 'Install a prepare-commit-msg hook in the current repository')
+  .option('--install-hook', 'Install commit-echo hooks (prepare-commit-msg and post-commit)')
+  .option('--uninstall-hook', 'Remove commit-echo hooks and restore previous hooks')
   .action(async (options) => {
-    await runCliCommand(() => initCommand({ installHook: Boolean(options.installHook) }));
+    await runCliCommand(() =>
+      initCommand({
+        installHook: Boolean(options.installHook),
+        uninstallHook: Boolean(options.uninstallHook),
+      }),
+    );
   });
 
 const configCliCommand = program

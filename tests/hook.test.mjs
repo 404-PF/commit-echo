@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,7 +21,9 @@ import {
   buildHookCommitMessage,
   buildPostCommitHookScript,
   buildPrepareCommitMsgHookScript,
+  installCommitHooks,
   installPrepareCommitMsgHook,
+  uninstallCommitHooks,
   runPostCommitHook,
   runPrepareCommitMsgHook,
   shouldSkipPrepareCommitMsgHook,
@@ -125,12 +139,162 @@ test('installPrepareCommitMsgHook writes a managed hook file inside the current 
     await withCwdAsync(repoDir, async () => {
       const resolvedHookPath = await installPrepareCommitMsgHook(join(repoDir, 'dist', 'index.js'));
       assert.ok(existsSync(resolvedHookPath));
+      assert.equal(resolvedHookPath, join(repoDir, '.git', 'hooks', 'prepare-commit-msg'));
       const content = readFileSync(resolvedHookPath, 'utf-8');
       const postCommitHookPath = join(repoDir, '.git', 'hooks', 'post-commit');
       assert.match(content, /commit-echo managed hook prepare-commit-msg/);
       assert.match(content, /node '.*dist\/index\.js' hook 'prepare-commit-msg' "\$@"/);
       assert.ok(existsSync(postCommitHookPath));
       assert.match(readFileSync(postCommitHookPath, 'utf-8'), /hook 'post-commit' "\$@"/);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('installCommitHooks preserves existing hooks and uninstall restores them', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const originalPrepare = '#!/bin/sh\necho original prepare\n';
+  const originalPost = '#!/bin/sh\necho original post\n';
+  const originalPreparePath = join(hooksDir, 'prepare-commit-msg');
+  const originalPostPath = join(hooksDir, 'post-commit');
+  writeFileSync(originalPreparePath, originalPrepare, 'utf-8');
+  writeFileSync(originalPostPath, originalPost, 'utf-8');
+  chmodSync(originalPreparePath, 0o640);
+  chmodSync(originalPostPath, 0o750);
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+
+      const prepareBackup = join(hooksDir, 'prepare-commit-msg.commit-echo.bak');
+      const postBackup = join(hooksDir, 'post-commit.commit-echo.bak');
+      assert.equal(readFileSync(prepareBackup, 'utf-8'), originalPrepare);
+      assert.equal(readFileSync(postBackup, 'utf-8'), originalPost);
+
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      assert.equal(readFileSync(prepareBackup, 'utf-8'), originalPrepare);
+      assert.equal(readFileSync(postBackup, 'utf-8'), originalPost);
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 2);
+      assert.equal(result.removed.length, 0);
+      assert.equal(result.skipped.length, 0);
+      assert.equal(readFileSync(join(hooksDir, 'prepare-commit-msg'), 'utf-8'), originalPrepare);
+      assert.equal(readFileSync(join(hooksDir, 'post-commit'), 'utf-8'), originalPost);
+      assert.equal(existsSync(prepareBackup), false);
+      assert.equal(existsSync(postBackup), false);
+      if (process.platform !== 'win32') {
+        assert.equal(statSync(originalPreparePath).mode & 0o7777, 0o640);
+        assert.equal(statSync(originalPostPath).mode & 0o7777, 0o750);
+      }
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('installCommitHooks preserves and restores symlink hooks', { skip: process.platform === 'win32' }, async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const sharedHooksDir = join(repoDir, 'shared-hooks');
+  const targetPath = join(sharedHooksDir, 'prepare-commit-msg');
+  const hookPath = join(hooksDir, 'prepare-commit-msg');
+  const backupPath = `${hookPath}.commit-echo.bak`;
+  const original = '#!/bin/sh\necho shared hook\n';
+  mkdirSync(sharedHooksDir, { recursive: true });
+  writeFileSync(targetPath, original, 'utf-8');
+  symlinkSync(targetPath, hookPath, 'file');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+
+      assert.equal(readFileSync(targetPath, 'utf-8'), original);
+      assert.equal(lstatSync(hookPath).isSymbolicLink(), false);
+      assert.equal(lstatSync(backupPath).isSymbolicLink(), true);
+      assert.equal(readlinkSync(backupPath), targetPath);
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 1);
+      assert.equal(result.removed.length, 1);
+      assert.equal(lstatSync(hookPath).isSymbolicLink(), true);
+      assert.equal(readlinkSync(hookPath), targetPath);
+      assert.equal(readFileSync(targetPath, 'utf-8'), original);
+      assert.equal(existsSync(backupPath), false);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test(
+  'uninstallCommitHooks restores a backup when the managed hook cannot be read',
+  { skip: process.platform === 'win32' || process.getuid?.() === 0 },
+  async () => {
+    const repoDir = initRepo();
+    const hooksDir = join(repoDir, '.git', 'hooks');
+    const originalPrepare = '#!/bin/sh\necho unreadable original\n';
+    const originalPreparePath = join(hooksDir, 'prepare-commit-msg');
+    const backupPath = `${originalPreparePath}.commit-echo.bak`;
+    writeFileSync(originalPreparePath, originalPrepare, 'utf-8');
+    chmodSync(originalPreparePath, 0o640);
+
+    try {
+      await withCwdAsync(repoDir, async () => {
+        await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+        chmodSync(originalPreparePath, 0o000);
+
+        const result = await uninstallCommitHooks();
+        assert.equal(result.restored.length, 1);
+        assert.equal(result.removed.length, 1);
+        assert.equal(readFileSync(originalPreparePath, 'utf-8'), originalPrepare);
+        assert.equal(statSync(originalPreparePath).mode & 0o7777, 0o640);
+        assert.equal(existsSync(backupPath), false);
+      });
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  },
+);
+
+test('uninstallCommitHooks removes hooks created by commit-echo without deleting user hooks', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      const userPrepare = '#!/bin/sh\necho user replacement\n';
+      writeFileSync(join(hooksDir, 'prepare-commit-msg'), userPrepare, 'utf-8');
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 0);
+      assert.equal(result.removed.length, 1);
+      assert.equal(result.skipped.length, 1);
+      assert.equal(readFileSync(join(hooksDir, 'prepare-commit-msg'), 'utf-8'), userPrepare);
+      assert.equal(existsSync(join(hooksDir, 'post-commit')), false);
+      assert.equal(existsSync(join(hooksDir, 'prepare-commit-msg.commit-echo.bak')), false);
+
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      assert.equal(readFileSync(join(hooksDir, 'prepare-commit-msg.commit-echo.bak'), 'utf-8'), userPrepare);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('uninstallCommitHooks does not classify missing hooks as skipped user hooks', async () => {
+  const repoDir = initRepo();
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 0);
+      assert.equal(result.removed.length, 0);
+      assert.equal(result.skipped.length, 0);
+      assert.equal(result.missing.length, 2);
     });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
