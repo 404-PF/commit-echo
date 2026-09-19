@@ -24,11 +24,33 @@ function stripAnsi(text) {
 }
 
 function extractShownDiff(stdout) {
-  const match = stdout.match(
-    /Diff being analyzed:\n([\s\S]*?)\n\n(?:[\u007c\u2022\u25d0\u25d3\u25d1\u25d2\s]*Generating commit suggestions[\s\S]*?Suggestions generated:|The diff above is truncated|Streaming suggestions|Suggestions generated:)/,
-  );
-  assert.ok(match, `Could not find shown diff in stdout:\n${stdout}`);
-  return match[1];
+  const prefix = 'Diff being analyzed:\n';
+  const start = stdout.indexOf(prefix);
+  assert.notEqual(start, -1, `Could not find shown diff in stdout:\n${stdout}`);
+
+  const preview = stdout.slice(start + prefix.length);
+  const truncationNote = '\nThe diff above is truncated to match maxDiffSize.';
+  const truncationIndex = preview.indexOf(truncationNote);
+  if (truncationIndex !== -1) {
+    return preview.slice(0, truncationIndex).trimEnd();
+  }
+
+  let markerIndex = -1;
+  let offset = 0;
+  for (const line of preview.split('\n')) {
+    const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
+    const isSuggestionMarker =
+      !isDiffLine && /(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?)\s*$/.test(line);
+    if (isSuggestionMarker) {
+      markerIndex = offset;
+      break;
+    }
+    offset += line.length + 1;
+  }
+  assert.notEqual(markerIndex, -1, `Could not find suggestion output in stdout:\n${stdout}`);
+
+  const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
+  return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
 }
 
 function extractPromptDiff(content) {
@@ -592,6 +614,23 @@ test('suggest --show-diff prints the truncated staged diff before generating sug
   assert.match(stderr, /Diff truncated:/);
   assert.match(requests.at(-1).messages[1].content, /\[\.\.\.truncated 1 file\.\.\.\]/);
   assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
+});
+
+test('suggest --show-diff ignores suggestion markers inside the displayed diff', async (t) => {
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-show-diff-marker-text-',
+    content: '1. feat: preserve marker text',
+    readme: '# fixture\n\nSuggestions generated:\nStreaming suggestions...\n',
+  });
+
+  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+  const shownDiff = extractShownDiff(stdout);
+
+  assert.equal(result.code, 0);
+  assert.match(shownDiff, /\+Suggestions generated:/);
+  assert.match(shownDiff, /\+Streaming suggestions\.\.\./);
+  assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), shownDiff);
 });
 
 test('suggest --max-diff-size overrides configured diff limit for one invocation', async (t) => {
