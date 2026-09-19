@@ -23,6 +23,20 @@ function stripAnsi(text) {
   return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
 }
 
+function findOutputMarkerIndex(text, marker) {
+  const lines = text.split('\n');
+  let offset = 0;
+  for (const line of lines) {
+    const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
+    const isMarkerLine = marker === 'Streaming suggestions'
+      ? /^\s*Streaming suggestions\.\.\.\s*$/.test(line)
+      : !isDiffLine && /Suggestions generated:\s*$/.test(line);
+    if (isMarkerLine) return offset;
+    offset += line.length + 1;
+  }
+  return -1;
+}
+
 function extractShownDiff(stdout) {
   const prefix = 'Diff being analyzed:\n';
   const start = stdout.indexOf(prefix);
@@ -35,19 +49,11 @@ function extractShownDiff(stdout) {
     return preview.slice(0, truncationIndex).trimEnd();
   }
 
-  let markerIndex = -1;
-  let offset = 0;
-  for (const line of preview.split('\n')) {
-    const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
-    const isSuggestionMarker =
-      !isDiffLine && /(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?)\s*$/.test(line);
-    if (isSuggestionMarker) {
-      markerIndex = offset;
-      break;
-    }
-    offset += line.length + 1;
-  }
-  assert.notEqual(markerIndex, -1, `Could not find suggestion output in stdout:\n${stdout}`);
+  const markerIndexes = ['Suggestions generated:', 'Streaming suggestions']
+    .map((marker) => findOutputMarkerIndex(preview, marker))
+    .filter((index) => index !== -1);
+  const markerIndex = Math.min(...markerIndexes);
+  assert.ok(Number.isFinite(markerIndex), `Could not find suggestion output in stdout:\n${stdout}`);
 
   const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
   return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
@@ -709,6 +715,25 @@ test('suggest --commit --yes rejects unstaged-only changes without a raw stack t
   assert.equal(result.stderr, '');
   assert.match(stdout, /Auto-commit requires staged changes/);
   assert.doesNotMatch(stdout, /at (?:file|node:)/);
+});
+
+test('suggest --show-diff does not mistake diff headers for output markers', async (t) => {
+  const { home, repo, requests } = await setupShowDiffFixture(t, {
+    rootPrefix: 'commit-echo-show-diff-marker-filename-',
+    content: '1. feat: inspect marker filename diff',
+  });
+  const markerFilename = join(repo, 'Streaming suggestions.txt');
+  await writeFile(markerFilename, 'filename contains an output marker\n', 'utf8');
+  execFileSync('git', ['add', markerFilename], { cwd: repo });
+
+  const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+
+  assert.equal(result.code, 0);
+  assert.equal(result.stderr, '');
+  assert.match(stdout, /diff --git .*Streaming suggestions\.txt/);
+  assert.match(stdout, /Selected:\s+feat: inspect marker filename diff/);
+  assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
 });
 
 test('suggest --show-diff uses the truncated diff for streamed suggestions', async (t) => {
