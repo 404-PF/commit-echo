@@ -285,9 +285,10 @@ test('NO_COLOR disables color even when set to an empty string (no-color.org spe
 });
 
 test('completion bash script is syntactically valid bash', async (t) => {
-  // Bash is optional on Windows and may be absent from minimal CI images.
-  if (!(await isBashAvailable())) {
-    t.skip('bash not available — skipping parse check');
+  try {
+    await execFileAsync('bash', ['-c', 'exit 0']);
+  } catch (err) {
+    t.skip(`bash not runnable — skipping parse check (${err?.code ?? 'probe failed'})`);
     return;
   }
   const { stdout } = await runCompletion(['bash']);
