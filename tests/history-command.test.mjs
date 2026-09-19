@@ -5,6 +5,7 @@ import { tmpdir, platform } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
+import { assertFriendlyCommandError, assertJsonCommandError, writeInvalidConfig } from './cli-error-helpers.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -130,6 +131,28 @@ test('history --json returns empty JSON when no history exists', async () => {
       recentCommits: [],
       totalCommits: 0,
     });
+  });
+});
+
+test('history reports corrupted config without a raw stack trace', async () => {
+  await withTempHome(async (homeDir) => {
+    writeInvalidConfig(join(configDirFor(homeDir), 'config.json'));
+
+    await assert.rejects(
+      () => runHistory(homeDir),
+      (error) => assertFriendlyCommandError(error, /Invalid JSON in config file/),
+    );
+  });
+});
+
+test('history --json reports corrupted config as JSON and exits non-zero', async () => {
+  await withTempHome(async (homeDir) => {
+    writeInvalidConfig(join(configDirFor(homeDir), 'config.json'));
+
+    await assert.rejects(
+      () => runHistory(homeDir, ['--json']),
+      (error) => assertJsonCommandError(error, /Invalid JSON in config file/),
+    );
   });
 });
 

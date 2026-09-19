@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { outro } from '@clack/prompts';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import { readFileSync } from 'node:fs';
@@ -13,6 +14,26 @@ import { batchCommand } from './commands/batch.js';
 import { completionCommand } from './commands/completion.js';
 import { getAvailableTemplateVars } from './llm/prompt.js';
 import { runPostCommitHook, runPrepareCommitMsgHook } from './git/hook.js';
+
+type CliCommandResult = void | boolean;
+type CliCommandAction = () => CliCommandResult | Promise<CliCommandResult>;
+
+async function runCliCommand(action: CliCommandAction, options: { json?: boolean } = {}): Promise<void> {
+  try {
+    const result = await action();
+    if (result === false) {
+      process.exitCode = 1;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (options.json) {
+      console.log(JSON.stringify({ error: message }, null, 2));
+    } else {
+      outro(pc.red(message));
+    }
+    process.exitCode = 1;
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkg: { version?: string; description?: string };
@@ -65,7 +86,7 @@ program
   .description('Run interactive setup wizard to configure provider and model')
   .option('--install-hook', 'Install a prepare-commit-msg hook in the current repository')
   .action(async (options) => {
-    await initCommand({ installHook: Boolean(options.installHook) });
+    await runCliCommand(() => initCommand({ installHook: Boolean(options.installHook) }));
   });
 
 const configCliCommand = program
@@ -73,7 +94,7 @@ const configCliCommand = program
   .description('View current configuration')
   .option('--json', 'Output the configuration as JSON')
   .action(async (options) => {
-    await configCommand({ json: Boolean(options.json) });
+    await runCliCommand(() => configCommand({ json: Boolean(options.json) }), { json: Boolean(options.json) });
   });
 
 configCliCommand
@@ -86,7 +107,7 @@ configCliCommand
     `\n${pc.yellow('Security note:')} Passing ${pc.cyan('apiKey')} on the command line may expose it via shell history or process inspection. Prefer ${pc.cyan('commit-echo init')} or environment variables for secrets.`,
   )
   .action(async (key: string, value: string) => {
-    await configSetCommand(key, value);
+    await runCliCommand(() => configSetCommand(key, value));
   });
 
 program
@@ -103,18 +124,20 @@ program
   .option('--no-commit', 'Deprecated alias; suggest already skips committing unless --commit is passed')
   .option('--auto', 'Alias for --yes')
   .action(async (options, command) => {
-    const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
-    const noCommit = command.getOptionValueSource('commit') === 'cli' && options.commit === false;
-    await suggestCommand({
-      commit: options.commit,
-      autoCommit: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
-      verbose: Boolean(options.verbose),
-      showDiff: Boolean(options.showDiff),
-      model: options.model,
-      maxDiffSize: options.maxDiffSize,
-      stream: Boolean(options.stream),
-      dryRun: Boolean(options.dryRun),
-      noCommit,
+    await runCliCommand(async () => {
+      const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
+      const noCommit = command.getOptionValueSource('commit') === 'cli' && options.commit === false;
+      return suggestCommand({
+        commit: options.commit,
+        autoCommit: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
+        verbose: Boolean(options.verbose),
+        showDiff: Boolean(options.showDiff),
+        model: options.model,
+        maxDiffSize: options.maxDiffSize,
+        stream: Boolean(options.stream),
+        dryRun: Boolean(options.dryRun),
+        noCommit,
+      });
     });
   });
 
@@ -123,7 +146,7 @@ program
   .description('View learned style profile and recent commit history')
   .option('--json', 'Output the style profile and recent commits as JSON')
   .action(async (options) => {
-    await historyCommand({ json: Boolean(options.json) });
+    await runCliCommand(() => historyCommand({ json: Boolean(options.json) }), { json: Boolean(options.json) });
   });
 
 program
@@ -135,12 +158,14 @@ program
   .option('-y, --yes', 'Automatically accept the first suggestion and commit without prompts')
   .option('--auto', 'Alias for --yes')
   .action(async (directory, options) => {
-    const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
-    await batchCommand({
-      directory: directory || undefined,
-      recursive: Boolean(options.recursive),
-      verbose: Boolean(options.verbose),
-      yes: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
+    await runCliCommand(async () => {
+      const globalOpts = program.opts<{ yes?: boolean; auto?: boolean }>();
+      return batchCommand({
+        directory: directory || undefined,
+        recursive: Boolean(options.recursive),
+        verbose: Boolean(options.verbose),
+        yes: Boolean(options.yes || options.auto || globalOpts.yes || globalOpts.auto),
+      });
     });
   });
 
@@ -148,8 +173,8 @@ program
   .command('completion')
   .description('Generate shell completion scripts for bash, zsh, fish, and powershell')
   .argument('[shell]', 'Target shell: bash, zsh, fish, or powershell')
-  .action((shell?: string) => {
-    completionCommand(shell);
+  .action(async (shell?: string) => {
+    await runCliCommand(() => completionCommand(shell));
   });
 
 const hookCommand = new Command('hook')
@@ -159,27 +184,31 @@ const hookCommand = new Command('hook')
   .argument('[source]', 'Commit message source provided by Git')
   .argument('[sha]', 'Commit SHA provided by Git')
   .action(async (hookName: string, messageFile?: string, source?: string, sha?: string) => {
-    if (hookName === 'prepare-commit-msg') {
-      if (!messageFile) {
-        throw new Error('prepare-commit-msg requires a message file path');
+    await runCliCommand(async () => {
+      if (hookName === 'prepare-commit-msg') {
+        if (!messageFile) {
+          throw new Error('prepare-commit-msg requires a message file path');
+        }
+        await runPrepareCommitMsgHook({ messageFile, source, sha });
+        return;
       }
-      await runPrepareCommitMsgHook({ messageFile, source, sha });
-      return;
-    }
 
-    if (hookName === 'post-commit') {
-      await runPostCommitHook();
-      return;
-    }
+      if (hookName === 'post-commit') {
+        await runPostCommitHook();
+        return;
+      }
 
-    throw new Error(`Unsupported hook: ${hookName}`);
+      throw new Error(`Unsupported hook: ${hookName}`);
+    });
   });
 
 program.addCommand(hookCommand, { hidden: true });
 
 program.action(async () => {
-  const opts = program.opts();
-  await suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto) });
+  await runCliCommand(async () => {
+    const opts = program.opts();
+    return suggestCommand({ commit: true, autoCommit: Boolean(opts.yes || opts.auto) });
+  });
 });
 
 program.parse(process.argv);

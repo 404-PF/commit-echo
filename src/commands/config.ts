@@ -208,9 +208,7 @@ function getConfigJsonOutput(config: Config): ConfigJsonOutput {
 export async function configCommand(options: ConfigCommandOptions = {}): Promise<void> {
   if (!configExists()) {
     if (options.json) {
-      console.log(JSON.stringify({ error: 'No configuration found. Run commit-echo init first.' }, null, 2));
-      process.exitCode = 1;
-      return;
+      throw new Error('No configuration found. Run commit-echo init first.');
     }
     intro(pc.bold(pc.cyan('commit-echo config')));
     outro(pc.yellow('No configuration found. Run `commit-echo init` first.'));

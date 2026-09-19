@@ -40,3 +40,16 @@ test('NO_COLOR disables colored help output', async () => {
 
   assert.doesNotMatch(stdout, ansiPattern);
 });
+
+test('CLI command errors render without a raw stack trace', async () => {
+  await assert.rejects(
+    () => execFileAsync(process.execPath, ['dist/index.js', '--no-color', 'hook', 'unsupported']),
+    (error) => {
+      const output = error.stdout + error.stderr;
+      assert.equal(error.code, 1);
+      assert.match(output, /Unsupported hook: unsupported/);
+      assert.doesNotMatch(output, /^\s*at\s+/m);
+      return true;
+    },
+  );
+});

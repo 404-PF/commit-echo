@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { maskApiKey } from '../dist/commands/config.js';
+import { assertFriendlyCommandError, assertJsonCommandError, writeInvalidConfig } from './cli-error-helpers.mjs';
 const execFileAsync = promisify(execFile);
 
 /** Resolves the platform-specific commit-echo config directory for an isolated home. */
@@ -255,6 +256,28 @@ test('config --json reports missing API key in JSON', async () => {
 
     assert.equal(stderr, '');
     assert.equal(data.apiKey, 'not stored in config');
+  });
+});
+
+test('config reports corrupted config without a raw stack trace', async () => {
+  await withTempHome(async (homeDir) => {
+    writeInvalidConfig(join(configDirFor(homeDir), 'config.json'));
+
+    await assert.rejects(
+      () => runConfig(homeDir),
+      (error) => assertFriendlyCommandError(error, /Invalid JSON in config file/),
+    );
+  });
+});
+
+test('config --json reports corrupted config as JSON and exits non-zero', async () => {
+  await withTempHome(async (homeDir) => {
+    writeInvalidConfig(join(configDirFor(homeDir), 'config.json'));
+
+    await assert.rejects(
+      () => runConfigWithArgs(homeDir, ['--json']),
+      (error) => assertJsonCommandError(error, /Invalid JSON in config file/),
+    );
   });
 });
 
