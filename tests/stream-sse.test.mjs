@@ -225,7 +225,11 @@ test('OpenAI completeStream propagates malformed JSON and releases the response 
   const response = new Response(
     new ReadableStream({
       start(stream) {
-        stream.enqueue(new TextEncoder().encode('data: {not valid JSON}\n'));
+        stream.enqueue(
+          new TextEncoder().encode(
+            'data: {"choices":[{"delta":{"content":"before"}}]}\n' + 'data: {not valid JSON}\n',
+          ),
+        );
       },
       cancel() {
         cancelled = true;
@@ -237,10 +241,9 @@ test('OpenAI completeStream propagates malformed JSON and releases the response 
   await withMockedFetch(
     async () => response,
     async () => {
-      await assert.rejects(
-        () => collectChunks(new OpenAICompatibleProvider(), OPENAI_TEST_PARAMS),
-        /Malformed OpenAI SSE data: invalid JSON/,
-      );
+      const iterator = new OpenAICompatibleProvider().completeStream(OPENAI_TEST_PARAMS)[Symbol.asyncIterator]();
+      assert.deepEqual(await iterator.next(), { done: false, value: { kind: 'text', text: 'before' } });
+      await assert.rejects(() => iterator.next(), /Malformed OpenAI SSE data: invalid JSON/);
 
       assert.equal(cancelled, true);
       assert.equal(response.body.locked, false);
