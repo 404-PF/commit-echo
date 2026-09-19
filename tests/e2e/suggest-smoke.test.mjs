@@ -35,11 +35,9 @@ function extractShownDiff(stdout) {
     return preview.slice(0, truncationIndex).trimEnd();
   }
 
-  const markerIndexes = ['Suggestions generated:', 'Streaming suggestions']
-    .map((marker) => preview.indexOf(marker))
-    .filter((index) => index !== -1);
-  const markerIndex = Math.min(...markerIndexes);
-  assert.ok(Number.isFinite(markerIndex), `Could not find suggestion output in stdout:\n${stdout}`);
+  const markerMatch = preview.match(/(?:^|\n)(?![+ \-@])[^\r\n]*?(?:Suggestions generated:|Streaming suggestions)/);
+  assert.ok(markerMatch, `Could not find suggestion output in stdout:\n${stdout}`);
+  const markerIndex = (markerMatch.index ?? 0) + (markerMatch[0].startsWith('\n') ? 1 : 0);
 
   const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
   return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
@@ -682,7 +680,7 @@ test('suggest --commit --yes rejects unstaged-only changes without a raw stack t
 
   assert.equal(result.code, 1);
   assert.equal(result.stderr, '');
-  assert.match(stdout, /Auto-commit requires staged changes/);
+  assert.match(stdout, /Commit requires staged changes/);
   assert.doesNotMatch(stdout, /at (?:file|node:)/);
 });
 

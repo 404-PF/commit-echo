@@ -359,12 +359,7 @@ export async function suggestCommand(
     if (options.autoCommit && suggestions.length > 0) {
       const first = suggestions[0]!;
       if (shouldCommit) {
-        const verifiedDiff = getVerifiedCommitDiff(diffResult);
-        if (verifiedDiff === undefined) {
-          process.exitCode = 1;
-          return false;
-        }
-        return acceptAndCommit(first, config, verifiedDiff, true);
+        return acceptAndCommit(first, config, diffResult, true);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
         if (first.body) {
@@ -415,12 +410,7 @@ export async function suggestCommand(
       }
 
       if (shouldCommit) {
-        const verifiedDiff = getVerifiedCommitDiff(diffResult);
-        if (verifiedDiff === undefined) {
-          process.exitCode = 1;
-          return false;
-        }
-        const committed = await acceptAndCommit(selected, config, verifiedDiff);
+        const committed = await acceptAndCommit(selected, config, diffResult);
         if (!committed) {
           return false;
         }
@@ -441,13 +431,24 @@ export async function suggestCommand(
   return true;
 }
 
-async function acceptAndCommit(selected: Suggestion, config: Config, diff: string, auto = false): Promise<boolean> {
+async function acceptAndCommit(
+  selected: Suggestion,
+  config: Config,
+  diffResult: DiffResult,
+  auto = false,
+): Promise<boolean> {
   console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
   if (selected.body) {
     console.log(`  ${pc.dim(selected.body)}`);
   }
 
   if (auto) {
+    const verifiedDiff = getVerifiedCommitDiff(diffResult);
+    if (verifiedDiff === undefined) {
+      process.exitCode = 1;
+      return false;
+    }
+
     try {
       const result = commit(selected.message, selected.body);
       console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
@@ -462,7 +463,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       await appendEntry({
         timestamp: new Date().toISOString(),
         message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
-        diff,
+        diff: verifiedDiff,
         model: config.model,
         provider: config.provider,
       });
@@ -519,6 +520,12 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     return true;
   }
 
+  const verifiedDiff = getVerifiedCommitDiff(diffResult);
+  if (verifiedDiff === undefined) {
+    process.exitCode = 1;
+    return false;
+  }
+
   let result;
 
   try {
@@ -534,7 +541,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     await appendEntry({
       timestamp: new Date().toISOString(),
       message: finalBody ? `${finalMessage}\n\n${finalBody}` : finalMessage,
-      diff,
+      diff: verifiedDiff,
       model: config.model,
       provider: config.provider,
     });

@@ -10,7 +10,7 @@ test('stagedDiffMatches accepts the unchanged staged diff', () => {
 });
 
 test('stagedDiffMatches rejects an empty or unstaged current diff', () => {
-  assert.equal(stagedDiffMatches(stagedDiff, { diff: '', hasChanges: false, staged: false }), false);
+  assert.equal(stagedDiffMatches(stagedDiff, { diff: '', hasChanges: false, staged: true }), false);
   assert.equal(stagedDiffMatches(stagedDiff, { ...stagedDiff, staged: false }), false);
 });
 
