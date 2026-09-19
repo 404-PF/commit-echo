@@ -41,7 +41,10 @@ function extractShownDiff(stdout) {
     const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
     const isSuggestionMarker =
       !isDiffLine && /(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?)\s*$/.test(line);
-    if (isSuggestionMarker) markerIndex = offset;
+    if (isSuggestionMarker) {
+      markerIndex = offset;
+      break;
+    }
     offset += line.length + 1;
   }
   assert.notEqual(markerIndex, -1, `Could not find suggestion output in stdout:\n${stdout}`);
