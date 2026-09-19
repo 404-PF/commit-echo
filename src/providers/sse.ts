@@ -8,7 +8,7 @@ export const SSE_STREAM_END = Symbol('SSE_STREAM_END');
 
 export type SseLineParser = (
   line: string,
-) => ProviderStreamChunk | ProviderStreamChunk[] | typeof SSE_STREAM_END | null;
+) => ProviderStreamChunk | (ProviderStreamChunk | typeof SSE_STREAM_END)[] | typeof SSE_STREAM_END | null;
 
 /**
  * Read an SSE response body, split into lines, and yield parsed chunks.
@@ -18,7 +18,7 @@ export type SseLineParser = (
 export async function* streamSseResponse(
   response: Response,
   parseLine: SseLineParser,
-  options: { controller?: AbortController; timeoutMs?: number; label?: string } = {},
+  options: { controller?: AbortController; timeoutMs?: number; label?: string; maxLineLength?: number } = {},
 ): AsyncIterable<ProviderStreamChunk> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error('No response body');
@@ -56,6 +56,12 @@ export async function* streamSseResponse(
       }
 
       const lines = buffer.split('\n');
+      const maxLineLength = options.maxLineLength;
+      if (maxLineLength !== undefined && lines.some((line) => line.length > maxLineLength)) {
+        throw new Error(
+          `${options.label ?? 'Streaming request'} exceeded the maximum SSE line length of ${maxLineLength} characters`,
+        );
+      }
       // When not done, the last element is an incomplete line — put it back.
       // When done, keep all elements so the final line is processed below.
       buffer = done ? '' : (lines.pop() ?? '');
@@ -70,6 +76,11 @@ export async function* streamSseResponse(
         }
         if (Array.isArray(result)) {
           for (const chunk of result) {
+            if (chunk === SSE_STREAM_END) {
+              await reader.cancel();
+              cancelled = true;
+              return;
+            }
             yield chunk;
           }
           continue;
@@ -99,6 +110,7 @@ export async function* streamSseResponse(
 
 export function parseOpenAiSseLine(line: string): {
   text?: string;
+  reasoning?: string;
   model?: string;
   done?: boolean;
   error?: string;
@@ -113,18 +125,22 @@ export function parseOpenAiSseLine(line: string): {
     const parsed = JSON.parse(payload) as {
       error?: { message?: string };
       model?: string;
-      choices?: { delta?: { content?: string } }[];
+      choices?: { delta?: { content?: string; reasoning_content?: string } }[];
     };
 
     if (parsed.error?.message) {
       return { error: parsed.error.message };
     }
 
-    const result: { text?: string; model?: string } = {};
+    const result: { text?: string; reasoning?: string; model?: string } = {};
     if (parsed.model) result.model = parsed.model;
 
-    const content = parsed.choices?.[0]?.delta?.content;
-    if (content) result.text = content;
+    const delta = parsed.choices?.[0]?.delta;
+    if (typeof delta?.content === 'string' && delta.content.length > 0) {
+      result.text = delta.content;
+    } else if (typeof delta?.reasoning_content === 'string') {
+      result.reasoning = delta.reasoning_content;
+    }
 
     return result;
   } catch {

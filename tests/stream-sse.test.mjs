@@ -11,6 +11,55 @@ import { AnthropicProvider } from '../dist/providers/anthropic.js';
 import { OpenAICompatibleProvider } from '../dist/providers/openai-compatible.js';
 import { streamFromChunks } from './helpers/stream-from-chunks.mjs';
 
+const openAiParams = (model = 'o3-mini') => ({
+  model,
+  messages: [{ role: 'user', content: 'test' }],
+  apiKey: 'test-key',
+  baseUrl: 'https://api.openai.com/v1',
+});
+
+const anthropicParams = {
+  model: 'claude-sonnet-4',
+  messages: [{ role: 'user', content: 'test' }],
+  apiKey: 'test-key',
+  baseUrl: 'https://api.anthropic.com/v1',
+};
+
+async function collectStream(provider, params) {
+  const chunks = [];
+  for await (const chunk of provider.completeStream(params)) {
+    chunks.push(chunk);
+  }
+  return chunks;
+}
+
+async function collectWithMockedFetch(provider, chunks, params) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(streamFromChunks(chunks), { status: 200 });
+
+  try {
+    return await collectStream(provider, params);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function collectWithMockedFetchSequence(provider, responses, paramsList) {
+  const originalFetch = globalThis.fetch;
+  let responseIndex = 0;
+  globalThis.fetch = async () => new Response(streamFromChunks(responses[responseIndex++]), { status: 200 });
+
+  try {
+    const results = [];
+    for (const params of paramsList) {
+      results.push(await collectStream(provider, params));
+    }
+    return results;
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 test('an SSE read that stalls after a partial result times out and aborts the request', async () => {
   const controller = new AbortController();
   let cancelled = false;
@@ -67,6 +116,28 @@ test('SSE consumption releases the network stream when the consumer stops early'
   assert.equal(response.body.locked, false);
 });
 
+test('SSE reader rejects oversized lines before parsing them', async () => {
+  const response = new Response(streamFromChunks(['data: too long\n']));
+  let parsed = false;
+
+  await assert.rejects(
+    (async () => {
+      for await (const _chunk of streamSseResponse(
+        response,
+        () => {
+          parsed = true;
+          return null;
+        },
+        { maxLineLength: 8, label: 'Test stream' },
+      )) {
+        // The oversized line should be rejected before this loop yields.
+      }
+    })(),
+    /Test stream exceeded the maximum SSE line length of 8 characters/,
+  );
+  assert.equal(parsed, false);
+});
+
 test('parseOpenAiSseLine extracts delta content', () => {
   const result = parseOpenAiSseLine(
     'data: {"choices":[{"delta":{"content":"hello"}}]}',
@@ -82,6 +153,29 @@ test('parseOpenAiSseLine extracts model from stream chunk', () => {
 
   assert.equal(result.model, 'gpt-4o');
   assert.equal(result.text, 'hello');
+});
+
+test('parseOpenAiSseLine extracts reasoning content separately', () => {
+  const result = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}',
+  );
+
+  assert.equal(result.reasoning, 'thinking');
+});
+
+test('parseOpenAiSseLine prefers visible content over reasoning content', () => {
+  const result = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"content":"answer","reasoning_content":"thinking"}}]}',
+  );
+
+  assert.equal(result.text, 'answer');
+  assert.equal(result.reasoning, undefined);
+
+  const reasoningAfterEmptyContent = parseOpenAiSseLine(
+    'data: {"choices":[{"delta":{"content":"","reasoning_content":"thinking"}}]}',
+  );
+  assert.equal(reasoningAfterEmptyContent.text, undefined);
+  assert.equal(reasoningAfterEmptyContent.reasoning, 'thinking');
 });
 
 test('parseOpenAiSseLine detects stream completion', () => {
@@ -138,96 +232,110 @@ test('parseAnthropicSseLine throws on error events', () => {
 });
 
 test('Anthropic completeStream reassembles event/data split across network chunks', async () => {
-  const originalFetch = globalThis.fetch;
   const provider = new AnthropicProvider();
+  const chunks = await collectWithMockedFetch(
+    provider,
+    [
+      'event: content_block_delta\n',
+      'data: {"delta":{"text":"hi"}}\n',
+      'event: message_stop\n',
+      'data: {}\n',
+    ],
+    anthropicParams,
+  );
+  assert.deepEqual(chunks, [{ kind: 'text', text: 'hi' }]);
+});
 
-  globalThis.fetch = async () =>
-    new Response(
-      streamFromChunks([
-        'event: content_block_delta\n',
-        'data: {"delta":{"text":"hi"}}\n',
-        'event: message_stop\n',
-        'data: {}\n',
-      ]),
-      { status: 200 },
-    );
+test('OpenAI completeStream handles reasoning-only and visible-content precedence', async () => {
+  const provider = new OpenAICompatibleProvider();
+  const responses = [
+    [
+      'data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n',
+      'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}\n',
+      'data: [DONE]\n',
+    ],
+    [
+      'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
+      'data: {"choices":[{"delta":{"content":"answer"}}]}\n',
+      'data: {"choices":[{"delta":{"reasoning_content":" leaked"}}]}\n',
+      'data: [DONE]\n',
+    ],
+  ];
 
-  try {
-    const chunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'claude-sonnet-4',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.anthropic.com/v1',
-    })) {
-      chunks.push(chunk);
-    }
+  const [reasoningChunks, visibleChunks] = await collectWithMockedFetchSequence(
+    provider,
+    responses,
+    [openAiParams(), openAiParams()],
+  );
+  assert.deepEqual(reasoningChunks, [{ kind: 'text', text: 'think more' }]);
+  assert.deepEqual(visibleChunks, [{ kind: 'text', text: 'answer' }]);
+});
 
-    assert.deepEqual(chunks, [{ kind: 'text', text: 'hi' }]);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test('OpenAI completeStream emits reasoning after an EOF-terminated stream', async () => {
+  const provider = new OpenAICompatibleProvider();
+  const chunks = await collectWithMockedFetch(
+    provider,
+    [
+      'data: {"choices":[{"delta":{"reasoning_content":"think "}}]}\n',
+      'data: {"choices":[{"delta":{"reasoning_content":"more"}}]}',
+    ],
+    openAiParams(),
+  );
+  assert.deepEqual(chunks, [{ kind: 'text', text: 'think more' }]);
 });
 
 test('OpenAI completeStream processes final line without trailing newline', async () => {
-  const originalFetch = globalThis.fetch;
   const provider = new OpenAICompatibleProvider();
-
-  globalThis.fetch = async () =>
-    new Response(
-      streamFromChunks([
-        'data: {"choices":[{"delta":{"content":"hel"}}]}\n',
-        'data: {"choices":[{"delta":{"content":"lo"}}]}',
-      ]),
-      { status: 200 },
-    );
-
-  try {
-    const chunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    })) {
-      chunks.push(chunk);
-    }
-
-    assert.deepEqual(chunks, [
-      { kind: 'text', text: 'hel' },
-      { kind: 'text', text: 'lo' },
-    ]);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const chunks = await collectWithMockedFetch(
+    provider,
+    [
+      'data: {"choices":[{"delta":{"content":"hel"}}]}\n',
+      'data: {"choices":[{"delta":{"content":"lo"}}]}',
+    ],
+    openAiParams('gpt-4o'),
+  );
+  assert.deepEqual(chunks, [
+    { kind: 'text', text: 'hel' },
+    { kind: 'text', text: 'lo' },
+  ]);
 });
 
 test('OpenAI completeStream handles [DONE] in final buffer without trailing newline', async () => {
-  const originalFetch = globalThis.fetch;
   const provider = new OpenAICompatibleProvider();
+  const chunks = await collectWithMockedFetch(
+    provider,
+    [
+      'data: {"choices":[{"delta":{"content":"done"}}]}\n',
+      'data: [DONE]',
+    ],
+    openAiParams('gpt-4o'),
+  );
+  assert.deepEqual(chunks, [{ kind: 'text', text: 'done' }]);
+});
 
-  globalThis.fetch = async () =>
-    new Response(
-      streamFromChunks([
-        'data: {"choices":[{"delta":{"content":"done"}}]}\n',
-        'data: [DONE]',
-      ]),
-      { status: 200 },
-    );
+test('OpenAI completeStream rejects an oversized SSE line before JSON parsing', async () => {
+  const provider = new OpenAICompatibleProvider();
+  const reasoning = 'x'.repeat(1024 * 1024);
 
-  try {
-    const chunks = [];
-    for await (const chunk of provider.completeStream({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: 'test' }],
-      apiKey: 'test-key',
-      baseUrl: 'https://api.openai.com/v1',
-    })) {
-      chunks.push(chunk);
-    }
+  await assert.rejects(
+    collectWithMockedFetch(
+      provider,
+      [`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning } }] })}\n`],
+      openAiParams(),
+    ),
+    /maximum SSE line length/,
+  );
+});
 
-    assert.deepEqual(chunks, [{ kind: 'text', text: 'done' }]);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test('OpenAI completeStream rejects a reasoning buffer over 1 MiB', async () => {
+  const provider = new OpenAICompatibleProvider();
+  const reasoning = 'x'.repeat(2_048);
+  const chunks = Array.from({ length: 600 }, () =>
+    `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: reasoning } }] })}\n`,
+  );
+
+  await assert.rejects(
+    collectWithMockedFetch(provider, chunks, openAiParams()),
+    /reasoning stream exceeded the 1 MiB buffer limit/,
+  );
 });

@@ -2,6 +2,9 @@ import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../t
 import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
 import { parseOpenAiSseLine, streamSseResponse, SSE_STREAM_END } from './sse.js';
 
+const MAX_BUFFERED_REASONING_CHARS = 1024 * 1024;
+const MAX_SSE_LINE_LENGTH = 1024 * 1024;
+
 function buildOpenAiRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
   const { model, messages, temperature = 0.7, maxTokens = 1024 } = params;
 
@@ -93,6 +96,9 @@ export class OpenAICompatibleProvider implements Provider {
       throw new Error(`OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
+    let reasoning = '';
+    let hasVisibleContent = false;
+
     yield* streamSseResponse(
       response,
       (line) => {
@@ -104,7 +110,14 @@ export class OpenAICompatibleProvider implements Provider {
           chunks.push({ kind: 'model', model: parsed.model });
         }
         if (parsed.text) {
+          hasVisibleContent = true;
+          reasoning = '';
           chunks.push({ kind: 'text', text: parsed.text });
+        } else if (parsed.reasoning && !hasVisibleContent) {
+          if (reasoning.length + parsed.reasoning.length > MAX_BUFFERED_REASONING_CHARS) {
+            throw new Error('OpenAI-compatible reasoning stream exceeded the 1 MiB buffer limit');
+          }
+          reasoning += parsed.reasoning;
         }
         if (chunks.length > 0) {
           return chunks;
@@ -115,8 +128,12 @@ export class OpenAICompatibleProvider implements Provider {
         controller,
         timeoutMs: DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
         label: 'OpenAI-compatible streaming request',
+        maxLineLength: MAX_SSE_LINE_LENGTH,
       },
     );
+    if (!hasVisibleContent && reasoning) {
+      yield { kind: 'text', text: reasoning };
+    }
   }
 
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
