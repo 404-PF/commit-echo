@@ -43,6 +43,17 @@ export interface PrepareCommitMsgHookDeps {
   warn: (message: string) => void;
 }
 
+export interface InstalledCommitHooks {
+  prepareCommitMsgPath: string;
+  postCommitPath: string;
+}
+
+export interface UninstalledCommitHooks {
+  restored: string[];
+  removed: string[];
+  skipped: string[];
+}
+
 function resolveGitPath(gitPath: string): string {
   return execFileSync(getGitExecutable(), ['rev-parse', '--git-path', gitPath], { encoding: 'utf-8' }).trim();
 }
@@ -139,13 +150,60 @@ async function installManagedHook(hookName: string, cliPath: string): Promise<st
   return hookPath;
 }
 
-export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
+type HookUninstallAction = 'restored' | 'removed' | 'skipped';
+
+async function uninstallManagedHook(hookName: string): Promise<{ path: string; action: HookUninstallAction }> {
+  const hookPath = resolveHookPath(hookName);
+  const backupPath = `${hookPath}.commit-echo.bak`;
+  const marker = buildManagedHookMarker(hookName);
+  const hookExists = existsSync(hookPath);
+  const backupExists = existsSync(backupPath);
+  const existingHook = hookExists ? await readFile(hookPath, 'utf-8').catch(() => '') : '';
+  const isManagedHook = existingHook.includes(marker);
+
+  if (isManagedHook || (!hookExists && backupExists)) {
+    if (backupExists) {
+      await copyFile(backupPath, hookPath);
+      await rm(backupPath, { force: true });
+      return { path: hookPath, action: 'restored' };
+    }
+
+    await rm(hookPath, { force: true });
+    return { path: hookPath, action: 'removed' };
+  }
+
+  return { path: hookPath, action: 'skipped' };
+}
+
+export async function installCommitHooks(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<InstalledCommitHooks> {
   const resolvedCliPath =
     cliPath === process.argv[1] ? fileURLToPath(new URL('../index.js', import.meta.url)) : cliPath;
 
   checkGitRepo();
-  await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath);
-  return installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, resolvedCliPath);
+  const postCommitPath = await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath);
+  const prepareCommitMsgPath = await installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, resolvedCliPath);
+
+  return { prepareCommitMsgPath, postCommitPath };
+}
+
+export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
+  const { prepareCommitMsgPath } = await installCommitHooks(cliPath);
+  return prepareCommitMsgPath;
+}
+
+export async function uninstallCommitHooks(): Promise<UninstalledCommitHooks> {
+  checkGitRepo();
+
+  const results = [
+    await uninstallManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME),
+    await uninstallManagedHook(POST_COMMIT_HOOK_NAME),
+  ];
+
+  return {
+    restored: results.filter((result) => result.action === 'restored').map((result) => result.path),
+    removed: results.filter((result) => result.action === 'removed').map((result) => result.path),
+    skipped: results.filter((result) => result.action === 'skipped').map((result) => result.path),
+  };
 }
 
 function buildPendingHookEntry(config: Config, diff: string): string {

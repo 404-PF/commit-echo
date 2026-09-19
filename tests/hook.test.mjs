@@ -9,7 +9,9 @@ import {
   buildHookCommitMessage,
   buildPostCommitHookScript,
   buildPrepareCommitMsgHookScript,
+  installCommitHooks,
   installPrepareCommitMsgHook,
+  uninstallCommitHooks,
   runPostCommitHook,
   runPrepareCommitMsgHook,
   shouldSkipPrepareCommitMsgHook,
@@ -131,6 +133,63 @@ test('installPrepareCommitMsgHook writes a managed hook file inside the current 
       assert.match(content, /node '.*dist\/index\.js' hook 'prepare-commit-msg' "\$@"/);
       assert.ok(existsSync(postCommitHookPath));
       assert.match(readFileSync(postCommitHookPath, 'utf-8'), /hook 'post-commit' "\$@"/);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('installCommitHooks preserves existing hooks and uninstall restores them', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const originalPrepare = '#!/bin/sh\necho original prepare\n';
+  const originalPost = '#!/bin/sh\necho original post\n';
+  writeFileSync(join(hooksDir, 'prepare-commit-msg'), originalPrepare, 'utf-8');
+  writeFileSync(join(hooksDir, 'post-commit'), originalPost, 'utf-8');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+
+      const prepareBackup = join(hooksDir, 'prepare-commit-msg.commit-echo.bak');
+      const postBackup = join(hooksDir, 'post-commit.commit-echo.bak');
+      assert.equal(readFileSync(prepareBackup, 'utf-8'), originalPrepare);
+      assert.equal(readFileSync(postBackup, 'utf-8'), originalPost);
+
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      assert.equal(readFileSync(prepareBackup, 'utf-8'), originalPrepare);
+      assert.equal(readFileSync(postBackup, 'utf-8'), originalPost);
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 2);
+      assert.equal(result.removed.length, 0);
+      assert.equal(result.skipped.length, 0);
+      assert.equal(readFileSync(join(hooksDir, 'prepare-commit-msg'), 'utf-8'), originalPrepare);
+      assert.equal(readFileSync(join(hooksDir, 'post-commit'), 'utf-8'), originalPost);
+      assert.equal(existsSync(prepareBackup), false);
+      assert.equal(existsSync(postBackup), false);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('uninstallCommitHooks removes hooks created by commit-echo without deleting user hooks', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      const userPrepare = '#!/bin/sh\necho user replacement\n';
+      writeFileSync(join(hooksDir, 'prepare-commit-msg'), userPrepare, 'utf-8');
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 0);
+      assert.equal(result.removed.length, 1);
+      assert.equal(result.skipped.length, 1);
+      assert.equal(readFileSync(join(hooksDir, 'prepare-commit-msg'), 'utf-8'), userPrepare);
+      assert.equal(existsSync(join(hooksDir, 'post-commit')), false);
     });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });

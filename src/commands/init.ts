@@ -12,7 +12,7 @@ import {
 import { saveConfig, configExists, loadConfig } from '../config/store.js';
 import type { Config } from '../types.js';
 import { getAvailableTemplateVars } from '../llm/prompt.js';
-import { installPrepareCommitMsgHook } from '../git/hook.js';
+import { installCommitHooks, uninstallCommitHooks } from '../git/hook.js';
 
 export function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, '');
@@ -45,7 +45,43 @@ export function withTemplateFilePrecedence(
   return { systemPromptTemplate, userPromptTemplate };
 }
 
-export async function initCommand(options: { installHook?: boolean } = {}): Promise<void> {
+export async function initCommand(options: { installHook?: boolean; uninstallHook?: boolean } = {}): Promise<void> {
+  if (options.installHook && options.uninstallHook) {
+    throw new Error('Use either --install-hook or --uninstall-hook, not both.');
+  }
+
+  if (options.uninstallHook) {
+    try {
+      const result = await uninstallCommitHooks();
+      const changedPaths = [...result.restored, ...result.removed];
+
+      if (changedPaths.length === 0) {
+        console.log(pc.yellow('No commit-echo-managed hooks found.'));
+      } else {
+        console.log(pc.green('Removed commit-echo hooks:'));
+        for (const hookPath of changedPaths) {
+          console.log(`  ${hookPath}`);
+        }
+        if (result.restored.length > 0) {
+          console.log(pc.dim(`Restored ${result.restored.length} existing hook(s).`));
+        }
+        if (result.removed.length > 0) {
+          console.log(pc.dim(`Removed ${result.removed.length} hook(s) created by commit-echo.`));
+        }
+      }
+
+      if (result.skipped.length > 0) {
+        console.log(pc.yellow(`Skipped ${result.skipped.length} hook(s) that are not managed by commit-echo.`));
+      }
+    } catch (err) {
+      console.error(
+        pc.red(`Could not uninstall commit-echo hooks: ${err instanceof Error ? err.message : String(err)}`),
+      );
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   intro(pc.bold(pc.cyan('commit-echo init')));
 
   const isReconfig = configExists();
@@ -307,11 +343,13 @@ export async function initCommand(options: { installHook?: boolean } = {}): Prom
 
     if (options.installHook) {
       try {
-        const hookPath = await installPrepareCommitMsgHook();
-        console.log(pc.green(`Installed prepare-commit-msg hook at ${hookPath}`));
+        const { prepareCommitMsgPath, postCommitPath } = await installCommitHooks();
+        console.log(pc.green('Installed commit-echo hooks:'));
+        console.log(`  prepare-commit-msg: ${prepareCommitMsgPath}`);
+        console.log(`  post-commit: ${postCommitPath}`);
       } catch (err) {
         console.warn(
-          pc.yellow(`Could not install prepare-commit-msg hook: ${err instanceof Error ? err.message : String(err)}`),
+          pc.yellow(`Could not install commit-echo hooks: ${err instanceof Error ? err.message : String(err)}`),
         );
       }
     }
