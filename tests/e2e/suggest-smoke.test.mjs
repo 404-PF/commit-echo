@@ -35,11 +35,16 @@ function extractShownDiff(stdout) {
     return preview.slice(0, truncationIndex).trimEnd();
   }
 
-  const markerPattern =
-    /^(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?|[\u007c\u2022\u25d0\u25d3\u25d1\u25d2\u2502\u25c7]\s+(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?))$/gm;
-  const markerMatch = [...preview.matchAll(markerPattern)].at(-1);
-  assert.ok(markerMatch, `Could not find suggestion output in stdout:\n${stdout}`);
-  const markerIndex = markerMatch.index;
+  let markerIndex = -1;
+  let offset = 0;
+  for (const line of preview.split('\n')) {
+    const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
+    const isSuggestionMarker =
+      !isDiffLine && /(?:Suggestions generated:|Streaming suggestions(?:\.\.\.)?)\s*$/.test(line);
+    if (isSuggestionMarker) markerIndex = offset;
+    offset += line.length + 1;
+  }
+  assert.notEqual(markerIndex, -1, `Could not find suggestion output in stdout:\n${stdout}`);
 
   const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
   return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
