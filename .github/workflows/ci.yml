@@ -33,5 +33,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npx prettier --write src/commands/batch.ts && git diff -- src/commands/batch.ts
       - run: npm run format:check
       - run: npm test
