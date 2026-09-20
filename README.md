@@ -73,6 +73,10 @@ commit-echo config set model gpt-4o
 
 Note: The non-interactive flags `--yes`, `-y`, and `--auto` expect staged changes (run `git add`). If no staged changes are found when auto-committing is requested, the command will print an error and exit with a non-zero status.
 
+### `batch` Behavior
+
+Batch mode uses the same Git diff helpers as `suggest` for each repository. Repositories are committed only when they have staged changes. Tracked unstaged changes and non-ignored untracked files are detected and reported as `Unstaged only`, but are skipped until they are staged with `git add`. When staged and unstaged/untracked changes are mixed, batch analyzes and commits only the staged diff and leaves the remaining worktree changes untouched.
+
 ### `suggest` Options
 
 | Flag | Default | Description |
