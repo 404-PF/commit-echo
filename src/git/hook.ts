@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, normalize, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getGitExecutable, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
@@ -117,13 +117,28 @@ function shellQuote(value: string): string {
   return `'${toShellPath(value).replace(/'/g, `'"'"'`)}'`;
 }
 
+function normalizeLegacyPath(value: string): string {
+  return toShellPath(normalize(value)).replace(/^(?:\.\.\/)+/, '');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function isManagedHookContent(hookName: string, content: string): boolean {
   const lines = content.split(/\r?\n/);
   return lines[0] === '#!/bin/sh' && lines[1] === buildManagedHookMarker(hookName);
 }
 
 function referencesBackupPath(content: string, backupPaths: string[]): boolean {
-  return backupPaths.some((backupPath) => content.includes(shellQuote(backupPath)));
+  return backupPaths.some((backupPath) => {
+    if (content.includes(shellQuote(backupPath))) {
+      return true;
+    }
+
+    const normalizedPath = normalizeLegacyPath(backupPath);
+    return new RegExp(`'(?:\\.\\./)*${escapeRegExp(normalizedPath)}'`).test(content);
+  });
 }
 
 export function shouldSkipPrepareCommitMsgHook(source = ''): boolean {
