@@ -842,56 +842,6 @@ test('suggest --stream prints incremental SSE output', async (t) => {
   );
 });
 
-test('suggest --stream displays reasoning without parsing it as visible content', async (t) => {
-  const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-reasoning-'));
-  const { home, repo, configDir } = await setupRepo(root);
-
-  const server = createServer(async (req, res) => {
-    if (req.url === '/chat/completions' && req.method === 'POST') {
-      let body = '';
-      req.setEncoding('utf8');
-      for await (const chunk of req) body += chunk;
-      const parsed = JSON.parse(body);
-
-      if (parsed.stream) {
-        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        res.write('data: {"choices":[{"delta":{"reasoning_content":"internal thought"}}]}\n\n');
-        res.write('data: {"choices":[{"delta":{"content":"1. feat: visible answer"}}]}\n\n');
-        res.write('data: [DONE]\n\n');
-        res.end();
-        return;
-      }
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ model: parsed.model, choices: [{ message: { content: '1. feat: fallback answer' } }] }));
-      return;
-    }
-
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found' }));
-  });
-  const port = await listen(server);
-  t.after(async () => {
-    server.close();
-    await rm(root, { recursive: true, force: true });
-  });
-
-  await writeCustomProviderConfig(configDir, port);
-
-  const result = await runCli(['suggest', '--stream', '--yes'], {
-    cwd: repo,
-    env: cliEnvFor(home),
-  });
-  const stdout = stripAnsi(result.stdout);
-  const selectedOutput = stdout.slice(stdout.lastIndexOf('Selected:'));
-
-  assert.equal(result.code, 0);
-  assert.equal(result.stderr, '');
-  assert.match(stdout, /internal thought/);
-  assert.match(stdout, /Selected:\s+feat: visible answer/);
-  assert.doesNotMatch(selectedOutput, /internal thought/);
-});
-
 test('suggest --stream prints incremental Anthropic SSE output', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-stream-anthropic-'));
   const { home, repo, configDir } = await setupRepo(root);
@@ -982,6 +932,7 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
 
       if (parsed.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: {"choices":[{"delta":{"reasoning_content":"internal thought"}}]}\n\n');
         res.write('data: {"choices":[{"delta":{"content":"1. feat: stream auto commit"}}]}\n\n');
         res.write('data: [DONE]\n\n');
         res.end();
@@ -1043,8 +994,11 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
   const result = await onceExit(child);
   assert.equal(result.code, 0);
   assert.match(stdout, /Streaming suggestions/);
+  assert.match(stdout, /internal thought/);
   assert.match(stdout, /feat: stream auto commit/);
-  assert.match(stdout, /Selected:/);
+  const selectedOutput = stdout.slice(stdout.lastIndexOf('Selected:'));
+  assert.match(selectedOutput, /Selected:/);
+  assert.doesNotMatch(selectedOutput, /internal thought/);
   assert.doesNotMatch(stdout, /Choose an action/);
   assert.equal(requests.at(-1)?.stream, true);
 });

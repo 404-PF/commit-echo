@@ -15,12 +15,13 @@ const emptyProfile = {
   totalCommits: 0,
 };
 
-test('generateSuggestionsStream yields meta then text chunks', async () => {
+test('generateSuggestionsStream yields meta, reasoning, then text chunks', async () => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async () =>
     new Response(
       streamFromChunks([
+        'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
         'data: {"choices":[{"delta":{"content":"1. feat: stream test"}}]}\n',
         'data: [DONE]\n',
       ]),
@@ -47,6 +48,7 @@ test('generateSuggestionsStream yields meta then text chunks', async () => {
 
     assert.equal(events[0]?.kind, 'meta');
     assert.equal(events[0]?.truncation, undefined);
+    assert.deepEqual(events.filter((event) => event.kind === 'reasoning'), [{ kind: 'reasoning', text: 'thinking' }]);
 
     const chunks = events
       .filter((event) => event.kind === 'text')
@@ -89,50 +91,6 @@ test('generateSuggestionsStream yields model from provider stream', async () => 
 
     const modelEvent = events.find((event) => event.kind === 'model');
     assert.equal(modelEvent?.model, 'gpt-4o-mini');
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('generateSuggestionsStream exposes reasoning separately from visible text', async () => {
-  const originalFetch = globalThis.fetch;
-
-  globalThis.fetch = async () =>
-    new Response(
-      streamFromChunks([
-        'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
-        'data: {"choices":[{"delta":{"content":"1. feat: stream test"}}]}\n',
-        'data: [DONE]\n',
-      ]),
-      { status: 200 },
-    );
-
-  try {
-    const events = [];
-    for await (const event of generateSuggestionsStream(
-      {
-        provider: '__custom__',
-        model: 'test-model',
-        baseUrl: 'http://127.0.0.1/v1',
-        apiKey: 'test-key',
-        historySize: 5,
-        maxDiffSize: 100_000,
-      },
-      'diff --git a/file.txt b/file.txt\n',
-      emptyProfile,
-      'test-key',
-    )) {
-      events.push(event);
-    }
-
-    assert.deepEqual(
-      events.filter((event) => event.kind === 'reasoning'),
-      [{ kind: 'reasoning', text: 'thinking' }],
-    );
-    assert.deepEqual(
-      events.filter((event) => event.kind === 'text'),
-      [{ kind: 'text', text: '1. feat: stream test' }],
-    );
   } finally {
     globalThis.fetch = originalFetch;
   }
