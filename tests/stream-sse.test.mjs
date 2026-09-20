@@ -227,17 +227,24 @@ test('OpenAI completeStream ignores empty data keepalive events', async () => {
 
 test('OpenAI completeStream propagates malformed JSON and releases the response stream', async () => {
   let cancelled = false;
+  let malformedSent = false;
+  let closeTimer;
   const response = new Response(
     new ReadableStream({
       start(stream) {
-        stream.enqueue(
-          new TextEncoder().encode(
-            'data: {"choices":[{"delta":{"content":"before"}}]}\n' + 'data: {not valid JSON}\n',
-          ),
-        );
+        stream.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"before"}}]}\n'));
+      },
+      pull(stream) {
+        if (malformedSent) return;
+        malformedSent = true;
+        stream.enqueue(new TextEncoder().encode('data: {not valid JSON}\n'));
+        closeTimer = setTimeout(() => {
+          if (!cancelled) stream.close();
+        }, 100);
       },
       cancel() {
         cancelled = true;
+        if (closeTimer) clearTimeout(closeTimer);
       },
     }),
     { status: 200 },

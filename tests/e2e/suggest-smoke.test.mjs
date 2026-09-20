@@ -722,7 +722,7 @@ test('suggest --show-diff does not mistake diff headers for output markers', asy
     rootPrefix: 'commit-echo-show-diff-marker-filename-',
     content: '1. feat: inspect marker filename diff',
   });
-  const markerFilename = join(repo, 'Streaming suggestions.txt');
+  const markerFilename = join(repo, 'Streaming suggestions');
   await writeFile(markerFilename, 'filename contains an output marker\n', 'utf8');
   execFileSync('git', ['add', markerFilename], { cwd: repo });
 
@@ -731,7 +731,7 @@ test('suggest --show-diff does not mistake diff headers for output markers', asy
 
   assert.equal(result.code, 0);
   assert.equal(result.stderr, '');
-  assert.match(stdout, /diff --git .*Streaming suggestions\.txt/);
+  assert.match(stdout, /diff --git .*Streaming suggestions(?:\r?\n|$)/);
   assert.match(stdout, /Selected:\s+feat: inspect marker filename diff/);
   assert.equal(extractPromptDiff(requests.at(-1).messages[1].content), extractShownDiff(stdout));
 });
