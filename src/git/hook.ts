@@ -456,6 +456,11 @@ async function uninstallManagedHook(hookName: string): Promise<{ path: string; a
       return { path: hookPath, action: 'unreadable' };
     }
   }
+
+  if (backupStats && !backupStats.isFile() && !backupStats.isSymbolicLink()) {
+    return { path: hookPath, action: 'unreadable' };
+  }
+
   const backupIsOwned = Boolean(
     backupStats && (ownerIsValid || (isManagedHook && referencesBackupPath(hookContent, backupPath))),
   );

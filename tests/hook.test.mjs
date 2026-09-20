@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -382,7 +382,6 @@ test('uninstallCommitHooks restores an owned backup after a truncated managed ho
 
 test(
   'uninstallCommitHooks isolates an unreadable backup from the other hook',
-  { skip: process.platform === 'win32' },
   async () => {
     const repoDir = initRepo();
     const hooksDir = join(repoDir, '.git', 'hooks');
@@ -409,6 +408,34 @@ test(
     }
   },
 );
+
+test('init --uninstall-hook exits non-zero when a hook is unreadable', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const preparePath = join(hooksDir, 'prepare-commit-msg');
+  const backupPath = `${preparePath}.commit-echo.bak`;
+  const cliPath = join(process.cwd(), 'dist', 'index.js');
+  writeFileSync(preparePath, '#!/bin/sh\necho original\n', 'utf-8');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(cliPath);
+      rmSync(backupPath);
+      mkdirSync(backupPath);
+
+      const result = spawnSync(process.execPath, [cliPath, 'init', '--uninstall-hook'], {
+        cwd: repoDir,
+        encoding: 'utf-8',
+        env: { ...process.env, NO_COLOR: '1' },
+      });
+
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(`${result.stdout}\n${result.stderr}`, /Could not inspect 1 hook/);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
 
 test('uninstallCommitHooks removes hooks created by commit-echo without deleting user hooks', async () => {
   const repoDir = initRepo();

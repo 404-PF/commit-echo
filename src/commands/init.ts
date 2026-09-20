@@ -81,7 +81,11 @@ function printUninstallResult(result: UninstalledCommitHooks): void {
 
 async function uninstallHooksCommand(): Promise<void> {
   try {
-    printUninstallResult(await uninstallCommitHooks());
+    const result = await uninstallCommitHooks();
+    printUninstallResult(result);
+    if (result.unreadable.length > 0) {
+      process.exitCode = 1;
+    }
   } catch (err) {
     console.error(pc.red(`Could not uninstall commit-echo hooks: ${err instanceof Error ? err.message : String(err)}`));
     process.exitCode = 1;
@@ -305,10 +309,6 @@ async function testConfiguration(config: Config, provider: ProviderSetup): Promi
   testSpinner.start('Testing connection...');
   try {
     const resolvedKey = config.apiKey ?? process.env[provider.apiKeyEnv] ?? '';
-    if (!resolvedKey && provider.needsApiKey) {
-      testSpinner.stop(pc.yellow('Skipped (no API key).'));
-      return true;
-    }
 
     const { testConnection } = await import('../llm/client.js');
     const modelName = await testConnection({ ...config, apiKey: resolvedKey });
