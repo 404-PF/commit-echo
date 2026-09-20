@@ -9,6 +9,7 @@ import {
   mkdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -81,7 +82,7 @@ test('shouldSkipPrepareCommitMsgHook skips commit message sources that should no
 test('buildHookCommitMessage preserves commit template comments', () => {
   const result = buildHookCommitMessage(
     { index: 1, message: 'feat: add hook support', body: 'Explain the change.' },
-    '# Please enter the commit message for your changes.\n\n# Lines starting with # will be ignored.'
+    '# Please enter the commit message for your changes.\n\n# Lines starting with # will be ignored.',
   );
 
   assert.ok(result.startsWith('feat: add hook support\n\nExplain the change.'));
@@ -92,7 +93,7 @@ test('buildHookCommitMessage preserves commit template comments', () => {
 test('buildHookCommitMessage preserves non-comment template content', () => {
   const result = buildHookCommitMessage(
     { index: 1, message: 'feat: add hook support', body: 'Explain the change.' },
-    'Ticket: ABC-123\n\nDetails:\n- add tests\n# comment'
+    'Ticket: ABC-123\n\nDetails:\n- add tests\n# comment',
   );
 
   assert.ok(result.startsWith('feat: add hook support\n\nExplain the change.'));
@@ -105,31 +106,52 @@ test('buildHookCommitMessage preserves template whitespace exactly', () => {
   const template = '\nTicket: ABC-123\n\nDetails:\n- add tests\n# comment\n\n';
   const result = buildHookCommitMessage(
     { index: 1, message: 'feat: add hook support', body: 'Explain the change.' },
-    template
+    template,
   );
 
   assert.equal(result, `feat: add hook support\n\nExplain the change.\n\n${template}`);
 });
 
 test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
-  const script = buildPrepareCommitMsgHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak');
+  const script = buildPrepareCommitMsgHookScript(
+    'c:\\tools\\commit-echo\\dist\\index.js',
+    'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak',
+  );
 
-  assert.match(script, /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/);
-  assert.match(script, /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/);
-  assert.match(script, /if \[ -x 'c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo.bak' \]; then 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; else sh 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; fi/);
+  assert.match(
+    script,
+    /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/,
+  );
+  assert.match(
+    script,
+    /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/,
+  );
+  assert.match(
+    script,
+    /if \[ -x 'c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo.bak' \]; then 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; else sh 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; fi/,
+  );
 });
 
 test('buildPostCommitHookScript invokes the post-commit entry point', () => {
-  const script = buildPostCommitHookScript('c:\\tools\\commit-echo\\dist\\index.js', 'c:\\repo\\.git\\hooks\\post-commit.commit-echo.bak');
+  const script = buildPostCommitHookScript(
+    'c:\\tools\\commit-echo\\dist\\index.js',
+    'c:\\repo\\.git\\hooks\\post-commit.commit-echo.bak',
+  );
 
   assert.match(script, /commit-echo managed hook post-commit/);
-  assert.match(script, /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'post-commit' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'post-commit' "\$@"; fi/);
+  assert.match(
+    script,
+    /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'post-commit' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'post-commit' "\$@"; fi/,
+  );
 });
 
 test('buildPrepareCommitMsgHookScript safely quotes paths containing shell metacharacters', () => {
   const script = buildPrepareCommitMsgHookScript("/tmp/commit-echo/it's/$(bad)/index.js");
 
-  assert.match(script, /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook 'prepare-commit-msg' "\$@";/);
+  assert.match(
+    script,
+    /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook 'prepare-commit-msg' "\$@";/,
+  );
 });
 
 test('installPrepareCommitMsgHook writes a managed hook file inside the current repository', async () => {
@@ -139,7 +161,7 @@ test('installPrepareCommitMsgHook writes a managed hook file inside the current 
     await withCwdAsync(repoDir, async () => {
       const resolvedHookPath = await installPrepareCommitMsgHook(join(repoDir, 'dist', 'index.js'));
       assert.ok(existsSync(resolvedHookPath));
-      assert.equal(resolvedHookPath, join(repoDir, '.git', 'hooks', 'prepare-commit-msg'));
+      assert.equal(realpathSync(resolvedHookPath), realpathSync(join(repoDir, '.git', 'hooks', 'prepare-commit-msg')));
       const content = readFileSync(resolvedHookPath, 'utf-8');
       const postCommitHookPath = join(repoDir, '.git', 'hooks', 'post-commit');
       assert.match(content, /commit-echo managed hook prepare-commit-msg/);
@@ -230,12 +252,13 @@ test('installCommitHooks preserves and restores symlink hooks', { skip: process.
 });
 
 test(
-  'uninstallCommitHooks restores a backup when the managed hook cannot be read',
+  'uninstallCommitHooks preserves an unreadable replacement and its backup',
   { skip: process.platform === 'win32' || process.getuid?.() === 0 },
   async () => {
     const repoDir = initRepo();
     const hooksDir = join(repoDir, '.git', 'hooks');
     const originalPrepare = '#!/bin/sh\necho unreadable original\n';
+    const replacementPrepare = '#!/bin/sh\necho unreadable replacement\n';
     const originalPreparePath = join(hooksDir, 'prepare-commit-msg');
     const backupPath = `${originalPreparePath}.commit-echo.bak`;
     writeFileSync(originalPreparePath, originalPrepare, 'utf-8');
@@ -244,16 +267,91 @@ test(
     try {
       await withCwdAsync(repoDir, async () => {
         await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+        writeFileSync(originalPreparePath, replacementPrepare, 'utf-8');
         chmodSync(originalPreparePath, 0o000);
 
         const result = await uninstallCommitHooks();
-        assert.equal(result.restored.length, 1);
+        assert.equal(result.restored.length, 0);
         assert.equal(result.removed.length, 1);
-        assert.equal(readFileSync(originalPreparePath, 'utf-8'), originalPrepare);
-        assert.equal(statSync(originalPreparePath).mode & 0o7777, 0o640);
-        assert.equal(existsSync(backupPath), false);
+        assert.equal(result.skipped.length, 0);
+        assert.equal(result.unreadable.length, 1);
+        assert.equal(statSync(originalPreparePath).mode & 0o7777, 0o000);
+        assert.equal(existsSync(backupPath), true);
       });
     } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  },
+);
+
+test('installCommitHooks rejects an unowned backup collision and rolls back the other hook', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const preparePath = join(hooksDir, 'prepare-commit-msg');
+  const backupPath = `${preparePath}.commit-echo.bak`;
+  const originalHook = '#!/bin/sh\necho existing hook\n';
+  const existingBackup = '#!/bin/sh\necho unrelated backup\n';
+  writeFileSync(preparePath, originalHook, 'utf-8');
+  writeFileSync(backupPath, existingBackup, 'utf-8');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await assert.rejects(
+        () => installCommitHooks(join(repoDir, 'dist', 'index.js')),
+        /Refusing to overwrite existing backup/,
+      );
+      assert.equal(readFileSync(preparePath, 'utf-8'), originalHook);
+      assert.equal(readFileSync(backupPath, 'utf-8'), existingBackup);
+      assert.equal(existsSync(join(hooksDir, 'post-commit')), false);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('uninstallCommitHooks restores an owned backup after a truncated managed hook', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const preparePath = join(hooksDir, 'prepare-commit-msg');
+  const originalPrepare = '#!/bin/sh\necho original prepare\n';
+  writeFileSync(preparePath, originalPrepare, 'utf-8');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      writeFileSync(preparePath, '', 'utf-8');
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 1);
+      assert.equal(readFileSync(preparePath, 'utf-8'), originalPrepare);
+      assert.equal(existsSync(`${preparePath}.commit-echo.bak`), false);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test(
+  'uninstallCommitHooks leaves both files intact when restoring an unreadable backup fails',
+  { skip: process.platform === 'win32' || process.getuid?.() === 0 },
+  async () => {
+    const repoDir = initRepo();
+    const hooksDir = join(repoDir, '.git', 'hooks');
+    const preparePath = join(hooksDir, 'prepare-commit-msg');
+    const backupPath = `${preparePath}.commit-echo.bak`;
+    writeFileSync(preparePath, '#!/bin/sh\necho original\n', 'utf-8');
+
+    try {
+      await withCwdAsync(repoDir, async () => {
+        await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+        chmodSync(backupPath, 0o000);
+
+        await assert.rejects(() => uninstallCommitHooks());
+        assert.match(readFileSync(preparePath, 'utf-8'), /commit-echo managed hook/);
+        assert.equal(existsSync(backupPath), true);
+      });
+    } finally {
+      chmodSync(backupPath, 0o600);
       rmSync(repoDir, { recursive: true, force: true });
     }
   },
@@ -526,12 +624,13 @@ test('runPostCommitHook appends the committed message to history and clears the 
   await runPostCommitHook({
     checkGitRepo: () => {},
     readLatestCommitMessage: () => 'feat: persist hook-driven commits',
-    readPendingEntryFile: async () => JSON.stringify({
-      timestamp: '2026-06-01T00:00:00.000Z',
-      diff: 'diff --git a/file b/file\n+hello',
-      model: 'mock-model',
-      provider: 'mock',
-    }),
+    readPendingEntryFile: async () =>
+      JSON.stringify({
+        timestamp: '2026-06-01T00:00:00.000Z',
+        diff: 'diff --git a/file b/file\n+hello',
+        model: 'mock-model',
+        provider: 'mock',
+      }),
     appendHistoryEntry: async (entry) => {
       entries.push(entry);
     },
@@ -576,12 +675,13 @@ test('runPostCommitHook clears pending entry when history append fails', async (
   await runPostCommitHook({
     checkGitRepo: () => {},
     readLatestCommitMessage: () => 'feat: should still clear pending on error',
-    readPendingEntryFile: async () => JSON.stringify({
-      timestamp: '2026-06-01T00:00:00.000Z',
-      diff: 'diff --git a/file b/file\n+hello',
-      model: 'mock-model',
-      provider: 'mock',
-    }),
+    readPendingEntryFile: async () =>
+      JSON.stringify({
+        timestamp: '2026-06-01T00:00:00.000Z',
+        diff: 'diff --git a/file b/file\n+hello',
+        model: 'mock-model',
+        provider: 'mock',
+      }),
     appendHistoryEntry: async () => {
       throw new Error('disk full');
     },

@@ -53,27 +53,35 @@ export async function initCommand(options: { installHook?: boolean; uninstallHoo
   if (options.uninstallHook) {
     try {
       const result = await uninstallCommitHooks();
-      const changedPaths = [...result.restored, ...result.removed];
 
-      if (changedPaths.length === 0 && result.skipped.length === 0) {
+      if (
+        result.restored.length === 0 &&
+        result.removed.length === 0 &&
+        result.skipped.length === 0 &&
+        result.unreadable.length === 0
+      ) {
         console.log(pc.yellow('No commit-echo-managed hooks found.'));
       } else {
-        if (changedPaths.length > 0) {
-          console.log(pc.green('Removed commit-echo hooks:'));
-          for (const hookPath of changedPaths) {
+        if (result.restored.length > 0) {
+          console.log(pc.green('Restored existing hooks:'));
+          for (const hookPath of result.restored) {
             console.log(`  ${hookPath}`);
           }
         }
-        if (result.restored.length > 0) {
-          console.log(pc.dim(`Restored ${result.restored.length} existing hook(s).`));
-        }
         if (result.removed.length > 0) {
+          console.log(pc.green('Removed commit-echo hooks:'));
+          for (const hookPath of result.removed) {
+            console.log(`  ${hookPath}`);
+          }
           console.log(pc.dim(`Removed ${result.removed.length} hook(s) created by commit-echo.`));
         }
       }
 
       if (result.skipped.length > 0) {
         console.log(pc.yellow(`Skipped ${result.skipped.length} hook(s) that are not managed by commit-echo.`));
+      }
+      if (result.unreadable.length > 0) {
+        console.log(pc.yellow(`Could not inspect ${result.unreadable.length} hook(s); left them unchanged.`));
       }
     } catch (err) {
       console.error(
@@ -350,9 +358,9 @@ export async function initCommand(options: { installHook?: boolean; uninstallHoo
         console.log(`  prepare-commit-msg: ${prepareCommitMsgPath}`);
         console.log(`  post-commit: ${postCommitPath}`);
       } catch (err) {
-        console.warn(
-          pc.yellow(`Could not install commit-echo hooks: ${err instanceof Error ? err.message : String(err)}`),
-        );
+        throw new Error(`Could not install commit-echo hooks: ${err instanceof Error ? err.message : String(err)}`, {
+          cause: err,
+        });
       }
     }
   };

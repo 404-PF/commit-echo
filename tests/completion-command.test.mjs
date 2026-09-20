@@ -288,8 +288,11 @@ test('completion bash script is syntactically valid bash', async (t) => {
   try {
     await execFileAsync('bash', ['-c', 'exit 0']);
   } catch (err) {
-    t.skip(`bash not runnable — skipping parse check (${err?.code ?? 'probe failed'})`);
-    return;
+    if (err?.code === 'ENOENT') {
+      t.skip('bash is not installed — skipping parse check');
+      return;
+    }
+    throw err;
   }
   const { stdout } = await runCompletion(['bash']);
   // Use a relative path in cwd — Git Bash on Windows mangles absolute Windows
