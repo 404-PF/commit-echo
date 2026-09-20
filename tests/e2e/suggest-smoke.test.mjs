@@ -193,7 +193,13 @@ function createChatCompletionServer({ content, streamContent, requireStream = fa
       const parsed = JSON.parse(body);
       requests.push(parsed);
 
-      await beforeResponse?.(parsed);
+      try {
+        await beforeResponse?.(parsed);
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        return;
+      }
 
       if (parsed.stream && streamContent) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -503,6 +509,29 @@ test('suggest --commit --yes refuses a staged diff changed during analysis', asy
   assert.doesNotMatch(stdout, /Commit created/);
   assert.equal(execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(), 'feat: initial fixture');
   assert.match(execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }), /replacement during analysis/);
+});
+
+test('suggest reports beforeResponse failures instead of timing out', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-before-response-error-'));
+  const { home, repo, configDir } = await setupRepo(root);
+  const { server } = createChatCompletionServer({
+    content: '1. feat: should not be returned',
+    beforeResponse: async () => {
+      throw new Error('synthetic beforeResponse failure');
+    },
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(configDir, port);
+  const result = await runCli(['suggest'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+
+  assert.match(stdout, /OpenAI-compatible API error \(500\): \{"error":"synthetic beforeResponse failure"\}/);
+  assert.doesNotMatch(stdout, /Timed out/);
 });
 
 test('suggest reports no changes before checking for an API key', async (t) => {
