@@ -107,31 +107,36 @@ export function parseOpenAiSseLine(line: string): {
   if (!trimmed || !trimmed.startsWith('data:')) return {};
 
   const payload = trimmed.slice(5).trim();
+  if (!payload) return {};
+
   if (payload === '[DONE]') return { done: true };
 
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(payload) as {
-      error?: { message?: string };
-      model?: string;
-      choices?: { delta?: { content?: string } }[];
-    };
-
-    if (parsed.error?.message) {
-      return { error: parsed.error.message };
-    }
-
-    const result: { text?: string; model?: string } = {};
-    if (parsed.model) result.model = parsed.model;
-
-    const content = parsed.choices?.[0]?.delta?.content;
-    if (content) result.text = content;
-
-    return result;
+    parsed = JSON.parse(payload);
   } catch {
-    // Skip malformed JSON chunks
+    throw new Error('Malformed OpenAI SSE data: invalid JSON');
   }
 
-  return {};
+  if (!parsed || typeof parsed !== 'object') return {};
+
+  const data = parsed as {
+    error?: { message?: string };
+    model?: string;
+    choices?: { delta?: { content?: string } }[];
+  };
+
+  if (data.error?.message) {
+    return { error: data.error.message };
+  }
+
+  const result: { text?: string; model?: string } = {};
+  if (data.model) result.model = data.model;
+
+  const content = data.choices?.[0]?.delta?.content;
+  if (content) result.text = content;
+
+  return result;
 }
 
 /**
