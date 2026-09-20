@@ -94,15 +94,20 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
 }
 
 function normalizeDiff(diff: string): string {
-  const sections = diff
-    .replace(/\r\n?/g, '\n')
-    .trim()
-    .split(/(?=^diff --git )/m)
-    .filter((section) => section.length > 0)
-    .map((section) => section.trimEnd())
+  const normalized = diff.replace(/\r\n?/g, '\n');
+  const sectionStarts = [...normalized.matchAll(/^diff --git /gm)].map((match) => match.index!);
+
+  if (sectionStarts.length === 0) {
+    return normalized;
+  }
+
+  const prefix = normalized.slice(0, sectionStarts[0]);
+  const sections = sectionStarts
+    .map((start, index) => normalized.slice(start, sectionStarts[index + 1] ?? normalized.length))
+    .map((section) => section.replace(/\n+$/g, ''))
     .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 
-  return sections.join('\n');
+  return prefix + sections.join('');
 }
 
 export function verifyStagedDiff(analyzedDiff: string, currentDiff: DiffResult): string | undefined {

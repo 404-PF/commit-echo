@@ -52,6 +52,24 @@ test('verifyStagedDiff ignores file-section ordering for mixed tracked and untra
   );
 });
 
+test('verifyStagedDiff does not ignore trailing spaces inside a non-final file section', () => {
+  const analyzedDiff =
+    'diff --git a/tracked.txt b/tracked.txt\n+changed\n' +
+    'diff --git a/untracked.txt b/untracked.txt\n+new file';
+  const currentDiff =
+    'diff --git a/tracked.txt b/tracked.txt\n+changed \n' +
+    'diff --git a/untracked.txt b/untracked.txt\n+new file';
+
+  assert.equal(
+    verifyStagedDiff(analyzedDiff, {
+      diff: currentDiff,
+      hasChanges: true,
+      staged: true,
+    }),
+    undefined,
+  );
+});
+
 test('verifyStagedDiff returns the current staged diff when it still matches', () => {
   const currentDiff = {
     diff: analyzedDiff,
