@@ -272,77 +272,105 @@ interface InstalledHookChange {
   rollback: () => Promise<void>;
 }
 
-async function installManagedHook(hookName: string, cliPath: string): Promise<InstalledHookChange> {
+interface ManagedHookState {
+  hookPath: string;
+  backupPath: string;
+  ownerPath: string;
+  hookSnapshot: PathSnapshot;
+  backupSnapshot: PathSnapshot;
+  ownerSnapshot: PathSnapshot;
+  isManagedHook: boolean;
+  hasBackup: boolean;
+  hasOwner: boolean;
+  validOwner: boolean;
+  referencesBackup: boolean;
+}
+
+async function inspectManagedHook(hookName: string): Promise<ManagedHookState> {
   const hookPath = resolveHookPath(hookName);
-  const hookDir = dirname(hookPath);
   const backupPath = `${hookPath}.commit-echo.bak`;
   const ownerPath = `${backupPath}.owner`;
-  const marker = buildManagedHookMarker(hookName);
-
-  await mkdir(hookDir, { recursive: true });
-
   const hookSnapshot = await snapshotPath(hookPath);
   const backupSnapshot = await snapshotPath(backupPath);
   const ownerSnapshot = await snapshotPath(ownerPath);
   const existingHook = hookSnapshot.kind === 'file' ? hookSnapshot.content.toString('utf8') : '';
-  const isManagedHook = hookSnapshot.kind === 'file' && existingHook.includes(marker);
-  const hasBackup = backupSnapshot.kind !== 'missing';
-  const hasOwner = ownerSnapshot.kind !== 'missing';
-  const validOwner =
-    ownerSnapshot.kind === 'file' && ownerSnapshot.content.toString('utf8').trim() === BACKUP_OWNER_MARKER;
-  const referencesBackup = isManagedHook && existingHook.includes(shellQuote(backupPath));
+  const isManagedHook = hookSnapshot.kind === 'file' && existingHook.includes(buildManagedHookMarker(hookName));
 
-  if (hasOwner && !validOwner) {
-    throw new Error(`Refusing to use invalid backup ownership marker at ${ownerPath}`);
+  return {
+    hookPath,
+    backupPath,
+    ownerPath,
+    hookSnapshot,
+    backupSnapshot,
+    ownerSnapshot,
+    isManagedHook,
+    hasBackup: backupSnapshot.kind !== 'missing',
+    hasOwner: ownerSnapshot.kind !== 'missing',
+    validOwner: ownerSnapshot.kind === 'file' && ownerSnapshot.content.toString('utf8').trim() === BACKUP_OWNER_MARKER,
+    referencesBackup: isManagedHook && existingHook.includes(shellQuote(backupPath)),
+  };
+}
+
+function validateManagedHookBackup(state: ManagedHookState): void {
+  if (state.hasOwner && !state.validOwner) {
+    throw new Error(`Refusing to use invalid backup ownership marker at ${state.ownerPath}`);
+  }
+  if (state.hasBackup && !state.isManagedHook && !state.validOwner) {
+    throw new Error(`Refusing to overwrite existing backup at ${state.backupPath}`);
+  }
+  if (state.hasBackup && state.isManagedHook && !state.referencesBackup && !state.validOwner) {
+    throw new Error(`Refusing to use unowned backup at ${state.backupPath}`);
+  }
+}
+
+async function prepareManagedHookBackup(state: ManagedHookState): Promise<void> {
+  if (state.hookSnapshot.kind === 'file' && !state.isManagedHook && state.validOwner) {
+    await rm(state.backupPath, { force: true });
+    await rm(state.ownerPath, { force: true });
   }
 
-  if (hasBackup && !isManagedHook && !validOwner) {
-    throw new Error(`Refusing to overwrite existing backup at ${backupPath}`);
+  const latestBackupStats = await lstatIfExists(state.backupPath);
+  if (state.hookSnapshot.kind !== 'missing' && !state.isManagedHook && !latestBackupStats) {
+    await backupHook(state.hookPath, state.backupPath, await lstat(state.hookPath));
+    await writeBackupOwner(state.ownerPath);
+  } else if (state.isManagedHook && latestBackupStats && state.referencesBackup && !state.validOwner) {
+    // Adopt backups created by older commit-echo versions so future uninstall
+    // operations can distinguish them from user-owned collision files.
+    await writeBackupOwner(state.ownerPath);
   }
+}
 
-  if (hasBackup && isManagedHook && !referencesBackup && !validOwner) {
-    throw new Error(`Refusing to use unowned backup at ${backupPath}`);
-  }
+async function installManagedHook(hookName: string, cliPath: string): Promise<InstalledHookChange> {
+  const state = await inspectManagedHook(hookName);
+  await mkdir(dirname(state.hookPath), { recursive: true });
+  validateManagedHookBackup(state);
 
   try {
-    if (hookSnapshot.kind === 'file' && !isManagedHook && validOwner) {
-      await rm(backupPath, { force: true });
-      await rm(ownerPath, { force: true });
-    }
+    await prepareManagedHookBackup(state);
 
-    const latestBackupStats = await lstatIfExists(backupPath);
-    if (hookSnapshot.kind !== 'missing' && !isManagedHook && !latestBackupStats) {
-      await backupHook(hookPath, backupPath, await lstat(hookPath));
-      await writeBackupOwner(ownerPath);
-    } else if (isManagedHook && latestBackupStats && referencesBackup && !validOwner) {
-      // Adopt backups created by older commit-echo versions so future uninstall
-      // operations can distinguish them from user-owned collision files.
-      await writeBackupOwner(ownerPath);
-    }
-
-    const effectiveBackupStats = await lstatIfExists(backupPath);
-    const script = buildHookScript(hookName, cliPath, effectiveBackupStats ? backupPath : undefined);
-    const stagedPath = `${hookPath}.tmp-install-${randomUUID()}`;
+    const effectiveBackupStats = await lstatIfExists(state.backupPath);
+    const script = buildHookScript(hookName, cliPath, effectiveBackupStats ? state.backupPath : undefined);
+    const stagedPath = `${state.hookPath}.tmp-install-${randomUUID()}`;
     try {
       await writeFile(stagedPath, `${script}\n`, 'utf-8');
       await chmod(stagedPath, 0o755);
-      await replacePreparedPath(stagedPath, hookPath);
+      await replacePreparedPath(stagedPath, state.hookPath);
     } finally {
       await rm(stagedPath, { force: true }).catch(() => {});
     }
   } catch (error) {
-    await restoreSnapshot(ownerPath, ownerSnapshot).catch(() => {});
-    await restoreSnapshot(backupPath, backupSnapshot).catch(() => {});
-    await restoreSnapshot(hookPath, hookSnapshot).catch(() => {});
+    await restoreSnapshot(state.ownerPath, state.ownerSnapshot).catch(() => {});
+    await restoreSnapshot(state.backupPath, state.backupSnapshot).catch(() => {});
+    await restoreSnapshot(state.hookPath, state.hookSnapshot).catch(() => {});
     throw error;
   }
 
   return {
-    path: hookPath,
+    path: state.hookPath,
     rollback: async () => {
-      await restoreSnapshot(ownerPath, ownerSnapshot);
-      await restoreSnapshot(backupPath, backupSnapshot);
-      await restoreSnapshot(hookPath, hookSnapshot);
+      await restoreSnapshot(state.ownerPath, state.ownerSnapshot);
+      await restoreSnapshot(state.backupPath, state.backupSnapshot);
+      await restoreSnapshot(state.hookPath, state.hookSnapshot);
     },
   };
 }
@@ -406,12 +434,14 @@ export async function installCommitHooks(cliPath = process.argv[1] ?? 'dist/inde
     cliPath === process.argv[1] ? fileURLToPath(new URL('../index.js', import.meta.url)) : cliPath;
 
   checkGitRepo();
-  const installed: InstalledHookChange[] = [];
+  let installed: InstalledHookChange[] = [];
   try {
-    installed.push(await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath));
-    installed.push(await installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, resolvedCliPath));
+    installed = [await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath)];
+    installed = [...installed, await installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, resolvedCliPath)];
   } catch (error) {
-    for (const change of installed.reverse()) {
+    const rollbackOrder = [...installed];
+    rollbackOrder.reverse();
+    for (const change of rollbackOrder) {
       await change.rollback().catch(() => {});
     }
     throw error;
