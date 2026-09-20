@@ -183,7 +183,7 @@ async function setupRepo(root) {
   return { home, repo, configDir };
 }
 
-function createChatCompletionServer({ content, streamContent, requireStream = false }) {
+function createChatCompletionServer({ content, streamContent, requireStream = false, beforeResponse }) {
   const requests = [];
   const server = createServer(async (req, res) => {
     if (req.url === '/chat/completions' && req.method === 'POST') {
@@ -192,6 +192,8 @@ function createChatCompletionServer({ content, streamContent, requireStream = fa
       for await (const chunk of req) body += chunk;
       const parsed = JSON.parse(body);
       requests.push(parsed);
+
+      await beforeResponse?.(parsed);
 
       if (parsed.stream && streamContent) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -479,27 +481,12 @@ test('top-level --auto commits the first suggestion like --yes', async (t) => {
 test('suggest --commit --yes refuses a staged diff changed during analysis', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-auto-stale-diff-'));
   const { home, repo, configDir } = await setupRepo(root);
-  const server = createServer(async (req, res) => {
-    if (req.url === '/chat/completions' && req.method === 'POST') {
-      let body = '';
-      req.setEncoding('utf8');
-      for await (const chunk of req) body += chunk;
-
+  const { server } = createChatCompletionServer({
+    content: '1. feat: reject changed staged diff',
+    beforeResponse: async () => {
       await writeFile(join(repo, 'README.md'), '# fixture\n\nreplacement during analysis\n', 'utf8');
       execFileSync('git', ['add', 'README.md'], { cwd: repo });
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          model: 'fixture-model',
-          choices: [{ message: { content: '1. feat: reject changed staged diff' } }],
-        }),
-      );
-      return;
-    }
-
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found' }));
+    },
   });
   const port = await listen(server);
   t.after(async () => {
