@@ -137,7 +137,9 @@ export async function batchCommand(
         }
 
         console.log(
-          `    ${pc.yellow('ℹ Unstaged changes only (stage with \`git add\` first), skipping')}\n`,
+          `    ${pc.yellow(
+            'ℹ Unstaged changes only (stage with `git add` first), skipping',
+          )}\n`,
         );
         results.push({
           repo: repoPath,
