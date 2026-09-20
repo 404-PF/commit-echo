@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 import {
   buildHookCommitMessage,
@@ -161,7 +161,8 @@ test('installPrepareCommitMsgHook writes a managed hook file inside the current 
     await withCwdAsync(repoDir, async () => {
       const resolvedHookPath = await installPrepareCommitMsgHook(join(repoDir, 'dist', 'index.js'));
       assert.ok(existsSync(resolvedHookPath));
-      assert.equal(realpathSync(resolvedHookPath), realpathSync(join(repoDir, '.git', 'hooks', 'prepare-commit-msg')));
+      assert.equal(isAbsolute(resolvedHookPath), true);
+      assert.equal(resolvedHookPath, realpathSync(join(repoDir, '.git', 'hooks', 'prepare-commit-msg')));
       const content = readFileSync(resolvedHookPath, 'utf-8');
       const postCommitHookPath = join(repoDir, '.git', 'hooks', 'post-commit');
       assert.match(content, /commit-echo managed hook prepare-commit-msg/);
@@ -222,11 +223,14 @@ test('installCommitHooks preserves and restores symlink hooks', { skip: process.
   const hooksDir = join(repoDir, '.git', 'hooks');
   const sharedHooksDir = join(repoDir, 'shared-hooks');
   const targetPath = join(sharedHooksDir, 'prepare-commit-msg');
+  const replacementTargetPath = join(sharedHooksDir, 'replacement-prepare-commit-msg');
   const hookPath = join(hooksDir, 'prepare-commit-msg');
   const backupPath = `${hookPath}.commit-echo.bak`;
   const original = '#!/bin/sh\necho shared hook\n';
+  const replacement = '#!/bin/sh\necho replacement hook\n';
   mkdirSync(sharedHooksDir, { recursive: true });
   writeFileSync(targetPath, original, 'utf-8');
+  writeFileSync(replacementTargetPath, replacement, 'utf-8');
   symlinkSync(targetPath, hookPath, 'file');
 
   try {
@@ -238,12 +242,21 @@ test('installCommitHooks preserves and restores symlink hooks', { skip: process.
       assert.equal(lstatSync(backupPath).isSymbolicLink(), true);
       assert.equal(readlinkSync(backupPath), targetPath);
 
+      rmSync(hookPath);
+      symlinkSync(replacementTargetPath, hookPath, 'file');
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+
+      assert.equal(readFileSync(replacementTargetPath, 'utf-8'), replacement);
+      assert.equal(lstatSync(backupPath).isSymbolicLink(), true);
+      assert.equal(readlinkSync(backupPath), replacementTargetPath);
+
       const result = await uninstallCommitHooks();
       assert.equal(result.restored.length, 1);
       assert.equal(result.removed.length, 1);
       assert.equal(lstatSync(hookPath).isSymbolicLink(), true);
-      assert.equal(readlinkSync(hookPath), targetPath);
+      assert.equal(readlinkSync(hookPath), replacementTargetPath);
       assert.equal(readFileSync(targetPath, 'utf-8'), original);
+      assert.equal(readFileSync(replacementTargetPath, 'utf-8'), replacement);
       assert.equal(existsSync(backupPath), false);
     });
   } finally {
@@ -253,13 +266,13 @@ test('installCommitHooks preserves and restores symlink hooks', { skip: process.
 
 test(
   'uninstallCommitHooks preserves an unreadable replacement and its backup',
-  { skip: process.platform === 'win32' || process.getuid?.() === 0 },
+  { skip: process.platform === 'win32' },
   async () => {
     const repoDir = initRepo();
     const hooksDir = join(repoDir, '.git', 'hooks');
     const originalPrepare = '#!/bin/sh\necho unreadable original\n';
-    const replacementPrepare = '#!/bin/sh\necho unreadable replacement\n';
     const originalPreparePath = join(hooksDir, 'prepare-commit-msg');
+    const missingReplacementTarget = join(repoDir, 'missing-prepare-hook');
     const backupPath = `${originalPreparePath}.commit-echo.bak`;
     writeFileSync(originalPreparePath, originalPrepare, 'utf-8');
     chmodSync(originalPreparePath, 0o640);
@@ -267,15 +280,15 @@ test(
     try {
       await withCwdAsync(repoDir, async () => {
         await installCommitHooks(join(repoDir, 'dist', 'index.js'));
-        writeFileSync(originalPreparePath, replacementPrepare, 'utf-8');
-        chmodSync(originalPreparePath, 0o000);
+        rmSync(originalPreparePath);
+        symlinkSync(missingReplacementTarget, originalPreparePath, 'file');
 
         const result = await uninstallCommitHooks();
         assert.equal(result.restored.length, 0);
         assert.equal(result.removed.length, 1);
         assert.equal(result.skipped.length, 0);
         assert.equal(result.unreadable.length, 1);
-        assert.equal(statSync(originalPreparePath).mode & 0o7777, 0o000);
+        assert.equal(lstatSync(originalPreparePath).isSymbolicLink(), true);
         assert.equal(existsSync(backupPath), true);
       });
     } finally {
@@ -332,8 +345,8 @@ test('uninstallCommitHooks restores an owned backup after a truncated managed ho
 });
 
 test(
-  'uninstallCommitHooks leaves both files intact when restoring an unreadable backup fails',
-  { skip: process.platform === 'win32' || process.getuid?.() === 0 },
+  'uninstallCommitHooks isolates an unreadable backup from the other hook',
+  { skip: process.platform === 'win32' },
   async () => {
     const repoDir = initRepo();
     const hooksDir = join(repoDir, '.git', 'hooks');
@@ -344,14 +357,18 @@ test(
     try {
       await withCwdAsync(repoDir, async () => {
         await installCommitHooks(join(repoDir, 'dist', 'index.js'));
-        chmodSync(backupPath, 0o000);
+        rmSync(backupPath);
+        mkdirSync(backupPath);
 
-        await assert.rejects(() => uninstallCommitHooks());
+        const result = await uninstallCommitHooks();
+        assert.equal(result.restored.length, 0);
+        assert.equal(result.removed.length, 1);
+        assert.equal(result.unreadable.length, 1);
         assert.match(readFileSync(preparePath, 'utf-8'), /commit-echo managed hook/);
         assert.equal(existsSync(backupPath), true);
+        assert.equal(existsSync(join(hooksDir, 'post-commit')), false);
       });
     } finally {
-      chmodSync(backupPath, 0o600);
       rmSync(repoDir, { recursive: true, force: true });
     }
   },
@@ -377,6 +394,63 @@ test('uninstallCommitHooks removes hooks created by commit-echo without deleting
 
       await installCommitHooks(join(repoDir, 'dist', 'index.js'));
       assert.equal(readFileSync(join(hooksDir, 'prepare-commit-msg.commit-echo.bak'), 'utf-8'), userPrepare);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('uninstallCommitHooks does not treat marker text in a user hook as ownership', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const preparePath = join(hooksDir, 'prepare-commit-msg');
+  const userPrepare = '#!/bin/sh\necho user replacement\n# commit-echo managed hook prepare-commit-msg\n';
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      writeFileSync(preparePath, userPrepare, 'utf-8');
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 0);
+      assert.equal(result.removed.length, 1);
+      assert.equal(result.skipped.length, 1);
+      assert.equal(readFileSync(preparePath, 'utf-8'), userPrepare);
+      assert.equal(existsSync(`${preparePath}.commit-echo.bak`), false);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test('uninstallCommitHooks recognizes legacy relative backup references', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const preparePath = join(hooksDir, 'prepare-commit-msg');
+  const backupPath = `${preparePath}.commit-echo.bak`;
+  const ownerPath = `${backupPath}.owner`;
+  const originalPrepare = '#!/bin/sh\necho original prepare\n';
+  writeFileSync(preparePath, originalPrepare, 'utf-8');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      const legacyBackupPath = git(
+        ['rev-parse', '--git-path', 'hooks/prepare-commit-msg.commit-echo.bak'],
+        repoDir,
+      ).trim();
+      const managedHook = readFileSync(preparePath, 'utf-8');
+      const absoluteBackupPath = backupPath.replace(/\\/g, '/');
+      const legacyPath = legacyBackupPath.replace(/\\/g, '/');
+
+      assert.ok(managedHook.includes(absoluteBackupPath));
+      writeFileSync(preparePath, managedHook.replaceAll(absoluteBackupPath, legacyPath), 'utf-8');
+      rmSync(ownerPath);
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 1);
+      assert.equal(readFileSync(preparePath, 'utf-8'), originalPrepare);
+      assert.equal(existsSync(backupPath), false);
     });
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
