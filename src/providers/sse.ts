@@ -79,6 +79,7 @@ export async function* streamSseResponse(
             if (chunk === SSE_STREAM_END) {
               await reader.cancel();
               cancelled = true;
+              completed = true;
               return;
             }
             yield chunk;

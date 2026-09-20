@@ -98,6 +98,7 @@ export async function generateSuggestions(
 export type SuggestionStreamEvent =
   | { kind: 'meta'; truncation?: TruncationInfo }
   | { kind: 'model'; model: string }
+  | { kind: 'reasoning'; text: string }
   | { kind: 'text'; text: string };
 
 /**
@@ -157,6 +158,10 @@ export async function* generateSuggestionsStream(
   for await (const chunk of stream) {
     if (chunk.kind === 'model') {
       yield { kind: 'model', model: chunk.model };
+      continue;
+    }
+    if (chunk.kind === 'reasoning') {
+      yield { kind: 'reasoning', text: chunk.text };
       continue;
     }
     yield { kind: 'text', text: chunk.text };

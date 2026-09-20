@@ -159,6 +159,35 @@ test('SSE reader rejects oversized lines before parsing them', async () => {
   assert.equal(parsed, false);
 });
 
+test('SSE array sentinel completes without aborting the request', async () => {
+  const controller = new AbortController();
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode('data: stop\n'));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+  );
+  const chunks = [];
+
+  for await (const chunk of streamSseResponse(
+    response,
+    () => [{ kind: 'text', text: 'before' }, SSE_STREAM_END],
+    { controller },
+  )) {
+    chunks.push(chunk);
+  }
+
+  assert.deepEqual(chunks, [{ kind: 'text', text: 'before' }]);
+  assert.equal(cancelled, true);
+  assert.equal(controller.signal.aborted, false);
+  assert.equal(response.body.locked, false);
+});
+
 test('parseOpenAiSseLine extracts delta content', () => {
   const result = parseOpenAiSseLine('data: {"choices":[{"delta":{"content":"hello"}}]}');
 
@@ -274,7 +303,7 @@ test('Anthropic completeStream reassembles event/data split across network chunk
     },
   );
  });
-test('OpenAI completeStream handles reasoning-only and visible-content precedence', async () => {
+test('OpenAI completeStream emits reasoning progressively and keeps it separate from visible content', async () => {
   const provider = new OpenAICompatibleProvider();
   const responses = [
     [
@@ -295,11 +324,17 @@ test('OpenAI completeStream handles reasoning-only and visible-content precedenc
     responses,
     [openAiParams(), openAiParams()],
   );
-  assert.deepEqual(reasoningChunks, [{ kind: 'text', text: 'think more' }]);
-  assert.deepEqual(visibleChunks, [{ kind: 'text', text: 'answer' }]);
+  assert.deepEqual(reasoningChunks, [
+    { kind: 'reasoning', text: 'think ' },
+    { kind: 'reasoning', text: 'more' },
+  ]);
+  assert.deepEqual(visibleChunks, [
+    { kind: 'reasoning', text: 'thinking' },
+    { kind: 'text', text: 'answer' },
+  ]);
 });
 
-test('OpenAI completeStream emits reasoning after an EOF-terminated stream', async () => {
+test('OpenAI completeStream emits reasoning through an EOF-terminated stream', async () => {
   const provider = new OpenAICompatibleProvider();
   const chunks = await collectWithMockedFetch(
     provider,
@@ -309,7 +344,10 @@ test('OpenAI completeStream emits reasoning after an EOF-terminated stream', asy
     ],
     openAiParams(),
   );
-  assert.deepEqual(chunks, [{ kind: 'text', text: 'think more' }]);
+  assert.deepEqual(chunks, [
+    { kind: 'reasoning', text: 'think ' },
+    { kind: 'reasoning', text: 'more' },
+  ]);
 });
 
 test('OpenAI completeStream processes final line without trailing newline', async () => {

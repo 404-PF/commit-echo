@@ -264,6 +264,8 @@ export async function suggestCommand(
 
       model = config.model;
       let accumulated = '';
+      let streamedReasoning = '';
+      let hasVisibleContent = false;
       try {
         for await (const event of generateSuggestionsStream(config, diffResult.diff, profile, apiKey, streamProvider)) {
           if (event.kind === 'meta') {
@@ -276,6 +278,16 @@ export async function suggestCommand(
             continue;
           }
 
+          if (event.kind === 'reasoning') {
+            if (!hasVisibleContent) {
+              streamedReasoning += event.text;
+              process.stdout.write(event.text);
+            }
+            continue;
+          }
+
+          hasVisibleContent = true;
+          streamedReasoning = '';
           accumulated += event.text;
           process.stdout.write(event.text);
         }
@@ -284,6 +296,9 @@ export async function suggestCommand(
         const message = err instanceof Error ? err.message : 'Unknown error';
         outro(pc.red(`Streaming failed: ${message}`));
         return false;
+      }
+      if (!hasVisibleContent) {
+        accumulated = streamedReasoning;
       }
       process.stdout.write('\n\n');
 
