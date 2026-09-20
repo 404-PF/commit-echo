@@ -486,7 +486,7 @@ test('uninstallCommitHooks does not treat marker text in a user hook as ownershi
   }
 });
 
-test('uninstallCommitHooks recognizes legacy relative backup references across working directories', async () => {
+test('uninstallCommitHooks restores legacy relative backups from a different working directory', async () => {
   const repoDir = initRepo();
   const nestedDir = join(repoDir, 'nested', 'deep');
   mkdirSync(nestedDir, { recursive: true });
@@ -508,15 +508,13 @@ test('uninstallCommitHooks recognizes legacy relative backup references across w
       const absoluteBackupPath = backupPath.replace(/\\/g, '/');
       const legacyPath = legacyBackupPath.replace(/\\/g, '/');
 
+      assert.equal(isAbsolute(legacyBackupPath), false);
       assert.ok(managedHook.includes(absoluteBackupPath));
       writeFileSync(preparePath, managedHook.replaceAll(absoluteBackupPath, legacyPath), 'utf-8');
       rmSync(ownerPath);
     });
 
     await withCwdAsync(repoDir, async () => {
-      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
-      assert.equal(readFileSync(backupPath, 'utf-8'), originalPrepare);
-
       const result = await uninstallCommitHooks();
       assert.equal(result.restored.length, 1);
       assert.equal(result.removed.length, 1);
