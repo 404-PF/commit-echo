@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, normalize, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getGitExecutable, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
@@ -68,7 +68,6 @@ function resolveHookPath(hookName: string): string {
 interface HookPaths {
   hookPath: string;
   backupPath: string;
-  legacyBackupPath: string;
   ownerPath: string;
 }
 
@@ -80,7 +79,6 @@ function resolveHookPaths(hookName: string): HookPaths {
   return {
     hookPath,
     backupPath,
-    legacyBackupPath: `${gitHookPath}.commit-echo.bak`,
     ownerPath: `${backupPath}.owner`,
   };
 }
@@ -117,10 +115,6 @@ function shellQuote(value: string): string {
   return `'${toShellPath(value).replace(/'/g, `'"'"'`)}'`;
 }
 
-function normalizeLegacyPath(value: string): string {
-  return toShellPath(normalize(value)).replace(/^(?:\.\.\/)+/, '');
-}
-
 function pathBasename(value: string): string {
   const normalized = toShellPath(value);
   return normalized.slice(normalized.lastIndexOf('/') + 1);
@@ -135,20 +129,18 @@ function isManagedHookContent(hookName: string, content: string): boolean {
   return lines[0] === '#!/bin/sh' && lines[1] === buildManagedHookMarker(hookName);
 }
 
-function referencesBackupPath(content: string, backupPaths: string[]): boolean {
-  return backupPaths.some((backupPath) => {
-    if (content.includes(shellQuote(backupPath))) {
-      return true;
-    }
+function referencesBackupPath(content: string, backupPath: string): boolean {
+  if (content.includes(shellQuote(backupPath))) {
+    return true;
+  }
 
-    const normalizedPath = normalizeLegacyPath(backupPath);
-    if (new RegExp(`'(?:\\.\\./)*${escapeRegExp(normalizedPath)}'`).test(content)) {
-      return true;
-    }
+  const backupLine = content.split(/\r?\n/).find((line) => line.startsWith('if [ -f '));
+  if (!backupLine) {
+    return false;
+  }
 
-    const backupName = escapeRegExp(pathBasename(backupPath));
-    return new RegExp(`'(?:[^']*/)*${backupName}'`).test(content);
-  });
+  const backupName = escapeRegExp(pathBasename(backupPath));
+  return new RegExp(`^if \\[ -f '.*${backupName}' \\];`).test(backupLine);
 }
 
 export function shouldSkipPrepareCommitMsgHook(source = ''): boolean {
@@ -335,7 +327,6 @@ interface InstalledHookChange {
 interface ManagedHookState {
   hookPath: string;
   backupPath: string;
-  legacyBackupPath: string;
   ownerPath: string;
   hookSnapshot: PathSnapshot;
   backupSnapshot: PathSnapshot;
@@ -348,7 +339,7 @@ interface ManagedHookState {
 }
 
 async function inspectManagedHook(hookName: string): Promise<ManagedHookState> {
-  const { hookPath, backupPath, legacyBackupPath, ownerPath } = resolveHookPaths(hookName);
+  const { hookPath, backupPath, ownerPath } = resolveHookPaths(hookName);
   const hookSnapshot = await snapshotPath(hookPath);
   const backupSnapshot = await snapshotPath(backupPath);
   const ownerSnapshot = await snapshotPath(ownerPath);
@@ -358,7 +349,6 @@ async function inspectManagedHook(hookName: string): Promise<ManagedHookState> {
   return {
     hookPath,
     backupPath,
-    legacyBackupPath,
     ownerPath,
     hookSnapshot,
     backupSnapshot,
@@ -367,7 +357,7 @@ async function inspectManagedHook(hookName: string): Promise<ManagedHookState> {
     hasBackup: backupSnapshot.kind !== 'missing',
     hasOwner: ownerSnapshot.kind !== 'missing',
     validOwner: ownerSnapshot.kind === 'file' && ownerSnapshot.content.toString('utf8').trim() === BACKUP_OWNER_MARKER,
-    referencesBackup: isManagedHook && referencesBackupPath(existingHook, [backupPath, legacyBackupPath]),
+    referencesBackup: isManagedHook && referencesBackupPath(existingHook, backupPath),
   };
 }
 
@@ -441,7 +431,7 @@ async function installManagedHook(hookName: string, cliPath: string): Promise<In
 type HookUninstallAction = 'restored' | 'removed' | 'skipped' | 'missing' | 'unreadable';
 
 async function uninstallManagedHook(hookName: string): Promise<{ path: string; action: HookUninstallAction }> {
-  const { hookPath, backupPath, legacyBackupPath, ownerPath } = resolveHookPaths(hookName);
+  const { hookPath, backupPath, ownerPath } = resolveHookPaths(hookName);
   const hookStats = await lstatIfExists(hookPath);
   const backupStats = await lstatIfExists(backupPath);
   const ownerStats = await lstatIfExists(ownerPath);
@@ -467,8 +457,7 @@ async function uninstallManagedHook(hookName: string): Promise<{ path: string; a
     }
   }
   const backupIsOwned = Boolean(
-    backupStats &&
-    (ownerIsValid || (isManagedHook && referencesBackupPath(hookContent, [backupPath, legacyBackupPath]))),
+    backupStats && (ownerIsValid || (isManagedHook && referencesBackupPath(hookContent, backupPath))),
   );
 
   if (backupStats && backupIsOwned && (isManagedHook || !hookStats || hookContent.trim().length === 0)) {
