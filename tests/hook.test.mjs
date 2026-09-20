@@ -218,6 +218,42 @@ test('installCommitHooks preserves existing hooks and uninstall restores them', 
   }
 });
 
+test('installCommitHooks preserves empty and whitespace-only replacement hooks', async () => {
+  const repoDir = initRepo();
+  const hooksDir = join(repoDir, '.git', 'hooks');
+  const preparePath = join(hooksDir, 'prepare-commit-msg');
+  const postPath = join(hooksDir, 'post-commit');
+  const prepareBackupPath = `${preparePath}.commit-echo.bak`;
+  const postBackupPath = `${postPath}.commit-echo.bak`;
+  writeFileSync(preparePath, '#!/bin/sh\necho original prepare\n', 'utf-8');
+  writeFileSync(postPath, '#!/bin/sh\necho original post\n', 'utf-8');
+
+  try {
+    await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+
+      const emptyPrepare = '';
+      const whitespaceOnlyPost = ' \n\t ';
+      writeFileSync(preparePath, emptyPrepare, 'utf-8');
+      writeFileSync(postPath, whitespaceOnlyPost, 'utf-8');
+
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      assert.equal(readFileSync(prepareBackupPath, 'utf-8'), emptyPrepare);
+      assert.equal(readFileSync(postBackupPath, 'utf-8'), whitespaceOnlyPost);
+
+      const result = await uninstallCommitHooks();
+      assert.equal(result.restored.length, 2);
+      assert.equal(result.removed.length, 0);
+      assert.equal(readFileSync(preparePath, 'utf-8'), emptyPrepare);
+      assert.equal(readFileSync(postPath, 'utf-8'), whitespaceOnlyPost);
+      assert.equal(existsSync(prepareBackupPath), false);
+      assert.equal(existsSync(postBackupPath), false);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test('installCommitHooks preserves and restores symlink hooks', { skip: process.platform === 'win32' }, async () => {
   const repoDir = initRepo();
   const hooksDir = join(repoDir, '.git', 'hooks');

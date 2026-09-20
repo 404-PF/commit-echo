@@ -361,10 +361,8 @@ function validateManagedHookBackup(state: ManagedHookState): void {
 }
 
 async function prepareManagedHookBackup(state: ManagedHookState): Promise<void> {
-  const isReplacement =
-    state.hookSnapshot.kind === 'symlink' ||
-    (state.hookSnapshot.kind === 'file' && state.hookSnapshot.content.toString('utf8').trim().length > 0);
-  if (isReplacement && !state.isManagedHook && state.validOwner) {
+  const isReplacement = state.hookSnapshot.kind !== 'missing' && !state.isManagedHook;
+  if (isReplacement && state.validOwner) {
     await rm(state.backupPath, { force: true });
     await rm(state.ownerPath, { force: true });
   }
