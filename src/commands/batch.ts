@@ -1,12 +1,11 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
 import { intro, outro, confirm, select, text, isCancel } from '@clack/prompts';
 import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
 import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { buildProfile, appendEntry } from '../history/store.js';
-import { getGitExecutable } from '../git/diff.js';
+import { getStagedDiff, getUnstagedDiff, commit } from '../git/diff.js';
 import { showVerboseInfo } from './suggest.js';
 import type { Config, Suggestion, TruncationInfo } from '../types.js';
 
@@ -53,78 +52,6 @@ export function findGitRepositories(rootDir: string, recursive: boolean): string
   }
 
   return repos.sort();
-}
-
-/**
- * Run a `git diff` quiet check and report whether changes exist.
- *
- * Exit code 1 means changes exist (normal). Any other non-zero exit code
- * signals a fatal Git error and is thrown. If git itself cannot run (e.g.
- * the executable cannot be resolved), the original error is rethrown.
- */
-function hasDiffChanges(cwd: string, args: string[], label: 'Staged' | 'Unstaged'): boolean {
-  try {
-    execFileSync(getGitExecutable(), args, { cwd, stdio: 'pipe' });
-    return false;
-  } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status === undefined) throw err;
-    if (status !== 1) {
-      const stderr = (err as { stderr?: Buffer | string }).stderr;
-      const detail = stderr ? String(stderr).trim() : `git ${args.join(' ')} exited with code ${status}`;
-      throw new Error(`${label} diff check failed: ${detail}`);
-    }
-    return true;
-  }
-}
-
-/**
- * Check whether a git repository at `cwd` has staged or unstaged changes.
- */
-export function gitHasChanges(cwd: string): { staged: boolean; unstaged: boolean } {
-  return {
-    staged: hasDiffChanges(cwd, ['diff', '--cached', '--quiet'], 'Staged'),
-    unstaged: hasDiffChanges(cwd, ['diff', '--quiet'], 'Unstaged'),
-  };
-}
-
-/**
- * Get the git diff for a repository at `cwd`.
- */
-export function getGitDiff(cwd: string, staged: boolean): string {
-  const args = staged ? ['diff', '--cached'] : ['diff'];
-  try {
-    return execFileSync(getGitExecutable(), args, { cwd, encoding: 'utf-8', maxBuffer: 100 * 1024 * 1024 }).trim();
-  } catch (err) {
-    throw new Error(`Failed to get diff: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-/**
- * Run `git commit` inside a specific repository directory.
- */
-export function gitCommit(cwd: string, message: string, body?: string): { hash: string; summary: string } {
-  const fullMessage = body ? `${message}\n\n${body}` : message;
-  const result = spawnSync(getGitExecutable(), ['commit', '-F', '-'], {
-    cwd,
-    encoding: 'utf-8',
-    input: fullMessage,
-    shell: false,
-  });
-
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    const detail = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
-    throw new Error(detail || `git commit exited with code ${result.status}`);
-  }
-
-  const summary = result.stdout.trim().split('\n').find(Boolean) ?? '';
-  const match = summary.match(/\[.*?([a-f0-9]{7,})\]\s+(.+)$/i);
-
-  return {
-    hash: match?.[1] ?? '',
-    summary: match?.[2] ?? summary,
-  };
 }
 
 /**
@@ -191,58 +118,41 @@ export async function batchCommand(
     const repoName = basename(repoPath);
     console.log(`  ${pc.bold(pc.cyan(`▶ ${repoName}`))}  ${pc.dim(repoPath)}`);
 
-    // Check what kind of changes exist
-    let staged: boolean;
-    let unstaged: boolean;
+    // Batch commits only staged changes, but use the canonical unstaged
+    // diff to distinguish a clean repo from tracked/untracked worktree changes.
+    let diff: string;
     try {
-      ({ staged, unstaged } = gitHasChanges(repoPath));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
-      results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
-      continue;
-    }
+      const stagedDiff = getStagedDiff(repoPath);
+      if (!stagedDiff.hasChanges) {
+        const unstagedDiff = getUnstagedDiff(repoPath);
+        if (!unstagedDiff.hasChanges) {
+          console.log(`    ${pc.yellow('↻ No changes found, skipping')}\n`);
+          results.push({
+            repo: repoPath,
+            repoName,
+            status: 'skipped',
+            message: 'No changes',
+          });
+          continue;
+        }
 
-    if (!staged) {
-      if (!unstaged) {
-        console.log(`    ${pc.yellow('↻ No changes found, skipping')}\n`);
+        console.log(
+          `    ${pc.yellow('ℹ Unstaged changes only (stage with \`git add\` first), skipping')}\n`,
+        );
         results.push({
           repo: repoPath,
           repoName,
           status: 'skipped',
-          message: 'No changes',
+          message: 'Unstaged only',
         });
         continue;
       }
-      console.log(`    ${pc.yellow('ℹ Unstaged changes only (stage with `git add` first), skipping')}\n`);
-      results.push({
-        repo: repoPath,
-        repoName,
-        status: 'skipped',
-        message: 'Unstaged only',
-      });
-      continue;
-    }
 
-    // Get the staged diff
-    let diff: string;
-    try {
-      diff = getGitDiff(repoPath, true);
+      diff = stagedDiff.diff;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
       results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
-      continue;
-    }
-
-    if (!diff) {
-      console.log(`    ${pc.yellow('↻ Empty diff, skipping')}\n`);
-      results.push({
-        repo: repoPath,
-        repoName,
-        status: 'skipped',
-        message: 'Empty diff',
-      });
       continue;
     }
 
@@ -293,7 +203,7 @@ export async function batchCommand(
 
       let commitResult: { hash: string; summary: string };
       try {
-        commitResult = gitCommit(repoPath, first.message, first.body);
+        commitResult = commit(first.message, first.body, repoPath);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.log(`    ${pc.red(`✖ Commit failed: ${msg}`)}`);
@@ -415,7 +325,7 @@ export async function batchCommand(
 
       let commitResult: { hash: string; summary: string };
       try {
-        commitResult = gitCommit(repoPath, selected.message, finalBody);
+        commitResult = commit(selected.message, finalBody, repoPath);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.log(`    ${pc.red(`✖ Commit failed: ${msg}`)}`);
