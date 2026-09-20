@@ -181,6 +181,7 @@ function getUntrackedDiff(cwd = process.cwd()): string {
       getGitExecutable(),
       ['--literal-pathspecs', 'add', '--intent-to-add', '--pathspec-from-file=-', '--pathspec-file-nul'],
       {
+        cwd,
         encoding: 'utf-8',
         env,
         input: `${pathspecs.join('\0')}\0`,
