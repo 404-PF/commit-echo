@@ -109,7 +109,7 @@ function normalizeDiff(diff: string): string {
 
 function removeTrailingLineBreaks(section: string): string {
   let end = section.length;
-  while (end > 0 && section.charCodeAt(end - 1) === 10) {
+  while (end > 0 && section.codePointAt(end - 1) === 10) {
     end -= 1;
   }
   return section.slice(0, end);
