@@ -93,6 +93,17 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
+export function verifyStagedDiff(analyzedDiff: string, currentDiff: DiffResult): string | undefined {
+  if (!currentDiff.staged || !currentDiff.hasChanges || currentDiff.diff !== analyzedDiff) {
+    return undefined;
+  }
+  return currentDiff.diff;
+}
+
+function getVerifiedStagedDiff(analyzedDiff: string): string | undefined {
+  return verifyStagedDiff(analyzedDiff, getStagedDiff());
+}
+
 export async function suggestCommand(
   options: {
     commit?: boolean;
@@ -404,15 +415,18 @@ export async function suggestCommand(
       }
 
       if (shouldCommit) {
-        if (!diffResult.staged) {
-          outro(pc.red('Commit requires staged changes. Stage your changes with `git add` and try again.'));
+        const verifiedDiff = getVerifiedStagedDiff(diffResult.diff);
+        if (!verifiedDiff) {
+          outro(
+            pc.red(
+              'Staged changes are empty or changed since suggestions were generated. ' +
+                'Stage the analyzed changes again before committing.',
+            ),
+          );
           process.exitCode = 1;
           return false;
         }
-        const committed = await acceptAndCommit(selected, config, diffResult.diff);
-        if (!committed) {
-          return false;
-        }
+        return acceptAndCommit(selected, config, verifiedDiff);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
         if (selected.body) {
