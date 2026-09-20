@@ -334,16 +334,47 @@ function buildTemplateInfo(config: Config): string {
   return `\n  Custom prompts: ${parts.join(', ')}`;
 }
 
-export async function initCommand(options: { installHook?: boolean; uninstallHook?: boolean } = {}): Promise<void> {
-  if (options.installHook && options.uninstallHook) {
-    throw new Error('Use either --install-hook or --uninstall-hook, not both.');
-  }
+interface CollectedSetup {
+  config: Config;
+  provider: ProviderSetup;
+}
 
-  if (options.uninstallHook) {
-    await uninstallHooksCommand();
-    return;
-  }
+async function collectConfig(existingConfig: Config | null): Promise<CollectedSetup | null> {
+  const provider = await promptProvider(existingConfig);
+  if (!provider) return null;
 
+  const apiKey = await promptApiKey(provider, existingConfig);
+  if (apiKey === null) return null;
+
+  const selectedModel = await promptModel(provider, apiKey, existingConfig);
+  if (!selectedModel) return null;
+
+  const limits = await promptHistoryLimits(existingConfig);
+  if (!limits) return null;
+
+  const templates = await promptTemplates(existingConfig);
+  if (!templates) return null;
+
+  return {
+    provider,
+    config: {
+      provider: provider.providerKey,
+      model: selectedModel,
+      baseUrl: provider.providerKey === CUSTOM_PROVIDER_KEY ? provider.baseUrl : undefined,
+      apiKey: apiKey ?? undefined,
+      historySize: limits.historySize,
+      maxDiffSize: limits.maxDiffSize,
+      ...withTemplateFilePrecedence(
+        templates.systemPromptTemplate,
+        templates.userPromptTemplate,
+        templates.templatePath,
+      ),
+      templatePath: templates.templatePath,
+    },
+  };
+}
+
+async function runInteractiveSetup(options: { installHook?: boolean; uninstallHook?: boolean }): Promise<void> {
   intro(pc.bold(pc.cyan('commit-echo init')));
 
   const isReconfig = configExists();
@@ -360,52 +391,18 @@ export async function initCommand(options: { installHook?: boolean; uninstallHoo
     }
   }
 
-  const provider = await promptProvider(existingConfig);
-  if (!provider) {
+  const setup = await collectConfig(existingConfig);
+  if (!setup) {
     outro('Setup cancelled.');
     return;
   }
 
-  const apiKey = await promptApiKey(provider, existingConfig);
-  if (apiKey === null) {
-    outro('Setup cancelled.');
-    return;
-  }
-
-  const selectedModel = await promptModel(provider, apiKey, existingConfig);
-  if (!selectedModel) {
-    outro('Setup cancelled.');
-    return;
-  }
-
-  const limits = await promptHistoryLimits(existingConfig);
-  if (!limits) {
-    outro('Setup cancelled.');
-    return;
-  }
-
-  const templates = await promptTemplates(existingConfig);
-  if (!templates) {
-    outro('Setup cancelled.');
-    return;
-  }
-
-  const config: Config = {
-    provider: provider.providerKey,
-    model: selectedModel,
-    baseUrl: provider.providerKey === CUSTOM_PROVIDER_KEY ? provider.baseUrl : undefined,
-    apiKey: apiKey ?? undefined,
-    historySize: limits.historySize,
-    maxDiffSize: limits.maxDiffSize,
-    ...withTemplateFilePrecedence(templates.systemPromptTemplate, templates.userPromptTemplate, templates.templatePath),
-    templatePath: templates.templatePath,
-  };
+  const { config, provider } = setup;
 
   if (provider.needsApiKey && !config.apiKey && !process.env[provider.apiKeyEnv]) {
     await persistSetup(config, options);
-    const warn = pc.yellow(
-      `\n⚠  No API key provided. Make sure to set ${pc.cyan(`$${provider.apiKeyEnv}`)} before running suggestions.`,
-    );
+    const apiKeyEnv = pc.cyan(`$${provider.apiKeyEnv}`);
+    const warn = pc.yellow(`\n⚠  No API key provided. Make sure to set ${apiKeyEnv} before running suggestions.`);
     outro(warn);
     return;
   }
@@ -430,4 +427,15 @@ export async function initCommand(options: { installHook?: boolean; uninstallHoo
       buildTemplateInfo(config) +
       `\n\nRun ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`,
   );
+}
+
+export async function initCommand(options: { installHook?: boolean; uninstallHook?: boolean } = {}): Promise<void> {
+  if (options.installHook && options.uninstallHook) {
+    throw new Error('Use either --install-hook or --uninstall-hook, not both.');
+  }
+  if (options.uninstallHook) {
+    await uninstallHooksCommand();
+    return;
+  }
+  await runInteractiveSetup(options);
 }
