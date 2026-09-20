@@ -111,8 +111,9 @@ export function hasCommits(): boolean {
   }
 }
 
-export function getStagedDiff(): DiffResult {
+export function getStagedDiff(cwd = process.cwd()): DiffResult {
   const diff = execFileSync(getGitExecutable(), ['diff', '--cached'], {
+    cwd,
     encoding: 'utf-8',
     maxBuffer: GIT_DIFF_MAX_BUFFER,
   });
@@ -123,17 +124,19 @@ export function getStagedDiff(): DiffResult {
   };
 }
 
-function getGitPath(path: string): string {
+function getGitPath(path: string, cwd: string): string {
   return resolve(
     execFileSync(getGitExecutable(), ['rev-parse', '--git-path', path], {
+      cwd,
       encoding: 'utf-8',
       stdio: 'pipe',
     }).trim(),
   );
 }
 
-function getUntrackedDiff(): string {
+function getUntrackedDiff(cwd = process.cwd()): string {
   const untrackedEntries = execFileSync(getGitExecutable(), ['ls-files', '--others', '--exclude-standard', '-z'], {
+    cwd,
     encoding: 'utf-8',
     maxBuffer: GIT_DIFF_MAX_BUFFER,
   })
@@ -150,7 +153,7 @@ function getUntrackedDiff(): string {
 
     try {
       execFileSync(getGitExecutable(), ['rev-parse', '--verify', 'HEAD'], {
-        cwd: resolve(entry),
+        cwd: resolve(cwd, entry),
         encoding: 'utf-8',
         stdio: 'pipe',
       });
@@ -167,7 +170,7 @@ function getUntrackedDiff(): string {
   const tempIndex = join(tempDir, 'index');
 
   try {
-    const indexPath = getGitPath('index');
+    const indexPath = getGitPath('index', cwd);
     if (existsSync(indexPath)) {
       copyFileSync(indexPath, tempIndex);
     }
@@ -191,6 +194,7 @@ function getUntrackedDiff(): string {
     }
 
     return execFileSync(getGitExecutable(), ['--literal-pathspecs', 'diff', '--', ...pathspecs], {
+      cwd,
       encoding: 'utf-8',
       env,
       maxBuffer: GIT_DIFF_MAX_BUFFER,
@@ -200,9 +204,10 @@ function getUntrackedDiff(): string {
   }
 }
 
-export function getUnstagedDiff(): DiffResult {
-  const untrackedAwareDiff = getUntrackedDiff();
+export function getUnstagedDiff(cwd = process.cwd()): DiffResult {
+  const untrackedAwareDiff = getUntrackedDiff(cwd);
   const trackedDiff = execFileSync(getGitExecutable(), ['diff'], {
+    cwd,
     encoding: 'utf-8',
     maxBuffer: GIT_DIFF_MAX_BUFFER,
   });
@@ -225,9 +230,10 @@ function parseCommitOutput(output: string): CommitResult {
   };
 }
 
-export function commit(message: string, body?: string): CommitResult {
+export function commit(message: string, body?: string, cwd = process.cwd()): CommitResult {
   const fullMessage = body ? `${message}\n\n${body}` : message;
   const result = spawnSync(getGitExecutable(), ['commit', '-F', '-'], {
+    cwd,
     encoding: 'utf-8',
     input: fullMessage,
     shell: false,
