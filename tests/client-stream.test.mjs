@@ -15,12 +15,13 @@ const emptyProfile = {
   totalCommits: 0,
 };
 
-test('generateSuggestionsStream yields meta then text chunks', async () => {
+test('generateSuggestionsStream yields reasoning separately from visible content', async () => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async () =>
     new Response(
       streamFromChunks([
+        'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}\n',
         'data: {"choices":[{"delta":{"content":"1. feat: stream test"}}]}\n',
         'data: [DONE]\n',
       ]),
@@ -47,6 +48,7 @@ test('generateSuggestionsStream yields meta then text chunks', async () => {
 
     assert.equal(events[0]?.kind, 'meta');
     assert.equal(events[0]?.truncation, undefined);
+    assert.deepEqual(events.filter((event) => event.kind === 'reasoning'), [{ kind: 'reasoning', text: 'thinking' }]);
 
     const chunks = events
       .filter((event) => event.kind === 'text')

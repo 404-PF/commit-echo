@@ -685,6 +685,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
     rootPrefix: 'commit-echo-show-diff-unstaged-',
     content: '1. feat: inspect unstaged diff',
     staged: false,
+    readme: '# fixture\n\nSuggestions generated:\nStreaming suggestions\nupdated\n',
   });
 
   const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
@@ -931,6 +932,7 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
 
       if (parsed.stream) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('data: {"choices":[{"delta":{"reasoning_content":"internal thought"}}]}\n\n');
         res.write('data: {"choices":[{"delta":{"content":"1. feat: stream auto commit"}}]}\n\n');
         res.write('data: [DONE]\n\n');
         res.end();
@@ -992,8 +994,11 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
   const result = await onceExit(child);
   assert.equal(result.code, 0);
   assert.match(stdout, /Streaming suggestions/);
+  assert.match(stdout, /internal thought/);
   assert.match(stdout, /feat: stream auto commit/);
-  assert.match(stdout, /Selected:/);
+  const selectedOutput = stdout.slice(stdout.lastIndexOf('Selected:'));
+  assert.match(selectedOutput, /Selected:/);
+  assert.doesNotMatch(selectedOutput, /internal thought/);
   assert.doesNotMatch(stdout, /Choose an action/);
   assert.equal(requests.at(-1)?.stream, true);
 });
