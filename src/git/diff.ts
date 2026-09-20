@@ -126,6 +126,7 @@ export function getStagedDiff(cwd = process.cwd()): DiffResult {
 
 function getGitPath(path: string, cwd: string): string {
   return resolve(
+    cwd,
     execFileSync(getGitExecutable(), ['rev-parse', '--git-path', path], {
       cwd,
       encoding: 'utf-8',
