@@ -95,19 +95,34 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
 
 function normalizeDiff(diff: string): string {
   const normalized = diff.replace(/\r\n?/g, '\n');
-  const sectionStarts = [...normalized.matchAll(/^diff --git /gm)].map((match) => match.index!);
+  const sections = normalized.split(/(?=^diff --git )/m);
 
-  if (sectionStarts.length === 0) {
+  if (sections.length === 1) {
     return normalized;
   }
 
-  const prefix = normalized.slice(0, sectionStarts[0]);
-  const sections = sectionStarts
-    .map((start, index) => normalized.slice(start, sectionStarts[index + 1] ?? normalized.length))
-    .map((section) => section.replace(/\n+$/g, ''))
-    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const prefix = sections[0]?.startsWith('diff --git ') ? '' : (sections.shift() ?? '');
+  const sortedSections = sections.map((section) => removeTrailingLineBreaks(section)).sort(compareDiffSections);
 
-  return prefix + sections.join('');
+  return prefix + sortedSections.join('\n');
+}
+
+function removeTrailingLineBreaks(section: string): string {
+  let end = section.length;
+  while (end > 0 && section.charCodeAt(end - 1) === 10) {
+    end -= 1;
+  }
+  return section.slice(0, end);
+}
+
+function compareDiffSections(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 export function verifyStagedDiff(analyzedDiff: string, currentDiff: DiffResult): string | undefined {
@@ -123,6 +138,22 @@ export function verifyStagedDiff(analyzedDiff: string, currentDiff: DiffResult):
 
 function getVerifiedStagedDiff(analyzedDiff: string): string | undefined {
   return verifyStagedDiff(analyzedDiff, getStagedDiff());
+}
+
+function verifyStagedDiffBeforeCommit(analyzedDiff: string): string | undefined {
+  const verifiedDiff = getVerifiedStagedDiff(analyzedDiff);
+  if (verifiedDiff) {
+    return verifiedDiff;
+  }
+
+  outro(
+    pc.red(
+      'Staged changes are empty or changed since suggestions were generated. ' +
+        'Stage the analyzed changes again before committing.',
+    ),
+  );
+  process.exitCode = 1;
+  return undefined;
 }
 
 export async function suggestCommand(
@@ -456,15 +487,8 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
   }
 
   if (auto) {
-    const verifiedDiff = getVerifiedStagedDiff(diff);
+    const verifiedDiff = verifyStagedDiffBeforeCommit(diff);
     if (!verifiedDiff) {
-      outro(
-        pc.red(
-          'Staged changes are empty or changed since suggestions were generated. ' +
-            'Stage the analyzed changes again before committing.',
-        ),
-      );
-      process.exitCode = 1;
       return false;
     }
 
@@ -539,16 +563,9 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     return true;
   }
 
-  const verifiedDiff = getVerifiedStagedDiff(diff);
+  const verifiedDiff = verifyStagedDiffBeforeCommit(diff);
   if (!verifiedDiff) {
-    outro(
-      pc.red(
-        'Staged changes are empty or changed since suggestions were generated. ' +
-          'Stage the analyzed changes again before committing.',
-      ),
-    );
-    process.exitCode = 1;
-    return;
+    return false;
   }
 
   let result;
