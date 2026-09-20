@@ -334,6 +334,63 @@ test('OpenAI completeStream emits reasoning progressively and keeps it separate 
   ]);
 });
 
+test('OpenAI completeStream yields reasoning while the response stream remains open', async () => {
+  const encoder = new TextEncoder();
+  let sourceController;
+  let sourceState = 'open';
+  const response = new Response(
+    new ReadableStream({
+      start(controller) {
+        sourceController = controller;
+        controller.enqueue(
+          encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"think"}}]}\n'),
+        );
+      },
+      cancel() {
+        sourceState = 'cancelled';
+      },
+    }),
+  );
+
+  await withMockedFetch(
+    async () => response,
+    async () => {
+      const iterator = new OpenAICompatibleProvider().completeStream(openAiParams())[Symbol.asyncIterator]();
+      let timeout;
+      const firstChunk = iterator.next();
+
+      try {
+        const result = await Promise.race([
+          firstChunk,
+          new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('Reasoning was not yielded before the response stream closed')), 250);
+          }),
+        ]);
+        assert.deepEqual(result, { done: false, value: { kind: 'reasoning', text: 'think' } });
+        assert.equal(sourceState, 'open');
+
+        sourceController.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"answer"}}]}\n'));
+        assert.deepEqual(await iterator.next(), { done: false, value: { kind: 'text', text: 'answer' } });
+
+        sourceController.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"reasoning_content":" leaked"}}]}\ndata: [DONE]\n',
+          ),
+        );
+        assert.deepEqual(await iterator.next(), { done: true, value: undefined });
+      } finally {
+        clearTimeout(timeout);
+        if (sourceState === 'open') {
+          sourceState = 'closed';
+          sourceController.close();
+        }
+        await firstChunk.catch(() => {});
+        await iterator.return?.().catch(() => {});
+      }
+    },
+  );
+});
+
 test('OpenAI completeStream emits reasoning through an EOF-terminated stream', async () => {
   const provider = new OpenAICompatibleProvider();
   const chunks = await collectWithMockedFetch(
