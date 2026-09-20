@@ -121,6 +121,11 @@ function normalizeLegacyPath(value: string): string {
   return toShellPath(normalize(value)).replace(/^(?:\.\.\/)+/, '');
 }
 
+function pathBasename(value: string): string {
+  const normalized = toShellPath(value);
+  return normalized.slice(normalized.lastIndexOf('/') + 1);
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -137,7 +142,12 @@ function referencesBackupPath(content: string, backupPaths: string[]): boolean {
     }
 
     const normalizedPath = normalizeLegacyPath(backupPath);
-    return new RegExp(`'(?:\\.\\./)*${escapeRegExp(normalizedPath)}'`).test(content);
+    if (new RegExp(`'(?:\\.\\./)*${escapeRegExp(normalizedPath)}'`).test(content)) {
+      return true;
+    }
+
+    const backupName = escapeRegExp(pathBasename(backupPath));
+    return new RegExp(`'(?:[^']*/)*${backupName}'`).test(content);
   });
 }
 

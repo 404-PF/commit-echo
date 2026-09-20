@@ -487,6 +487,9 @@ test('uninstallCommitHooks recognizes legacy relative backup references across w
     });
 
     await withCwdAsync(repoDir, async () => {
+      await installCommitHooks(join(repoDir, 'dist', 'index.js'));
+      assert.equal(readFileSync(backupPath, 'utf-8'), originalPrepare);
+
       const result = await uninstallCommitHooks();
       assert.equal(result.restored.length, 1);
       assert.equal(result.removed.length, 1);
