@@ -27,6 +27,31 @@ test('verifyStagedDiff rejects a staged diff that changed after analysis', () =>
   );
 });
 
+test('verifyStagedDiff rejects a matching diff that is not staged', () => {
+  assert.equal(
+    verifyStagedDiff(analyzedDiff, {
+      diff: analyzedDiff,
+      hasChanges: true,
+      staged: false,
+    }),
+    undefined,
+  );
+});
+
+test('verifyStagedDiff ignores file-section ordering for mixed tracked and untracked diffs', () => {
+  const trackedDiff = 'diff --git a/tracked.txt b/tracked.txt\n+changed';
+  const untrackedDiff = 'diff --git a/untracked.txt b/untracked.txt\n+new file';
+
+  assert.equal(
+    verifyStagedDiff(`${trackedDiff}\n${untrackedDiff}`, {
+      diff: `${untrackedDiff}\n${trackedDiff}`,
+      hasChanges: true,
+      staged: true,
+    }),
+    `${untrackedDiff}\n${trackedDiff}`,
+  );
+});
+
 test('verifyStagedDiff returns the current staged diff when it still matches', () => {
   const currentDiff = {
     diff: analyzedDiff,

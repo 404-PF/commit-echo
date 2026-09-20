@@ -476,6 +476,48 @@ test('top-level --auto commits the first suggestion like --yes', async (t) => {
   }
 });
 
+test('suggest --commit --yes refuses a staged diff changed during analysis', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-auto-stale-diff-'));
+  const { home, repo, configDir } = await setupRepo(root);
+  const server = createServer(async (req, res) => {
+    if (req.url === '/chat/completions' && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      for await (const chunk of req) body += chunk;
+
+      await writeFile(join(repo, 'README.md'), '# fixture\n\nreplacement during analysis\n', 'utf8');
+      execFileSync('git', ['add', 'README.md'], { cwd: repo });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          model: 'fixture-model',
+          choices: [{ message: { content: '1. feat: reject changed staged diff' } }],
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(configDir, port);
+  const result = await runCli(['suggest', '--commit', '--yes'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+
+  assert.equal(result.code, 1);
+  assert.match(stdout, /Staged changes are empty or changed since suggestions were generated/);
+  assert.doesNotMatch(stdout, /Commit created/);
+  assert.equal(execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(), 'feat: initial fixture');
+  assert.match(execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }), /replacement during analysis/);
+});
+
 test('suggest reports no changes before checking for an API key', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-no-changes-'));
   const { home, repo, configDir } = await setupRepo(root);

@@ -93,8 +93,24 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
+function normalizeDiff(diff: string): string {
+  const sections = diff
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .split(/(?=^diff --git )/m)
+    .filter((section) => section.length > 0)
+    .map((section) => section.trimEnd())
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+
+  return sections.join('\n');
+}
+
 export function verifyStagedDiff(analyzedDiff: string, currentDiff: DiffResult): string | undefined {
-  if (!currentDiff.staged || !currentDiff.hasChanges || currentDiff.diff !== analyzedDiff) {
+  if (
+    !currentDiff.staged ||
+    !currentDiff.hasChanges ||
+    normalizeDiff(currentDiff.diff) !== normalizeDiff(analyzedDiff)
+  ) {
     return undefined;
   }
   return currentDiff.diff;
@@ -359,11 +375,6 @@ export async function suggestCommand(
     if (options.autoCommit && suggestions.length > 0) {
       const first = suggestions[0]!;
       if (shouldCommit) {
-        if (!diffResult.staged) {
-          outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
-          process.exitCode = 1;
-          return false;
-        }
         return acceptAndCommit(first, config, diffResult.diff, true);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
@@ -415,18 +426,7 @@ export async function suggestCommand(
       }
 
       if (shouldCommit) {
-        const verifiedDiff = getVerifiedStagedDiff(diffResult.diff);
-        if (!verifiedDiff) {
-          outro(
-            pc.red(
-              'Staged changes are empty or changed since suggestions were generated. ' +
-                'Stage the analyzed changes again before committing.',
-            ),
-          );
-          process.exitCode = 1;
-          return false;
-        }
-        return acceptAndCommit(selected, config, verifiedDiff);
+        return acceptAndCommit(selected, config, diffResult.diff);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
         if (selected.body) {
@@ -451,6 +451,18 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
   }
 
   if (auto) {
+    const verifiedDiff = getVerifiedStagedDiff(diff);
+    if (!verifiedDiff) {
+      outro(
+        pc.red(
+          'Staged changes are empty or changed since suggestions were generated. ' +
+            'Stage the analyzed changes again before committing.',
+        ),
+      );
+      process.exitCode = 1;
+      return false;
+    }
+
     try {
       const result = commit(selected.message, selected.body);
       console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
@@ -465,7 +477,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
       await appendEntry({
         timestamp: new Date().toISOString(),
         message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
-        diff,
+        diff: verifiedDiff,
         model: config.model,
         provider: config.provider,
       });
@@ -522,6 +534,18 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     return true;
   }
 
+  const verifiedDiff = getVerifiedStagedDiff(diff);
+  if (!verifiedDiff) {
+    outro(
+      pc.red(
+        'Staged changes are empty or changed since suggestions were generated. ' +
+          'Stage the analyzed changes again before committing.',
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   let result;
 
   try {
@@ -537,7 +561,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     await appendEntry({
       timestamp: new Date().toISOString(),
       message: finalBody ? `${finalMessage}\n\n${finalBody}` : finalMessage,
-      diff,
+      diff: verifiedDiff,
       model: config.model,
       provider: config.provider,
     });
