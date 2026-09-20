@@ -258,6 +258,10 @@ async function restoreHookBackup(
   backupStats: Awaited<ReturnType<typeof lstat>>,
   ownerPath?: string,
 ): Promise<void> {
+  if (!backupStats.isFile() && !backupStats.isSymbolicLink()) {
+    throw new Error(`Refusing to restore non-regular hook backup at ${backupPath}`);
+  }
+
   const stagedPath = `${hookPath}.tmp-restore-${randomUUID()}`;
 
   try {
