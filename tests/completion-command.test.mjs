@@ -14,6 +14,16 @@ async function runCompletion(args = []) {
   });
 }
 
+async function isBashAvailable(exec = execFileAsync) {
+  try {
+    await exec('bash', ['-c', 'exit 0']);
+    return true;
+  } catch (err) {
+    if (err?.code === 'ENOENT') return false;
+    throw err;
+  }
+}
+
 test('completion with no arguments prints help message', async () => {
   const { stdout } = await runCompletion([]);
   assert.match(stdout, /bash/);
@@ -274,16 +284,9 @@ test('NO_COLOR disables color even when set to an empty string (no-color.org spe
   }
 });
 
-test('completion bash script is syntactically valid bash', async (t) => {
-  try {
-    await execFileAsync('bash', ['-c', 'exit 0']);
-  } catch (err) {
-    if (err?.code === 'ENOENT') {
-      t.skip('bash not available — skipping parse check');
-      return;
-    }
-    throw err;
-  }
+test('completion bash script is syntactically valid bash', async () => {
+  // Bash is optional on Windows and may be absent from minimal CI images.
+  if (!(await isBashAvailable())) return; // bash not installed — skip silently
   const { stdout } = await runCompletion(['bash']);
   // Use a relative path in cwd — Git Bash on Windows mangles absolute Windows
   // paths (backslashes get stripped). The cwd of the test runner is the repo
@@ -296,6 +299,24 @@ test('completion bash script is syntactically valid bash', async (t) => {
   } finally {
     await unlink(scriptPath).catch(() => {});
   }
+});
+
+test('Bash availability only skips missing executables', async () => {
+  const missing = Object.assign(new Error('bash not found'), { code: 'ENOENT' });
+  assert.equal(
+    await isBashAvailable(async () => {
+      throw missing;
+    }),
+    false,
+  );
+
+  const startupFailure = Object.assign(new Error('permission denied'), { code: 'EACCES' });
+  await assert.rejects(
+    isBashAvailable(async () => {
+      throw startupFailure;
+    }),
+    (err) => err === startupFailure,
+  );
 });
 
 test('completion zsh script is syntactically valid zsh (if zsh is available)', async () => {
