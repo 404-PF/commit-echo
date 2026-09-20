@@ -152,7 +152,7 @@ test('findGitRepositories returns rootDir even with recursive flag', () => {
   }
 });
 
-test('gitHasChanges detects staged changes', () => {
+test('canonical diff detects staged changes', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -166,7 +166,7 @@ test('gitHasChanges detects staged changes', () => {
   }
 });
 
-test('gitHasChanges detects unstaged changes', () => {
+test('canonical diff detects unstaged changes', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -183,7 +183,7 @@ test('gitHasChanges detects unstaged changes', () => {
   }
 });
 
-test('gitHasChanges returns false for clean repo', () => {
+test('canonical diff returns false for clean repo', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -198,7 +198,7 @@ test('gitHasChanges returns false for clean repo', () => {
   }
 });
 
-test('gitHasChanges detects both staged and unstaged', () => {
+test('canonical diff detects both staged and unstaged', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -306,7 +306,7 @@ test('getStagedDiff throws when git repo is corrupt (broken index)', () => {
 
 // ─── canonical commit helper ───────────────────────────────────────────────
 
-test('gitCommit creates a commit and returns hash and summary', () => {
+test('commit helper creates a commit and returns hash and summary', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -324,7 +324,7 @@ test('gitCommit creates a commit and returns hash and summary', () => {
   }
 });
 
-test('gitCommit includes body in the commit message', () => {
+test('commit helper includes body in the commit message', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -343,7 +343,7 @@ test('gitCommit includes body in the commit message', () => {
   }
 });
 
-test('gitCommit throws on empty commit (nothing to commit)', () => {
+test('commit helper throws on empty commit (nothing to commit)', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
