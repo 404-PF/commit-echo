@@ -12,12 +12,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import {
-  findGitRepositories,
-  gitHasChanges,
-  getGitDiff,
-  gitCommit,
-} from '../dist/commands/batch.js';
+import { findGitRepositories } from '../dist/commands/batch.js';
+import { getStagedDiff, getUnstagedDiff, commit } from '../dist/git/diff.js';
 
 function createTempDir() {
   return realpathSync.native(
@@ -156,8 +152,6 @@ test('findGitRepositories returns rootDir even with recursive flag', () => {
   }
 });
 
-// ─── gitHasChanges ──────────────────────────────────────────────────────────
-
 test('gitHasChanges detects staged changes', () => {
   const root = createTempDir();
   try {
@@ -165,9 +159,8 @@ test('gitHasChanges detects staged changes', () => {
     writeFileSync(join(repo, 'file.txt'), 'content\n', 'utf-8');
     git(['add', 'file.txt'], repo);
 
-    const { staged, unstaged } = gitHasChanges(repo);
-    assert.equal(staged, true);
-    assert.equal(unstaged, false);
+    assert.equal(getStagedDiff(repo).hasChanges, true);
+    assert.equal(getUnstagedDiff(repo).hasChanges, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -183,9 +176,8 @@ test('gitHasChanges detects unstaged changes', () => {
     git(['commit', '-m', 'feat: initial'], repo);
     writeFileSync(join(repo, 'file.txt'), 'modified\n', 'utf-8');
 
-    const { staged, unstaged } = gitHasChanges(repo);
-    assert.equal(staged, false);
-    assert.equal(unstaged, true);
+    assert.equal(getStagedDiff(repo).hasChanges, false);
+    assert.equal(getUnstagedDiff(repo).hasChanges, true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -199,9 +191,8 @@ test('gitHasChanges returns false for clean repo', () => {
     git(['add', 'file.txt'], repo);
     git(['commit', '-m', 'feat: initial'], repo);
 
-    const { staged, unstaged } = gitHasChanges(repo);
-    assert.equal(staged, false);
-    assert.equal(unstaged, false);
+    assert.equal(getStagedDiff(repo).hasChanges, false);
+    assert.equal(getUnstagedDiff(repo).hasChanges, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -221,31 +212,83 @@ test('gitHasChanges detects both staged and unstaged', () => {
     // Modify again (unstaged)
     writeFileSync(join(repo, 'tracked.txt'), 'staged + unstaged\n', 'utf-8');
 
-    const { staged, unstaged } = gitHasChanges(repo);
-    assert.equal(staged, true);
-    assert.equal(unstaged, true);
+    assert.equal(getStagedDiff(repo).hasChanges, true);
+    assert.equal(getUnstagedDiff(repo).hasChanges, true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('gitHasChanges throws on non-git directory (status 128)', () => {
+// ─── canonical diff regressions ──────────────────────────────────────────────
+
+test('getStagedDiff returns the staged diff for an arbitrary repo cwd', () => {
   const root = createTempDir();
   try {
-    assert.throws(
-      () => gitHasChanges(root),
-      (err) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /diff check failed/i);
-        return true;
-      },
-    );
+    const repo = initRepo(root, 'repo');
+    writeFileSync(join(repo, 'file.txt'), 'hello\n', 'utf-8');
+    git(['add', 'file.txt'], repo);
+
+    const result = getStagedDiff(repo);
+    assert.equal(result.hasChanges, true);
+    assert.match(result.diff, /diff --git/);
+    assert.match(result.diff, /\+hello/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test('gitHasChanges throws when git repo is corrupt (broken index)', () => {
+test('getUnstagedDiff detects an untracked-only worktree', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'repo');
+    writeFileSync(join(repo, 'tracked.txt'), 'initial\n', 'utf-8');
+    git(['add', 'tracked.txt'], repo);
+    git(['commit', '-m', 'feat: initial'], repo);
+
+    writeFileSync(join(repo, 'untracked.txt'), 'new file\n', 'utf-8');
+
+    const result = getUnstagedDiff(repo);
+    assert.equal(result.hasChanges, true);
+    assert.match(result.diff, /untracked\.txt/);
+    assert.match(result.diff, /\+new file/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('getUnstagedDiff combines tracked and untracked changes', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'repo');
+    writeFileSync(join(repo, 'tracked.txt'), 'initial\n', 'utf-8');
+    git(['add', 'tracked.txt'], repo);
+    git(['commit', '-m', 'feat: initial'], repo);
+
+    writeFileSync(join(repo, 'tracked.txt'), 'modified\n', 'utf-8');
+    writeFileSync(join(repo, 'untracked.txt'), 'new file\n', 'utf-8');
+
+    const result = getUnstagedDiff(repo);
+    assert.equal(result.hasChanges, true);
+    assert.match(result.diff, /tracked\.txt/);
+    assert.match(result.diff, /-initial/);
+    assert.match(result.diff, /\+modified/);
+    assert.match(result.diff, /untracked\.txt/);
+    assert.match(result.diff, /\+new file/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('getStagedDiff throws on non-git directory', () => {
+  const root = createTempDir();
+  try {
+    assert.throws(() => getStagedDiff(root), /fatal|not a git repository/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('getStagedDiff throws when git repo is corrupt (broken index)', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -253,68 +296,15 @@ test('gitHasChanges throws when git repo is corrupt (broken index)', () => {
     git(['add', 'file.txt'], repo);
     git(['commit', '-m', 'feat: initial'], repo);
 
-    // Corrupt the index file to cause a fatal git error
-    const indexFile = join(repo, '.git', 'index');
-    writeFileSync(indexFile, 'not a valid index');
+    writeFileSync(join(repo, '.git', 'index'), 'not a valid index');
 
-    assert.throws(
-      () => gitHasChanges(repo),
-      (err) => {
-        assert.ok(err instanceof Error);
-        assert.match(err.message, /diff check failed/i);
-        return true;
-      },
-    );
+    assert.throws(() => getStagedDiff(repo));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-// ─── getGitDiff ─────────────────────────────────────────────────────────────
-
-test('getGitDiff returns the staged diff', () => {
-  const root = createTempDir();
-  try {
-    const repo = initRepo(root, 'repo');
-    writeFileSync(join(repo, 'file.txt'), 'hello\n', 'utf-8');
-    git(['add', 'file.txt'], repo);
-
-    const diff = getGitDiff(repo, true);
-    assert.match(diff, /diff --git/);
-    assert.match(diff, /\+hello/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('getGitDiff returns the unstaged diff', () => {
-  const root = createTempDir();
-  try {
-    const repo = initRepo(root, 'repo');
-    writeFileSync(join(repo, 'file.txt'), 'initial\n', 'utf-8');
-    git(['add', 'file.txt'], repo);
-    git(['commit', '-m', 'feat: initial'], repo);
-    writeFileSync(join(repo, 'file.txt'), 'modified\n', 'utf-8');
-
-    const diff = getGitDiff(repo, false);
-    assert.match(diff, /diff --git/);
-    assert.match(diff, /-initial/);
-    assert.match(diff, /\+modified/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('getGitDiff throws when not in a git repo', () => {
-  const root = createTempDir();
-  try {
-    assert.throws(() => getGitDiff(root, true), /Failed to get diff/);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-// ─── gitCommit ────────────────────────────────────────────────────────────
+// ─── canonical commit helper ───────────────────────────────────────────────
 
 test('gitCommit creates a commit and returns hash and summary', () => {
   const root = createTempDir();
@@ -323,7 +313,7 @@ test('gitCommit creates a commit and returns hash and summary', () => {
     writeFileSync(join(repo, 'file.txt'), 'content\n', 'utf-8');
     git(['add', 'file.txt'], repo);
 
-    const result = gitCommit(repo, 'feat: initial commit');
+    const result = commit('feat: initial commit', undefined, repo);
 
     assert.ok(result.hash, 'expected a commit hash');
     assert.ok(/^[0-9a-f]+$/.test(result.hash), 'hash should be hex');
@@ -341,7 +331,7 @@ test('gitCommit includes body in the commit message', () => {
     writeFileSync(join(repo, 'file.txt'), 'content\n', 'utf-8');
     git(['add', 'file.txt'], repo);
 
-    const result = gitCommit(repo, 'feat: with body', 'Optional body text here');
+    const result = commit('feat: with body', 'Optional body text here', repo);
 
     assert.ok(result.hash, 'expected a commit hash');
     // Verify body is in the full commit message
@@ -357,7 +347,7 @@ test('gitCommit throws on empty commit (nothing to commit)', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
-    assert.throws(() => gitCommit(repo, 'message'), /nothing to commit/i);
+    assert.throws(() => commit('message', undefined, repo), /nothing to commit/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
