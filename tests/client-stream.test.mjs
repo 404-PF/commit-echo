@@ -15,7 +15,7 @@ const emptyProfile = {
   totalCommits: 0,
 };
 
-test('generateSuggestionsStream yields meta, reasoning, then text chunks', async () => {
+test('generateSuggestionsStream discards buffered reasoning when visible content follows', async () => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async () =>
@@ -48,7 +48,7 @@ test('generateSuggestionsStream yields meta, reasoning, then text chunks', async
 
     assert.equal(events[0]?.kind, 'meta');
     assert.equal(events[0]?.truncation, undefined);
-    assert.deepEqual(events.filter((event) => event.kind === 'reasoning'), [{ kind: 'reasoning', text: 'thinking' }]);
+    assert.deepEqual(events.filter((event) => event.kind === 'reasoning'), []);
 
     const chunks = events
       .filter((event) => event.kind === 'text')

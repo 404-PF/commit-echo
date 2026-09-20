@@ -118,7 +118,6 @@ export class OpenAICompatibleProvider implements Provider {
             throw new Error('OpenAI-compatible reasoning stream exceeded the 1 MiB buffer limit');
           }
           reasoning += parsed.reasoning;
-          chunks.push({ kind: 'reasoning', text: parsed.reasoning });
         }
         if (chunks.length > 0) {
           return chunks;
@@ -132,6 +131,10 @@ export class OpenAICompatibleProvider implements Provider {
         maxLineLength: MAX_SSE_LINE_LENGTH,
       },
     );
+
+    if (!hasVisibleContent && reasoning) {
+      yield { kind: 'reasoning', text: reasoning };
+    }
   }
 
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {

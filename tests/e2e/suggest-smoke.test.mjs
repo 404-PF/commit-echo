@@ -994,7 +994,7 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
   const result = await onceExit(child);
   assert.equal(result.code, 0);
   assert.match(stdout, /Streaming suggestions/);
-  assert.match(stdout, /internal thought/);
+  assert.doesNotMatch(stdout, /internal thought/);
   assert.match(stdout, /feat: stream auto commit/);
   const selectedOutput = stdout.slice(stdout.lastIndexOf('Selected:'));
   assert.match(selectedOutput, /Selected:/);
