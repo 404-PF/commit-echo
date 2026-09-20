@@ -303,7 +303,7 @@ test('Anthropic completeStream reassembles event/data split across network chunk
     },
   );
  });
-test('OpenAI completeStream buffers reasoning until completion and discards it when content appears', async () => {
+test('OpenAI completeStream emits reasoning progressively and keeps it separate from visible content', async () => {
   const provider = new OpenAICompatibleProvider();
   const responses = [
     [
@@ -325,14 +325,16 @@ test('OpenAI completeStream buffers reasoning until completion and discards it w
     [openAiParams(), openAiParams()],
   );
   assert.deepEqual(reasoningChunks, [
-    { kind: 'reasoning', text: 'think more' },
+    { kind: 'reasoning', text: 'think ' },
+    { kind: 'reasoning', text: 'more' },
   ]);
   assert.deepEqual(visibleChunks, [
+    { kind: 'reasoning', text: 'thinking' },
     { kind: 'text', text: 'answer' },
   ]);
 });
 
-test('OpenAI completeStream does not yield buffered reasoning before the stream finishes', async () => {
+test('OpenAI completeStream yields reasoning while the response stream remains open', async () => {
   const encoder = new TextEncoder();
   let sourceController;
   let sourceState = 'open';
@@ -354,20 +356,30 @@ test('OpenAI completeStream does not yield buffered reasoning before the stream 
     async () => response,
     async () => {
       const iterator = new OpenAICompatibleProvider().completeStream(openAiParams())[Symbol.asyncIterator]();
+      let timeout;
       const firstChunk = iterator.next();
 
       try {
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        const result = await Promise.race([
+          firstChunk,
+          new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(new Error('Reasoning was not yielded before the response stream closed')), 250);
+          }),
+        ]);
+        assert.deepEqual(result, { done: false, value: { kind: 'reasoning', text: 'think' } });
         assert.equal(sourceState, 'open');
+
+        sourceController.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"answer"}}]}\n'));
+        assert.deepEqual(await iterator.next(), { done: false, value: { kind: 'text', text: 'answer' } });
 
         sourceController.enqueue(
           encoder.encode(
-            'data: {"choices":[{"delta":{"content":"answer"}}]}\ndata: {"choices":[{"delta":{"reasoning_content":" leaked"}}]}\ndata: [DONE]\n',
+            'data: {"choices":[{"delta":{"reasoning_content":" leaked"}}]}\ndata: [DONE]\n',
           ),
         );
-        assert.deepEqual(await firstChunk, { done: false, value: { kind: 'text', text: 'answer' } });
         assert.deepEqual(await iterator.next(), { done: true, value: undefined });
       } finally {
+        clearTimeout(timeout);
         if (sourceState === 'open') {
           sourceState = 'closed';
           sourceController.close();
@@ -390,7 +402,8 @@ test('OpenAI completeStream emits reasoning through an EOF-terminated stream', a
     openAiParams(),
   );
   assert.deepEqual(chunks, [
-    { kind: 'reasoning', text: 'think more' },
+    { kind: 'reasoning', text: 'think ' },
+    { kind: 'reasoning', text: 'more' },
   ]);
 });
 
@@ -404,7 +417,10 @@ test('OpenAI completeStream preserves reasoning with an empty content delta', as
     ],
     openAiParams(),
   );
-  assert.deepEqual(chunks, [{ kind: 'reasoning', text: 'thinking more' }]);
+  assert.deepEqual(chunks, [
+    { kind: 'reasoning', text: 'thinking' },
+    { kind: 'reasoning', text: ' more' },
+  ]);
 });
 
 test('OpenAI completeStream processes final line without trailing newline', async () => {
