@@ -122,6 +122,11 @@ test('parseOpenAiSseLine ignores valid JSON with an unsupported payload shape', 
   assert.deepEqual(parseOpenAiSseLine('data: null'), {});
 });
 
+test('parseOpenAiSseLine ignores valid JSON objects with unsupported payload shapes', () => {
+  assert.deepEqual(parseOpenAiSseLine('data: {"unexpected":"value"}'), {});
+  assert.deepEqual(parseOpenAiSseLine('data: {"choices":[]}'), {});
+});
+
 test('parseOpenAiSseLine ignores empty data payloads', () => {
   assert.deepEqual(parseOpenAiSseLine('data:'), {});
   assert.deepEqual(parseOpenAiSseLine('data:   '), {});
@@ -209,7 +214,7 @@ test('OpenAI completeStream processes final line without trailing newline', asyn
   );
 });
 
-test('OpenAI completeStream preserves empty data events', async () => {
+test('OpenAI completeStream ignores empty data keepalive events', async () => {
   await withMockedFetch(
     async () => responseFromChunks(['data:\n', 'data: {"choices":[{"delta":{"content":"hello"}}]}\n', 'data: [DONE]']),
     async () => {

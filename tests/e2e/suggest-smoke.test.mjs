@@ -28,9 +28,9 @@ function findOutputMarkerIndex(text, marker) {
   let offset = 0;
   for (const line of lines) {
     const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
-    const isMarkerLine = marker === 'Streaming suggestions'
+    const isMarkerLine = !isDiffLine && (marker === 'Streaming suggestions'
       ? /^\s*Streaming suggestions\.\.\.\s*$/.test(line)
-      : !isDiffLine && /Suggestions generated:\s*$/.test(line);
+      : /Suggestions generated:\s*$/.test(line));
     if (isMarkerLine) return offset;
     offset += line.length + 1;
   }

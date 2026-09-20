@@ -278,7 +278,7 @@ test('completion bash script is syntactically valid bash', async (t) => {
   try {
     await execFileAsync('bash', ['-c', 'exit 0']);
   } catch (err) {
-    if (process.platform === 'win32' || err?.code === 'ENOENT') {
+    if (err?.code === 'ENOENT') {
       t.skip('bash not available — skipping parse check');
       return;
     }
