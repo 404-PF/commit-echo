@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { writeFileSync } from 'node:fs';
 import { platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { spawn as spawnPty } from 'node-pty';
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -19,35 +21,6 @@ function onceExit(child) {
   });
 }
 
-function waitForStdout(child, getStdout, text) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error(`Timed out waiting for ${text}. stdout: ${getStdout()}`));
-    }, 5000);
-
-    const onData = () => {
-      if (getStdout().includes(text)) {
-        cleanup();
-        resolve();
-      }
-    };
-    const onExit = () => {
-      cleanup();
-      reject(new Error(`Exited before ${text}. stdout: ${getStdout()}`));
-    };
-    const cleanup = () => {
-      clearTimeout(timeout);
-      child.stdout.off('data', onData);
-      child.off('exit', onExit);
-    };
-
-    child.stdout.on('data', onData);
-    child.once('exit', onExit);
-    onData();
-  });
-}
-
 function stripAnsi(text) {
   return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
 }
@@ -57,9 +30,11 @@ function findOutputMarkerIndex(text, marker) {
   let offset = 0;
   for (const line of lines) {
     const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
-    const isMarkerLine = !isDiffLine && (marker === 'Streaming suggestions'
-      ? /^\s*Streaming suggestions\.\.\.\s*$/.test(line)
-      : /Suggestions generated:\s*$/.test(line));
+    const isMarkerLine =
+      !isDiffLine &&
+      (marker === 'Streaming suggestions'
+        ? /^\s*Streaming suggestions\.\.\.\s*$/.test(line)
+        : /Suggestions generated:\s*$/.test(line));
     if (isMarkerLine) return offset;
     offset += line.length + 1;
   }
@@ -167,6 +142,58 @@ function runCli(args, { cwd, env }) {
     child.on('exit', (code, signal) => {
       clearTimeout(timeout);
       resolve({ code, signal, stdout, stderr });
+    });
+  });
+}
+
+function runInteractiveCli(args, { cwd, env, onOutput }) {
+  return new Promise((resolve, reject) => {
+    const child = spawnPty(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
+      cwd,
+      env,
+      name: 'xterm-256color',
+      cols: 120,
+      rows: 40,
+      useConpty: false,
+    });
+    let output = '';
+    let settled = false;
+    const cleanup = () => {
+      if (platform() !== 'win32') return;
+
+      // node-pty 1.1.0 leaves the WinPTY ConOut worker alive after normal exit.
+      child._agent?._conoutSocketWorker?.dispose();
+      child._agent?._inSocket?.destroy();
+      child._agent?._outSocket?.destroy();
+      child._socket?.destroy();
+    };
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      cleanup();
+      reject(new Error(`Timed out running ${args.join(' ')}. output: ${stripAnsi(output)}`));
+    }, 10_000);
+
+    child.onData((chunk) => {
+      output += chunk;
+      if (settled) return;
+      try {
+        onOutput({ child, output, text: stripAnsi(output) });
+      } catch (err) {
+        settled = true;
+        clearTimeout(timeout);
+        child.kill();
+        cleanup();
+        reject(err);
+      }
+    });
+    child.onExit(({ exitCode, signal }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      cleanup();
+      resolve({ code: exitCode, signal, stdout: output });
     });
   });
 }
@@ -536,19 +563,20 @@ test('suggest --commit --yes refuses a staged diff changed during analysis', asy
   assert.equal(result.code, 1);
   assert.match(stdout, /Staged changes are empty or changed since suggestions were generated/);
   assert.doesNotMatch(stdout, /Commit created/);
-  assert.equal(execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(), 'feat: initial fixture');
-  assert.match(execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }), /replacement during analysis/);
+  assert.equal(
+    execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(),
+    'feat: initial fixture',
+  );
+  assert.match(
+    execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }),
+    /replacement during analysis/,
+  );
 });
 
-test('suggest --commit refuses a staged diff changed before interactive confirmation', async (t) => {
-  if (platform() === 'win32') {
-    t.skip('Interactive prompts require a pseudo-terminal unavailable to Node child processes on Windows.');
-    return;
-  }
-
+test('suggest --commit rejects a staged diff changed during interactive confirmation', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-interactive-stale-diff-'));
   const { home, repo, configDir } = await setupRepo(root);
-  const { server } = createChatCompletionServer({ content: '1. feat: reject interactive staged diff' });
+  const { server } = createChatCompletionServer({ content: '1. feat: reject interactive changed diff' });
   const port = await listen(server);
   t.after(async () => {
     server.close();
@@ -557,46 +585,57 @@ test('suggest --commit refuses a staged diff changed before interactive confirma
 
   await writeCustomProviderConfig(configDir, port);
 
-  const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--commit'], {
+  let actionSelected = false;
+  let suggestionSelected = false;
+  let editDeclined = false;
+  let diffChanged = false;
+  const result = await runInteractiveCli(['suggest', '--commit'], {
     cwd: repo,
     env: cliEnvFor(home),
-    stdio: ['pipe', 'pipe', 'pipe'],
+    onOutput: ({ child, text }) => {
+      if (!actionSelected && text.includes('Choose an action:')) {
+        actionSelected = true;
+        child.write('\r');
+        return;
+      }
+
+      if (!suggestionSelected && text.includes('Select a commit message:')) {
+        suggestionSelected = true;
+        child.write('\r');
+        return;
+      }
+
+      if (!editDeclined && text.includes('Edit message before committing?')) {
+        editDeclined = true;
+        child.write('\r');
+        return;
+      }
+
+      if (!diffChanged && text.includes('Commit with this message?')) {
+        diffChanged = true;
+        writeFileSync(join(repo, 'README.md'), '# fixture\n\nchanged during confirmation\n', 'utf8');
+        execFileSync('git', ['add', 'README.md'], { cwd: repo });
+        child.write('\r');
+      }
+    },
   });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk) => {
-    stdout += chunk.toString();
-  });
-  child.stderr.on('data', (chunk) => {
-    stderr += chunk.toString();
-  });
 
-  const resultPromise = onceExit(child);
-  const waitFor = (text) => waitForStdout(child, () => stripAnsi(stdout), text);
-
-  await waitFor('Choose an action:');
-  child.stdin.write('\n');
-  await waitFor('Select a commit message:');
-  child.stdin.write('\n');
-  await waitFor('Commit with this message?');
-
-  await writeFile(join(repo, 'README.md'), '# fixture\n\nreplacement before confirmation\n', 'utf8');
-  execFileSync('git', ['add', 'README.md'], { cwd: repo });
-  child.stdin.write('\n');
-
-  const result = await resultPromise;
-  const cleanStdout = stripAnsi(stdout);
-
+  const stdout = stripAnsi(result.stdout);
+  assert.equal(actionSelected, true);
+  assert.equal(suggestionSelected, true);
+  assert.equal(editDeclined, true);
+  assert.equal(diffChanged, true);
   assert.equal(result.code, 1);
-  assert.equal(result.signal, null);
-  assert.equal(stderr, '');
-  assert.match(cleanStdout, /Staged changes are empty or changed since suggestions were generated/);
-  assert.doesNotMatch(cleanStdout, /Commit created/);
+  assert.match(stdout, /Staged changes are empty or changed since suggestions were generated/);
+  assert.doesNotMatch(stdout, /Commit created/);
   assert.equal(
     execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(),
     'feat: initial fixture',
   );
-  assert.match(execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }), /replacement before confirmation/);
+  assert.match(
+    execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }),
+    /changed during confirmation/,
+  );
 });
 
 test('suggest reports beforeResponse failures instead of timing out', async (t) => {
@@ -831,7 +870,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
     rootPrefix: 'commit-echo-show-diff-unstaged-',
     content: '1. feat: inspect unstaged diff',
     staged: false,
-    readme: ['# fixture', '', 'Suggestions generated:', 'Streaming suggestions', 'updated', ''].join('\n'),
+    readme: '# fixture\n\nSuggestions generated:\nStreaming suggestions\nupdated\n',
   });
 
   const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });
