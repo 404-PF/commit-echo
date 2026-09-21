@@ -33,5 +33,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npm rebuild node-pty
       - run: npm run format:check
       - run: npm test
