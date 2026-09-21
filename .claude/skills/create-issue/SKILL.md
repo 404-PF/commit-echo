@@ -131,14 +131,23 @@ Use **GitHub MCP tools** (`mcp_github_mcp_se_issue_write`) to create the issue:
 - `assignees`: Array of usernames
 - `milestone`: Milestone number (if provided)
 
-If MCP tools are unavailable, fall back to **`gh` CLI**. Pass generated values as data, not shell source:
+If MCP tools are unavailable, fall back to **`gh` CLI**. Pass generated values as data, not shell source. In the snippet, initialize the optional metadata arrays and populate them with the values confirmed in Step 4:
+
+- Start with `labels=()` and append each confirmed label with `labels+=("$label")`.
+- Start with `assignees=()` and append each confirmed assignee with `assignees+=("$assignee")`.
+- Set `milestone=""` when no milestone is confirmed; otherwise set it to the confirmed milestone value.
 
 ```bash
 title="$GENERATED_TITLE"
 body="$GENERATED_BODY"
+labels=()
+assignees=()
+milestone=""
 body_file="$(mktemp)"
+trap 'rm -f "$body_file"' EXIT
 printf '%s\n' "$body" >"$body_file"
 
+# Append each confirmed value to labels/assignees and set milestone before building args.
 args=(issue create --title "$title" --body-file "$body_file")
 for label in "${labels[@]}"; do
   args+=(--label "$label")
@@ -146,9 +155,14 @@ done
 for assignee in "${assignees[@]}"; do
   args+=(--assignee "$assignee")
 done
+if [ -n "$milestone" ]; then
+  args+=(--milestone "$milestone")
+fi
 
-gh "${args[@]}"
-rm -f "$body_file"
+if ! gh "${args[@]}"; then
+  echo "Failed to create the GitHub issue." >&2
+  exit 1
+fi
 ```
 
 Never interpolate the title or body directly into command text; quoted variable expansion and `--body-file` preserve the generated content as data.
