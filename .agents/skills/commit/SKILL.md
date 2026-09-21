@@ -2,6 +2,7 @@
 name: commit
 description: "**WORKFLOW SKILL** — Stage changes, write clear commit messages, and commit following best practices. USE FOR: committing code changes; writing conventional commit messages; staging files before commits; amending previous commits; creating atomic commits; generating commit messages from diffs. DO NOT USE FOR: pushing to remote (use git push); resolving merge conflicts; branching or rebasing."
 user-invocable: true
+disable-model-invocation: true
 ---
 
 # Commit Workflow
@@ -77,12 +78,12 @@ Follow this structure:
 
 **Simple change**:
 ```
-fix(auth): prevent token refresh race condition
+fix(auth): Prevent token refresh race condition
 ```
 
 **Feature with context**:
 ```
-feat(api): add pagination to user list endpoint
+feat(api): Add pagination to user list endpoint
 
 Implement offset-based pagination with configurable page size.
 Default limit is 20 items per page. Includes cursor-based
@@ -93,7 +94,7 @@ Closes #234
 
 **Breaking change**:
 ```
-refactor(config)!: rename environment variables for consistency
+refactor(config)!: Rename environment variables for consistency
 
 BREAKING CHANGE: DATABASE_URL is now DB_CONNECTION_STRING
 ```
