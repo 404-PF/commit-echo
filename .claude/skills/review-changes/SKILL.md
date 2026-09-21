@@ -17,11 +17,16 @@ Systematic pre-commit code review checklist for staged and unstaged changes.
 
 ## Procedure
 
-### 1. Identify Changes
-- Run `git diff --staged` to see staged changes
-- Run `git diff` to see unstaged changes
-- Run `git status` to see untracked files
-- Summarize the scope: which files changed, what the changes accomplish
+### 1. Identify Changes and Scope
+
+Honor the optional `argument-hint`:
+
+- **No argument**: review staged and unstaged changes plus all untracked files.
+- **Existing path**: review only that path. Use path-limited diffs (`git diff --staged -- "$path"` and `git diff -- "$path"`) and `git status --short -- "$path"`. For an untracked path, read its contents directly before reviewing it; `git diff` does not include untracked content.
+- **Existing local branch**: review that branch's changes from its merge base with the current branch. Verify it with `git show-ref --verify --quiet "refs/heads/$branch"`, then use `base="$(git merge-base HEAD "$branch")"` and `git diff "$base..$branch"`.
+- **Anything else**: report that the scope argument is neither an existing path nor a local branch and stop rather than silently reviewing a different scope.
+
+Summarize the selected scope: which files changed and what the changes accomplish.
 
 ### 2. Correctness Check
 For each changed file, verify:
