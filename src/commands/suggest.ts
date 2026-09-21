@@ -94,7 +94,7 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
 }
 
 function normalizeDiff(diff: string): string {
-  const normalized = diff.replace(/\r\n?/g, '\n');
+  const normalized = diff.replace(/\r\n/g, '\n');
   const sections = normalized.split(/(?=^diff --git )/m);
 
   if (sections.length === 1) {

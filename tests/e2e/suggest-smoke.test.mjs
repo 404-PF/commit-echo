@@ -531,7 +531,7 @@ test('suggest reports beforeResponse failures instead of timing out', async (t) 
   const stdout = stripAnsi(result.stdout);
 
   assert.match(stdout, /OpenAI-compatible API error \(500\): \{"error":"synthetic beforeResponse failure"\}/);
-  assert.doesNotMatch(stdout, /Timed out/);
+  assert.doesNotMatch(stdout, /timed out/i);
 });
 
 test('suggest reports no changes before checking for an API key', async (t) => {

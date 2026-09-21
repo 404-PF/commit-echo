@@ -70,6 +70,20 @@ test('verifyStagedDiff does not ignore trailing spaces inside a non-final file s
   );
 });
 
+test('verifyStagedDiff preserves standalone carriage returns', () => {
+  const analyzedDiff = 'diff --git a/tracked.txt b/tracked.txt\n+changed\r\n+next';
+  const currentDiff = 'diff --git a/tracked.txt b/tracked.txt\r\n+changed\r+next';
+
+  assert.equal(
+    verifyStagedDiff(analyzedDiff, {
+      diff: currentDiff,
+      hasChanges: true,
+      staged: true,
+    }),
+    undefined,
+  );
+});
+
 test('verifyStagedDiff returns the current staged diff when it still matches', () => {
   const currentDiff = {
     diff: analyzedDiff,
