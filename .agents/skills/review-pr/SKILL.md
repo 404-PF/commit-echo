@@ -19,10 +19,12 @@ Comprehensive PR review that summarizes changes, identifies potential issues, an
 
 ### 2. Gather PR Details
 
-Fetch the PR metadata and content:
+Fetch the PR metadata, changed-file list, unified diff, and file contents before reviewing code:
+
 - Use `mcp_github_mcp_se_search_pull_requests` with the PR query to get title, description, author, state, and labels.
+- Use the GitHub MCP PR diff/file retrieval operations to get the complete changed-file list and unified diff. For every changed path, fetch the file contents at the PR head revision so Step 3 reviews the actual code, not only metadata.
 - Use `mcp_github_mcp_se_list_branches` if branch info is needed.
-- Note the base and head branches to understand the diff scope.
+- Note the base and head branches and head revision to understand the diff scope.
 
 ### 3. Analyze Changes
 
@@ -81,3 +83,9 @@ One of:
 ### 5. Optional: Submit the Review
 
 If the user wants, use `mcp_github_mcp_se_pull_request_review_write` to submit the review directly on GitHub with the appropriate event (`APPROVE`, `REQUEST_CHANGES`, or `COMMENT`).
+
+If GitHub MCP tools are unavailable, fall back to `gh` CLI:
+- Use `gh pr view "$pr_ref" --json title,body,state,labels,baseRefName,headRefName,headRefOid,files` for PR metadata and the changed-file list.
+- Use `gh pr diff "$pr_ref"` for the unified diff.
+- Fetch each changed file at the PR head with `gh api "repos/$repo/contents/$path?ref=$head_sha" -H "Accept: application/vnd.github.raw+json"`.
+- For review submission, write the review body to a temporary file and use `gh pr review "$pr_ref" --approve --body-file "$review_file"`, `--request-changes`, or `--comment` as appropriate. Never interpolate review text into shell command source.
