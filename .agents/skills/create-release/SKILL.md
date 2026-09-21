@@ -42,7 +42,7 @@ else
   CURRENT_VERSION="$(node -p "require('./package.json').version")"
 fi
 
-if [ -z "$CURRENT_VERSION" ]; then
+if [ -z "$CURRENT_VERSION" ] || [ "$CURRENT_VERSION" = "undefined" ]; then
   echo "No release baseline is available; provide the current version explicitly."
   exit 1
 fi
@@ -85,8 +85,8 @@ Use the GitHub CLI to create the release. Extract only the newly generated versi
 ```bash
 release_notes_file="$(mktemp)"
 awk -v section="## [$NEW_VERSION]" '
-  $0 == section { in_section=1 }
-  in_section && $0 ~ /^## / && $0 != section { exit }
+  $0 == section || index($0, section " -") == 1 { in_section=1; next }
+  in_section && $0 ~ /^## / { exit }
   in_section { print }
 ' CHANGELOG.md >"$release_notes_file"
 test -s "$release_notes_file"
