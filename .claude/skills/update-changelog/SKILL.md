@@ -20,12 +20,14 @@ Generate a [Keep a Changelog](https://keepachangelog.com/) formatted entry from 
 
 Find the starting point for the changelog entry:
 
-1. Check if a CHANGELOG.md exists. If it does, scan it for the most recent version header to understand the existing format.
-2. Find the latest git tag: `git describe --tags --abbrev=0`
-3. If the user specifies a starting point (commit, tag, or date), use that instead.
-4. Confirm the range with the user: "I'll summarize commits from `<last-tag>` to `HEAD`. Is that correct?"
+- Check if a CHANGELOG.md exists. If it does, scan it for the most recent version header to understand the existing format.
+- Find the latest git tag with `git describe --tags --abbrev=0`.
+- If a tag exists, use that tag as the start of the range.
+- If no tag exists, review all history with `git log --oneline --no-merges HEAD` instead of using `HEAD..HEAD`.
+- If the user specifies a starting point (commit, tag, or date), use that instead.
+- Confirm the range with the user before categorizing it.
 
-Run: `git log <start>..HEAD --oneline` to preview the commit list before categorizing.
+For a tagged range, run `git log "$start"..HEAD --oneline`; for the no-tag path, run `git log --oneline --no-merges HEAD`.
 
 ### 3. Categorize Commits
 
@@ -69,11 +71,10 @@ Rules:
 
 ### 5. Write or Append to CHANGELOG.md
 
-1. If `CHANGELOG.md` exists:
-   - Insert the new entry after the `# Changelog` header (or after any "Keep a Changelog" preamble).
-   - Don't duplicate entries that already exist.
-2. If `CHANGELOG.md` does not exist:
-   - Create it with the standard preamble:
+Build the proposed change before modifying the file:
+
+- If `CHANGELOG.md` exists, construct the new entry in memory and prepare a unified diff against the current file. Insert the entry after the `# Changelog` header (or after any "Keep a Changelog" preamble) and avoid duplicates.
+- If `CHANGELOG.md` does not exist, construct the complete file in memory using the standard preamble:
 
 ```markdown
 # Changelog
@@ -83,7 +84,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ```
 
-3. Show the user the diff of what was written/appended and ask for confirmation before saving.
+- Show the proposed diff to the user and request explicit confirmation.
+- Only after the user confirms, write or append the entry to `CHANGELOG.md`. Do not modify the file before confirmation.
 
 ### 6. Finalize
 
