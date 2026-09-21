@@ -104,6 +104,8 @@ For each prioritized finding (or group of related findings), create a GitHub iss
    - **Effort estimate**: S / M / L
    - **Impact**: What improves if this is built
 
+If GitHub MCP tools are unavailable, fall back to `gh` CLI for each issue. Reuse the safe pattern from `create-issue`: keep the generated title in a quoted shell variable, write the generated body with `printf '%s\n' "$body" >"$body_file"`, pass it with `--body-file "$body_file"`, and pass each label with a separate quoted `--label "$label"` argument.
+
 ### 7. Summary Report
 
 After scanning, provide the user with a summary:
