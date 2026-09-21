@@ -2,6 +2,7 @@
 name: checkout-branch
 description: 'Create and switch to a new branch. Accepts a branch name or GitHub issue number. Derives branch name from issue title when an issue number is given. USE FOR: starting new work, branching from an issue, creating feature/bugfix branches. DO NOT USE FOR: committing, pushing, or managing PRs.'
 user-invocable: true
+disable-model-invocation: true
 argument-hint: '<branch-name-or-issue-number>'
 ---
 
@@ -33,33 +34,30 @@ Create a new Git branch and switch to it. Supports two input modes:
 
 ### 2b. Explicit Name Flow
 
-1. Use the provided name exactly
-2. Validate it is a valid Git branch name (no spaces, no `..`, no `~^:?*[\`, not `@{`, not `-`)
+1. Use the provided name exactly and store it in a shell variable named `branch_name`
+2. Validate it by running `git check-ref-format --branch "$branch_name"`; exit status 0 means valid, non-zero means invalid
 3. If invalid, suggest a sanitized version and ask the user to confirm
 4. Go to Step 3
 
 ### 3. Create and Switch
 
-Run the following steps:
+Resolve the GitHub remote before running the workflow:
 
-```bash
-# Fetch latest remote refs
-git fetch origin
-
-# Create branch from default branch (usually main or master)
-# Determine the default branch first:
-git remote show origin | grep "HEAD branch"
-```
+1. Inspect configured remotes with `git remote -v`.
+2. Select the GitHub remote to use; if none exists, stop and ask for a GitHub remote. If multiple GitHub remotes exist, ask the user which one to use.
+3. Store the selected remote name in `github_remote` and verify it with `git remote get-url "$github_remote"`.
+4. Fetch the latest refs with `git fetch "$github_remote"`.
+5. Determine the remote's default branch with `default_branch="$(git remote show "$github_remote" | awk -F': ' '/HEAD branch/ {print $2; exit}')"`; stop if no default branch is reported.
 
 Then create and switch:
 
 ```bash
-git checkout -b <branch-name> origin/<default-branch>
+git checkout -b "$branch_name" "$github_remote/$default_branch"
 ```
 
 If the branch already exists locally, ask the user whether to:
-- **Switch** to the existing branch (`git checkout <branch-name>`)
-- **Reset** it to the latest origin (`git checkout -B <branch-name> origin/<default-branch>`)
+- **Switch** to the existing branch (`git checkout "$branch_name"`)
+- **Reset** it to the latest remote (`git checkout -B "$branch_name" "$github_remote/$default_branch"`)
 - **Choose a different name**
 
 ### 4. Verify
