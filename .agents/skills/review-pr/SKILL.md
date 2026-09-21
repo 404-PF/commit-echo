@@ -16,7 +16,7 @@ Comprehensive PR review that summarizes changes, identifies potential issues, an
 - If the user provided a reference like `owner/repo#123`, parse it into a repository (`owner/repo`) and pull request number.
 - Otherwise, check for an active branch or recent PR in the workspace.
 - Use the GitHub integration configured for the environment to find the PR when available; do not assume a connector-specific MCP tool name.
-- When no GitHub integration is available and the reference was left blank, derive the current PR's repository and number before Step 2 with `repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"` and `number="$(gh pr view --json number -q .number)`.
+- When no GitHub integration is available and the reference was left blank, derive the current PR's repository and number before Step 2 with `repo="$(gh repo view --json nameWithOwner -q .nameWithOwner)"` and `number="$(gh pr view --json number -q .number)"`.
 - When no GitHub integration is available, use the `gh` CLI fallback described below.
 
 ### 2. Gather PR Details
