@@ -300,33 +300,38 @@ test('cwd-scoped git helpers ignore inherited repository environment', () => {
     writeFileSync(join(target, 'file.txt'), 'content\n', 'utf-8');
     git(['add', 'file.txt'], target);
 
-    process.env.GIT_DIR = join(other, '.git');
-    process.env.GIT_WORK_TREE = other;
-    process.env.GIT_COMMON_DIR = join(other, '.git');
-    process.env.GIT_INDEX_FILE = join(other, '.git', 'index');
-    process.env.GIT_OBJECT_DIRECTORY = join(other, '.git', 'objects');
-    process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES = join(other, '.git', 'objects');
+    try {
+      process.env.GIT_DIR = join(other, '.git');
+      process.env.GIT_WORK_TREE = other;
+      process.env.GIT_COMMON_DIR = join(other, '.git');
+      process.env.GIT_INDEX_FILE = join(other, '.git', 'index');
+      process.env.GIT_OBJECT_DIRECTORY = join(other, '.git', 'objects');
+      process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES = join(other, '.git', 'objects');
 
-    assert.equal(getStagedDiff(target).hasChanges, true);
-    assert.equal(hasUnstagedChanges(target), false);
+      assert.equal(getStagedDiff(target).hasChanges, true);
+      assert.equal(hasUnstagedChanges(target), false);
 
-    const result = commit('feat: target commit', undefined, target);
-    assert.ok(result.hash);
+      const result = commit('feat: target commit', undefined, target);
+      assert.ok(result.hash);
 
-    writeFileSync(join(target, 'untracked.txt'), 'new file\n', 'utf-8');
-    assert.equal(getUnstagedDiff(target).hasChanges, true);
+      writeFileSync(join(target, 'untracked.txt'), 'new file\n', 'utf-8');
+      assert.equal(getUnstagedDiff(target).hasChanges, true);
 
-    const targetCommit = git(['show', '--format=%s', '--no-patch', result.hash], target).trim();
-    assert.equal(targetCommit, 'feat: target commit');
-  } finally {
-    for (const name of gitEnvVars) {
-      const value = previousEnv[name];
-      if (value === undefined) {
-        delete process.env[name];
-      } else {
-        process.env[name] = value;
+      var targetCommitHash = result.hash;
+    } finally {
+      for (const name of gitEnvVars) {
+        const value = previousEnv[name];
+        if (value === undefined) {
+          delete process.env[name];
+        } else {
+          process.env[name] = value;
+        }
       }
     }
+
+    const targetCommit = git(['show', '--format=%s', '--no-patch', targetCommitHash], target).trim();
+    assert.equal(targetCommit, 'feat: target commit');
+  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
