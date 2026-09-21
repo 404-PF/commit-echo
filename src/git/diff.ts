@@ -135,7 +135,7 @@ export function getStagedDiff(cwd = process.cwd()): DiffResult {
     maxBuffer: GIT_DIFF_MAX_BUFFER,
   });
   return {
-    diff: diff.trim(),
+    diff,
     hasChanges: diff.trim().length > 0,
     staged: true,
   };
@@ -248,7 +248,11 @@ export function getUnstagedDiff(cwd = process.cwd()): DiffResult {
     env: getGitEnv(),
     maxBuffer: GIT_DIFF_MAX_BUFFER,
   });
-  const diff = [trackedDiff.trim(), untrackedAwareDiff.trim()].filter(Boolean).join('\n');
+  const parts = [trackedDiff, untrackedAwareDiff].filter((part) => part.trim().length > 0);
+  const diff = parts.reduce((combined, part) => {
+    if (!combined) return part;
+    return combined.endsWith('\n') || combined.endsWith('\r') ? combined + part : combined + '\n' + part;
+  }, '');
   return {
     diff,
     hasChanges: diff.length > 0,

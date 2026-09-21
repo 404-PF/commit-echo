@@ -60,7 +60,7 @@ function extractShownDiff(stdout) {
   assert.ok(Number.isFinite(markerIndex), `Could not find suggestion output in stdout:\n${stdout}`);
 
   const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
-  return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
+  return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak);
 }
 
 function extractPromptDiff(content) {

@@ -94,25 +94,12 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
 }
 
 function normalizeDiff(diff: string): string {
-  const normalized = diff.replace(/\r\n/g, '\n');
-  const sections = normalized.split(/(?=^diff --git )/m);
-
-  if (sections.length === 1) {
-    return normalized;
-  }
-
+  const sections = diff.split(/(?=^diff --git )/m);
   const prefix = sections[0]?.startsWith('diff --git ') ? '' : (sections.shift() ?? '');
-  const sortedSections = sections.map((section) => removeTrailingLineBreaks(section)).sort(compareDiffSections);
+  const finalTerminator = sections.at(-1)?.match(/(\r\n|\n|\r)$/)?.[1] ?? '';
+  const canonicalSections = sections.map((section) => section.replace(/\r\n$|\n$|\r$/, '')).sort(compareDiffSections);
 
-  return prefix + sortedSections.join('\n');
-}
-
-function removeTrailingLineBreaks(section: string): string {
-  let end = section.length;
-  while (end > 0 && section.codePointAt(end - 1) === 10) {
-    end -= 1;
-  }
-  return section.slice(0, end);
+  return JSON.stringify({ prefix, sections: canonicalSections, finalTerminator });
 }
 
 function compareDiffSections(left: string, right: string): number {

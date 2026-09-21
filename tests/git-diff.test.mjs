@@ -131,6 +131,27 @@ test("getStagedDiff returns diff when changes are staged", () => {
   }
 });
 
+test("getStagedDiff preserves trailing whitespace on the final changed line", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "file.txt"), "initial\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+    git(["commit", "-m", "initial commit"], repoDir);
+    writeFileSync(join(repoDir, "file.txt"), "initial\nfinal line with spaces   \n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+
+    withCwd(repoDir, () => {
+      const result = getStagedDiff();
+
+      assert.equal(result.hasChanges, true);
+      assert.match(result.diff, /\+final line with spaces   \r?\n$/);
+    });
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("getStagedDiff handles diffs larger than the default execSync buffer", () => {
   const repoDir = initRepo();
 

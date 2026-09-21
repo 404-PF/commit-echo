@@ -84,6 +84,20 @@ test('verifyStagedDiff preserves standalone carriage returns', () => {
   );
 });
 
+test('verifyStagedDiff rejects diffs that differ only by CRLF line endings', () => {
+  const analyzedDiff = 'diff --git a/tracked.txt b/tracked.txt\n+changed\n+next\n';
+  const currentDiff = 'diff --git a/tracked.txt b/tracked.txt\r\n+changed\r\n+next\r\n';
+
+  assert.equal(
+    verifyStagedDiff(analyzedDiff, {
+      diff: currentDiff,
+      hasChanges: true,
+      staged: true,
+    }),
+    undefined,
+  );
+});
+
 test('verifyStagedDiff returns the current staged diff when it still matches', () => {
   const currentDiff = {
     diff: analyzedDiff,
