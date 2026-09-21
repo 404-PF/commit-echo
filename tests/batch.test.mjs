@@ -310,12 +310,13 @@ test('cwd-scoped git helpers ignore inherited repository environment', () => {
       process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES = join(other, '.git', 'objects');
 
       assert.equal(getStagedDiff(target).hasChanges, true);
-      assert.equal(hasUnstagedChanges(target), false);
+
+      writeFileSync(join(target, 'untracked.txt'), 'new file\n', 'utf-8');
+      assert.equal(hasUnstagedChanges(target), true);
 
       const result = commit('feat: target commit', undefined, target);
       assert.ok(result.hash);
 
-      writeFileSync(join(target, 'untracked.txt'), 'new file\n', 'utf-8');
       assert.equal(getUnstagedDiff(target).hasChanges, true);
 
       targetCommitHash = result.hash;
