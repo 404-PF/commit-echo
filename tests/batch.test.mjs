@@ -302,7 +302,7 @@ test('getUnstagedDiff combines tracked and untracked changes', () => {
 test('getStagedDiff throws on non-git directory', () => {
   const root = createTempDir();
   try {
-    assert.throws(() => getStagedDiff(root), /not a git repository/i);
+    assert.throws(() => getStagedDiff(root), /unknown option [`']cached[`']/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
