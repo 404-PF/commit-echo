@@ -2,6 +2,7 @@
 name: patch-findings
 description: 'Generate fix patches from pre-identified findings. Use when: generating code fixes from PR review comments, producing patches from scan results, translating described problems into code changes. DO NOT USE FOR: resolving GitHub issues (use resolve-issue); creating PRs (use create-pr); managing branches.'
 argument-hint: 'describe the finding to patch'
+disable-model-invocation: true
 ---
 
 # Patch Findings
