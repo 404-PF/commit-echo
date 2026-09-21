@@ -266,12 +266,67 @@ test('hasUnstagedChanges detects tracked and untracked worktree changes', () => 
 
     assert.equal(hasUnstagedChanges(repo), false);
 
+    writeFileSync(join(repo, 'untracked.txt'), 'new file\n', 'utf-8');
+    assert.equal(hasUnstagedChanges(repo), true);
+
+    rmSync(join(repo, 'untracked.txt'));
+
     writeFileSync(join(repo, 'tracked.txt'), 'modified\n', 'utf-8');
     assert.equal(hasUnstagedChanges(repo), true);
 
-    writeFileSync(join(repo, 'untracked.txt'), 'new file\n', 'utf-8');
-    assert.equal(hasUnstagedChanges(repo), true);
+    git(['add', 'tracked.txt'], repo);
+    assert.equal(hasUnstagedChanges(repo), false);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('cwd-scoped git helpers ignore inherited repository environment', () => {
+  const root = createTempDir();
+  const gitEnvVars = [
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_COMMON_DIR',
+    'GIT_INDEX_FILE',
+    'GIT_OBJECT_DIRECTORY',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+  ];
+  const previousEnv = Object.fromEntries(gitEnvVars.map((name) => [name, process.env[name]]));
+
+  try {
+    const target = initRepo(root, 'target');
+    const other = initRepo(root, 'other');
+
+    writeFileSync(join(target, 'file.txt'), 'content\n', 'utf-8');
+    git(['add', 'file.txt'], target);
+
+    process.env.GIT_DIR = join(other, '.git');
+    process.env.GIT_WORK_TREE = other;
+    process.env.GIT_COMMON_DIR = join(other, '.git');
+    process.env.GIT_INDEX_FILE = join(other, '.git', 'index');
+    process.env.GIT_OBJECT_DIRECTORY = join(other, '.git', 'objects');
+    process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES = join(other, '.git', 'objects');
+
+    assert.equal(getStagedDiff(target).hasChanges, true);
+    assert.equal(hasUnstagedChanges(target), false);
+
+    const result = commit('feat: target commit', undefined, target);
+    assert.ok(result.hash);
+
+    writeFileSync(join(target, 'untracked.txt'), 'new file\n', 'utf-8');
+    assert.equal(getUnstagedDiff(target).hasChanges, true);
+
+    const targetCommit = git(['show', '--format=%s', '--no-patch', result.hash], target).trim();
+    assert.equal(targetCommit, 'feat: target commit');
+  } finally {
+    for (const name of gitEnvVars) {
+      const value = previousEnv[name];
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
+    }
     rmSync(root, { recursive: true, force: true });
   }
 });
