@@ -200,7 +200,11 @@ async function promptApiKey(
   if (isCancel(keyResult)) return null;
 
   const effectiveKey = keyResult || envKey || rawConfiguredKey || '';
-  const persistKey = keyResult || rawConfiguredKey || undefined;
+  const persistKey = keyResult
+    ? keyResult
+    : rawConfiguredKey !== process.env['COMMIT_ECHO_API_KEY']
+      ? rawConfiguredKey
+      : undefined;
 
   return { effectiveKey, persistKey };
 }
