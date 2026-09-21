@@ -39,16 +39,16 @@ test('verifyStagedDiff rejects a matching diff that is not staged', () => {
 });
 
 test('verifyStagedDiff ignores file-section ordering for mixed tracked and untracked diffs', () => {
-  const trackedDiff = 'diff --git a/tracked.txt b/tracked.txt\n+changed';
-  const untrackedDiff = 'diff --git a/untracked.txt b/untracked.txt\n+new file';
+  const trackedDiff = 'diff --git a/tracked.txt b/tracked.txt\n+changed\n';
+  const untrackedDiff = 'diff --git a/untracked.txt b/untracked.txt\n+new file\n';
 
   assert.equal(
-    verifyStagedDiff(`${trackedDiff}\n${untrackedDiff}`, {
-      diff: `${untrackedDiff}\n${trackedDiff}`,
+    verifyStagedDiff(`${trackedDiff}${untrackedDiff}`, {
+      diff: `${untrackedDiff}${trackedDiff}`,
       hasChanges: true,
       staged: true,
     }),
-    `${untrackedDiff}\n${trackedDiff}`,
+    `${untrackedDiff}${trackedDiff}`,
   );
 });
 
@@ -87,6 +87,24 @@ test('verifyStagedDiff preserves standalone carriage returns', () => {
 test('verifyStagedDiff rejects diffs that differ only by CRLF line endings', () => {
   const analyzedDiff = 'diff --git a/tracked.txt b/tracked.txt\n+changed\n+next\n';
   const currentDiff = 'diff --git a/tracked.txt b/tracked.txt\r\n+changed\r\n+next\r\n';
+
+  assert.equal(
+    verifyStagedDiff(analyzedDiff, {
+      diff: currentDiff,
+      hasChanges: true,
+      staged: true,
+    }),
+    undefined,
+  );
+});
+
+test('verifyStagedDiff preserves line endings at non-final file section boundaries', () => {
+  const analyzedDiff =
+    'diff --git a/tracked.txt b/tracked.txt\n+changed\n' +
+    'diff --git a/untracked.txt b/untracked.txt\n+new file\n';
+  const currentDiff =
+    'diff --git a/tracked.txt b/tracked.txt\n+changed\r\n' +
+    'diff --git a/untracked.txt b/untracked.txt\n+new file\n';
 
   assert.equal(
     verifyStagedDiff(analyzedDiff, {

@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { writeFileSync } from 'node:fs';
 import { platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { spawn as spawnPty } from 'node-pty';
 
 function listen(server) {
   return new Promise((resolve) => {
@@ -117,17 +115,21 @@ function runSuggestUntil(args, { cwd, env, text }) {
 }
 
 function runCli(args, { cwd, env }) {
+  return runNodeProcess([join(process.cwd(), 'dist/index.js'), ...args], { cwd, env }, `commit-echo ${args.join(' ')}`);
+}
+
+function runNodeScript(script, { cwd, env }) {
+  return runNodeProcess(['--input-type=module', '-e', script], { cwd, env }, 'interactive suggest flow');
+}
+
+function runNodeProcess(args, { cwd, env }, label) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(process.execPath, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     const timeout = setTimeout(() => {
       child.kill('SIGINT');
-      reject(new Error(`Timed out running ${args.join(' ')}. stdout: ${stdout} stderr: ${stderr}`));
+      reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
     }, 8000);
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -142,58 +144,6 @@ function runCli(args, { cwd, env }) {
     child.on('exit', (code, signal) => {
       clearTimeout(timeout);
       resolve({ code, signal, stdout, stderr });
-    });
-  });
-}
-
-function runInteractiveCli(args, { cwd, env, onOutput }) {
-  return new Promise((resolve, reject) => {
-    const child = spawnPty(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
-      cwd,
-      env,
-      name: 'xterm-256color',
-      cols: 120,
-      rows: 40,
-      useConpty: false,
-    });
-    let output = '';
-    let settled = false;
-    const cleanup = () => {
-      if (platform() !== 'win32') return;
-
-      // node-pty 1.1.0 leaves the WinPTY ConOut worker alive after normal exit.
-      child._agent?._conoutSocketWorker?.dispose();
-      child._agent?._inSocket?.destroy();
-      child._agent?._outSocket?.destroy();
-      child._socket?.destroy();
-    };
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill();
-      cleanup();
-      reject(new Error(`Timed out running ${args.join(' ')}. output: ${stripAnsi(output)}`));
-    }, 10_000);
-
-    child.onData((chunk) => {
-      output += chunk;
-      if (settled) return;
-      try {
-        onOutput({ child, output, text: stripAnsi(output) });
-      } catch (err) {
-        settled = true;
-        clearTimeout(timeout);
-        child.kill();
-        cleanup();
-        reject(err);
-      }
-    });
-    child.onExit(({ exitCode, signal }) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      cleanup();
-      resolve({ code: exitCode, signal, stdout: output });
     });
   });
 }
@@ -585,46 +535,37 @@ test('suggest --commit rejects a staged diff changed during interactive confirma
 
   await writeCustomProviderConfig(configDir, port);
 
-  let actionSelected = false;
-  let suggestionSelected = false;
-  let editDeclined = false;
-  let diffChanged = false;
-  const result = await runInteractiveCli(['suggest', '--commit'], {
-    cwd: repo,
-    env: cliEnvFor(home),
-    onOutput: ({ child, text }) => {
-      if (!actionSelected && text.includes('Choose an action:')) {
-        actionSelected = true;
-        child.write('\r');
-        return;
-      }
+  const suggestModuleUrl = new URL('../../dist/commands/suggest.js', import.meta.url).href;
+  const script = `
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { suggestCommand } from ${JSON.stringify(suggestModuleUrl)};
 
-      if (!suggestionSelected && text.includes('Select a commit message:')) {
-        suggestionSelected = true;
-        child.write('\r');
-        return;
-      }
+const prompts = {
+  async select({ message }) {
+    if (message === 'Choose an action:') return 'select';
+    if (message === 'Select a commit message:') return 1;
+    throw new Error('Unexpected selection prompt: ' + message);
+  },
+  async confirm({ message }) {
+    if (message === 'Edit message before committing?') return false;
+    if (message === 'Commit with this message?') {
+      writeFileSync('README.md', '# fixture\\n\\nchanged during confirmation\\n', 'utf8');
+      execFileSync('git', ['add', 'README.md']);
+      return true;
+    }
+    throw new Error('Unexpected confirmation prompt: ' + message);
+  },
+  async text() {
+    throw new Error('Unexpected text prompt');
+  },
+};
 
-      if (!editDeclined && text.includes('Edit message before committing?')) {
-        editDeclined = true;
-        child.write('\r');
-        return;
-      }
-
-      if (!diffChanged && text.includes('Commit with this message?')) {
-        diffChanged = true;
-        writeFileSync(join(repo, 'README.md'), '# fixture\n\nchanged during confirmation\n', 'utf8');
-        execFileSync('git', ['add', 'README.md'], { cwd: repo });
-        child.write('\r');
-      }
-    },
-  });
+await suggestCommand({ commit: true }, prompts);
+`;
+  const result = await runNodeScript(script, { cwd: repo, env: cliEnvFor(home) });
 
   const stdout = stripAnsi(result.stdout);
-  assert.equal(actionSelected, true);
-  assert.equal(suggestionSelected, true);
-  assert.equal(editDeclined, true);
-  assert.equal(diffChanged, true);
   assert.equal(result.code, 1);
   assert.match(stdout, /Staged changes are empty or changed since suggestions were generated/);
   assert.doesNotMatch(stdout, /Commit created/);
