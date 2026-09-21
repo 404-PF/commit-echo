@@ -13,17 +13,17 @@ Comprehensive PR review that summarizes changes, identifies potential issues, an
 
 ### 1. Identify the PR
 
-- If the user provided a reference like `owner/repo#123`, parse it.
+- If the user provided a reference like `owner/repo#123`, parse it into a repository (`owner/repo`) and pull request number.
 - Otherwise, check for an active branch or recent PR in the workspace.
-- Use `mcp_github_mcp_se_search_pull_requests` to find the PR if needed.
+- Use the GitHub integration configured for the environment to find the PR when available; do not assume a connector-specific MCP tool name.
+- When no GitHub integration is available, use the `gh` CLI fallback described below.
 
 ### 2. Gather PR Details
 
 Fetch the PR metadata, changed-file list, unified diff, and file contents before reviewing code:
 
-- Use `mcp_github_mcp_se_search_pull_requests` with the PR query to get title, description, author, state, and labels.
-- Use the GitHub MCP PR diff/file retrieval operations to get the complete changed-file list and unified diff. For every changed path, fetch the file contents at the PR head revision so Step 3 reviews the actual code, not only metadata.
-- Use `mcp_github_mcp_se_list_branches` if branch info is needed.
+- Use the configured GitHub integration when available to get the PR metadata, changed-file list, unified diff, and head revision.
+- Otherwise, use the `gh` CLI commands in Step 5: `gh pr view "$number" -R "$repo"`, `gh pr diff "$number" -R "$repo"`, and the GitHub API fallback for file contents.
 - Note the base and head branches and head revision to understand the diff scope.
 
 ### 3. Analyze Changes
@@ -82,10 +82,9 @@ One of:
 
 ### 5. Optional: Submit the Review
 
-If the user wants, use `mcp_github_mcp_se_pull_request_review_write` to submit the review directly on GitHub with the appropriate event (`APPROVE`, `REQUEST_CHANGES`, or `COMMENT`).
+If a configured GitHub integration is available, use it to submit the review with the requested event (`APPROVE`, `REQUEST_CHANGES`, or `COMMENT`). Otherwise use the `gh` CLI fallback below.
 
-If GitHub MCP tools are unavailable, fall back to `gh` CLI:
-- Use `gh pr view "$pr_ref" --json title,body,state,labels,baseRefName,headRefName,headRefOid,files` for PR metadata and the changed-file list.
-- Use `gh pr diff "$pr_ref"` for the unified diff.
-- Fetch each changed file at the PR head with `gh api "repos/$repo/contents/$path?ref=$head_sha" -H "Accept: application/vnd.github.raw+json"`.
-- For review submission, write the review body to a temporary file and use `gh pr review "$pr_ref" --approve --body-file "$review_file"`, `--request-changes`, or `--comment` as appropriate. Never interpolate review text into shell command source.
+If GitHub MCP tools are unavailable, use `gh` CLI without passing an `owner/repo#number` selector directly. Parse `owner/repo#123` into `repo="$owner/$repo_name"` and `number="123"`, then run `gh pr view "$number" -R "$repo" --json title,body,state,labels,baseRefName,headRefName,headRefOid,files` for PR metadata and the changed-file list.
+- Use `gh pr diff "$number" -R "$repo"` for the unified diff.
+- For each changed file with status other than `removed`, fetch its contents at the PR head with `gh api "repos/$repo/contents/$path?ref=$head_sha" -H "Accept: application/vnd.github.raw+json"`. A removed path is already represented by the diff and should be skipped. For a blob that exceeds the contents API size cap, use the Git Data blobs API with its blob SHA instead.
+- For review submission, write the review body to a temporary file and use `gh pr review "$number" -R "$repo" --approve --body-file "$review_file"`, `--request-changes`, or `--comment` as appropriate. Never interpolate review text into shell command source.
