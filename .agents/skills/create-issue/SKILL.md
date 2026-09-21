@@ -2,6 +2,7 @@
 name: create-issue
 description: 'Create a GitHub issue with proper structure and metadata. Use when the user asks to create an issue, open a ticket, report a bug, or request a feature. Supports labels, assignees, milestones, and templates.'
 user-invocable: true
+disable-model-invocation: true
 argument-hint: '[optional: issue title or description]'
 ---
 
@@ -130,10 +131,27 @@ Use **GitHub MCP tools** (`mcp_github_mcp_se_issue_write`) to create the issue:
 - `assignees`: Array of usernames
 - `milestone`: Milestone number (if provided)
 
-If MCP tools are unavailable, fall back to **`gh` CLI**:
+If MCP tools are unavailable, fall back to **`gh` CLI**. Pass generated values as data, not shell source:
+
 ```bash
-gh issue create --title "<title>" --body "<body>" --label "<label1>,<label2>" --assignee "<user1>,<user2>"
+title="$GENERATED_TITLE"
+body="$GENERATED_BODY"
+body_file="$(mktemp)"
+printf '%s\n' "$body" >"$body_file"
+
+args=(issue create --title "$title" --body-file "$body_file")
+for label in "${labels[@]}"; do
+  args+=(--label "$label")
+done
+for assignee in "${assignees[@]}"; do
+  args+=(--assignee "$assignee")
+done
+
+gh "${args[@]}"
+rm -f "$body_file"
 ```
+
+Never interpolate the title or body directly into command text; quoted variable expansion and `--body-file` preserve the generated content as data.
 
 ### 6. Report Result
 - Display the created issue URL
