@@ -17,11 +17,13 @@ on:
 jobs:
   skill-sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Regenerate Claude skill mirror
         run: bash scripts/sync-claude-skills.sh
 
       - name: Check for drift
-        run: git diff --exit-code -- .claude/skills
+        run: git diff --exit-code -- .claude/skills && test -z "$(git status --porcelain=v1 --untracked-files=all -- .claude/skills)"
