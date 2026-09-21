@@ -28,9 +28,11 @@ function findOutputMarkerIndex(text, marker) {
   let offset = 0;
   for (const line of lines) {
     const isDiffLine = /^[+ \-@]/.test(line) || /^(diff --git |index |--- |\+\+\+ |@@ )/.test(line);
-    const isMarkerLine = !isDiffLine && (marker === 'Streaming suggestions'
-      ? /^\s*Streaming suggestions\.\.\.\s*$/.test(line)
-      : /Suggestions generated:\s*$/.test(line));
+    const isMarkerLine =
+      !isDiffLine &&
+      (marker === 'Streaming suggestions'
+        ? /^\s*Streaming suggestions\.\.\.\s*$/.test(line)
+        : /Suggestions generated:\s*$/.test(line));
     if (isMarkerLine) return offset;
     offset += line.length + 1;
   }
@@ -56,7 +58,7 @@ function extractShownDiff(stdout) {
   assert.ok(Number.isFinite(markerIndex), `Could not find suggestion output in stdout:\n${stdout}`);
 
   const sectionBreak = preview.lastIndexOf('\n\n', markerIndex);
-  return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak).trimEnd();
+  return preview.slice(0, sectionBreak === -1 ? markerIndex : sectionBreak);
 }
 
 function extractPromptDiff(content) {
@@ -113,17 +115,21 @@ function runSuggestUntil(args, { cwd, env, text }) {
 }
 
 function runCli(args, { cwd, env }) {
+  return runNodeProcess([join(process.cwd(), 'dist/index.js'), ...args], { cwd, env }, `commit-echo ${args.join(' ')}`);
+}
+
+function runNodeScript(script, { cwd, env }) {
+  return runNodeProcess(['--input-type=module', '-e', script], { cwd, env }, 'interactive suggest flow');
+}
+
+function runNodeProcess(args, { cwd, env }, label) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), ...args], {
-      cwd,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = spawn(process.execPath, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     const timeout = setTimeout(() => {
       child.kill('SIGINT');
-      reject(new Error(`Timed out running ${args.join(' ')}. stdout: ${stdout} stderr: ${stderr}`));
+      reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
     }, 8000);
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -183,7 +189,7 @@ async function setupRepo(root) {
   return { home, repo, configDir };
 }
 
-function createChatCompletionServer({ content, streamContent, requireStream = false }) {
+function createChatCompletionServer({ content, streamContent, requireStream = false, beforeResponse }) {
   const requests = [];
   const server = createServer(async (req, res) => {
     if (req.url === '/chat/completions' && req.method === 'POST') {
@@ -192,6 +198,14 @@ function createChatCompletionServer({ content, streamContent, requireStream = fa
       for await (const chunk of req) body += chunk;
       const parsed = JSON.parse(body);
       requests.push(parsed);
+
+      try {
+        await beforeResponse?.(parsed);
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        return;
+      }
 
       if (parsed.stream && streamContent) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -476,6 +490,118 @@ test('top-level --auto commits the first suggestion like --yes', async (t) => {
   }
 });
 
+test('suggest --commit --yes refuses a staged diff changed during analysis', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-auto-stale-diff-'));
+  const { home, repo, configDir } = await setupRepo(root);
+  const { server } = createChatCompletionServer({
+    content: '1. feat: reject changed staged diff',
+    beforeResponse: async () => {
+      await writeFile(join(repo, 'README.md'), '# fixture\n\nreplacement during analysis\n', 'utf8');
+      execFileSync('git', ['add', 'README.md'], { cwd: repo });
+    },
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(configDir, port);
+  const result = await runCli(['suggest', '--commit', '--yes'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+
+  assert.equal(result.code, 1);
+  assert.match(stdout, /Staged changes are empty or changed since suggestions were generated/);
+  assert.doesNotMatch(stdout, /Commit created/);
+  assert.equal(
+    execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(),
+    'feat: initial fixture',
+  );
+  assert.match(
+    execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }),
+    /replacement during analysis/,
+  );
+});
+
+test('suggest --commit rejects a staged diff changed during interactive confirmation', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-interactive-stale-diff-'));
+  const { home, repo, configDir } = await setupRepo(root);
+  const { server } = createChatCompletionServer({ content: '1. feat: reject interactive changed diff' });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(configDir, port);
+
+  const suggestModuleUrl = new URL('../../dist/commands/suggest.js', import.meta.url).href;
+  const script = `
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { suggestCommand } from ${JSON.stringify(suggestModuleUrl)};
+
+const prompts = {
+  async select({ message }) {
+    if (message === 'Choose an action:') return 'select';
+    if (message === 'Select a commit message:') return 1;
+    throw new Error('Unexpected selection prompt: ' + message);
+  },
+  async confirm({ message }) {
+    if (message === 'Edit message before committing?') return false;
+    if (message === 'Commit with this message?') {
+      writeFileSync('README.md', '# fixture\\n\\nchanged during confirmation\\n', 'utf8');
+      execFileSync('git', ['add', 'README.md']);
+      return true;
+    }
+    throw new Error('Unexpected confirmation prompt: ' + message);
+  },
+  async text() {
+    throw new Error('Unexpected text prompt');
+  },
+};
+
+await suggestCommand({ commit: true }, prompts);
+`;
+  const result = await runNodeScript(script, { cwd: repo, env: cliEnvFor(home) });
+
+  const stdout = stripAnsi(result.stdout);
+  assert.equal(result.code, 1);
+  assert.match(stdout, /Staged changes are empty or changed since suggestions were generated/);
+  assert.doesNotMatch(stdout, /Commit created/);
+  assert.equal(
+    execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(),
+    'feat: initial fixture',
+  );
+  assert.match(
+    execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }),
+    /changed during confirmation/,
+  );
+});
+
+test('suggest reports beforeResponse failures instead of timing out', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-before-response-error-'));
+  const { home, repo, configDir } = await setupRepo(root);
+  const { server } = createChatCompletionServer({
+    content: '1. feat: should not be returned',
+    beforeResponse: async () => {
+      throw new Error('synthetic beforeResponse failure');
+    },
+  });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(configDir, port);
+  const result = await runCli(['suggest'], { cwd: repo, env: cliEnvFor(home) });
+  const stdout = stripAnsi(result.stdout);
+
+  assert.match(stdout, /OpenAI-compatible API error \(500\): \{"error":"synthetic beforeResponse failure"\}/);
+  assert.doesNotMatch(stdout, /timed out/i);
+});
+
 test('suggest reports no changes before checking for an API key', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-no-changes-'));
   const { home, repo, configDir } = await setupRepo(root);
@@ -685,7 +811,7 @@ test('suggest --show-diff works with unstaged changes in auto mode', async (t) =
     rootPrefix: 'commit-echo-show-diff-unstaged-',
     content: '1. feat: inspect unstaged diff',
     staged: false,
-    readme: ['# fixture', '', 'Suggestions generated:', 'Streaming suggestions', 'updated', ''].join('\n'),
+    readme: '# fixture\n\nSuggestions generated:\nStreaming suggestions\nupdated\n',
   });
 
   const result = await runCli(['suggest', '--show-diff', '--yes'], { cwd: repo, env: cliEnvFor(home) });

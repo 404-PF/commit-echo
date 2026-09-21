@@ -10,6 +10,7 @@ import {
   checkGitRepo,
   hasCommits,
   getStagedDiff,
+  createIndexSnapshot,
   getUnstagedDiff,
   getBranchName,
   getLastCommitMessage,
@@ -24,6 +25,14 @@ import { parseSuggestions, resolvePrompts, truncateDiff } from '../llm/prompt.js
 import { appendEntry, buildProfile, formatProfile } from '../history/store.js';
 
 import { getStreamingProvider } from '../providers/index.js';
+
+type SuggestPromptAdapter = {
+  confirm: typeof confirm;
+  select: typeof select;
+  text: typeof text;
+};
+
+const defaultPrompts: SuggestPromptAdapter = { confirm, select, text };
 
 function showTruncationWarning(info: TruncationInfo): void {
   const pct = ((info.truncatedSize / info.originalSize) * 100).toFixed(1);
@@ -93,6 +102,106 @@ async function displaySuggestions(suggestions: Suggestion[]): Promise<void> {
   }
 }
 
+function normalizeDiff(diff: string): string {
+  const headers = [...diff.matchAll(/^diff --git /gm)];
+  if (headers.length === 0) {
+    return JSON.stringify({ prefix: diff, sections: [] });
+  }
+
+  const prefix = diff.slice(0, headers[0]!.index);
+  const sections = headers.map((header, index) => {
+    const start = header.index!;
+    const end = headers[index + 1]?.index ?? diff.length;
+    return diff.slice(start, end);
+  });
+
+  return JSON.stringify({ prefix, sections: sections.toSorted(compareDiffSections) });
+}
+
+function compareDiffSections(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
+}
+
+export function verifyStagedDiff(analyzedDiff: string, currentDiff: DiffResult): string | undefined {
+  if (
+    !currentDiff.staged ||
+    !currentDiff.hasChanges ||
+    normalizeDiff(currentDiff.diff) !== normalizeDiff(analyzedDiff)
+  ) {
+    return undefined;
+  }
+  return currentDiff.diff;
+}
+
+function getVerifiedStagedDiff(analyzedDiff: string, indexFile?: string): string | undefined {
+  return verifyStagedDiff(analyzedDiff, getStagedDiff(process.cwd(), indexFile));
+}
+
+function verifyStagedDiffBeforeCommit(analyzedDiff: string, indexFile?: string): string | undefined {
+  const verifiedDiff = getVerifiedStagedDiff(analyzedDiff, indexFile);
+  if (verifiedDiff) {
+    return verifiedDiff;
+  }
+
+  outro(
+    pc.red(
+      'Staged changes are empty or changed since suggestions were generated. ' +
+        'Stage the analyzed changes again before committing.',
+    ),
+  );
+  process.exitCode = 1;
+  return undefined;
+}
+
+async function commitWithVerifiedIndexSnapshot(
+  selected: Suggestion,
+  config: Config,
+  analyzedDiff: string,
+): Promise<boolean> {
+  const indexSnapshot = createIndexSnapshot();
+
+  try {
+    const verifiedDiff = verifyStagedDiffBeforeCommit(analyzedDiff, indexSnapshot.path);
+    if (!verifiedDiff) {
+      return false;
+    }
+
+    let result: ReturnType<typeof commit>;
+    try {
+      result = commit(selected.message, selected.body, process.cwd(), indexSnapshot.path);
+      console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
+    } catch (err) {
+      outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
+      process.exitCode = 1;
+      return false;
+    }
+
+    try {
+      await appendEntry({
+        timestamp: new Date().toISOString(),
+        message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
+        diff: verifiedDiff,
+        model: config.model,
+        provider: config.provider,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`));
+    }
+
+    outro(pc.green('Commit completed.'));
+    return true;
+  } finally {
+    indexSnapshot.cleanup();
+  }
+}
+
 export async function suggestCommand(
   options: {
     commit?: boolean;
@@ -105,6 +214,7 @@ export async function suggestCommand(
     dryRun?: boolean;
     noCommit?: boolean;
   } = {},
+  prompts: SuggestPromptAdapter = defaultPrompts,
 ): Promise<boolean> {
   intro(pc.bold(pc.cyan('commit-echo')));
 
@@ -165,7 +275,7 @@ export async function suggestCommand(
       if (!options.autoCommit) {
         let useUnstaged: boolean | symbol;
         try {
-          useUnstaged = await confirm({
+          useUnstaged = await prompts.confirm({
             message: 'No staged changes found. Use unstaged changes for suggestions?',
             initialValue: false,
           });
@@ -353,7 +463,7 @@ export async function suggestCommand(
           process.exitCode = 1;
           return false;
         }
-        return acceptAndCommit(first, config, diffResult.diff, true);
+        return acceptAndCommit(first, config, diffResult.diff, true, prompts);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
         if (first.body) {
@@ -364,7 +474,7 @@ export async function suggestCommand(
     }
 
     try {
-      const action = await select({
+      const action = await prompts.select({
         message: 'Choose an action:',
         options: [
           { value: 'select', label: shouldCommit ? 'Select a suggestion to commit' : 'Select a suggestion' },
@@ -387,7 +497,7 @@ export async function suggestCommand(
         label: s.message.length > 60 ? s.message.slice(0, 57) + '...' : s.message,
       }));
 
-      const selectedIndex = await select({
+      const selectedIndex = await prompts.select({
         message: 'Select a commit message:',
         options: suggestionOptions,
       });
@@ -404,10 +514,7 @@ export async function suggestCommand(
       }
 
       if (shouldCommit) {
-        const committed = await acceptAndCommit(selected, config, diffResult.diff);
-        if (!committed) {
-          return false;
-        }
+        return acceptAndCommit(selected, config, diffResult.diff, false, prompts);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
         if (selected.body) {
@@ -425,41 +532,23 @@ export async function suggestCommand(
   return true;
 }
 
-async function acceptAndCommit(selected: Suggestion, config: Config, diff: string, auto = false): Promise<boolean> {
+async function acceptAndCommit(
+  selected: Suggestion,
+  config: Config,
+  diff: string,
+  auto = false,
+  prompts: SuggestPromptAdapter = defaultPrompts,
+): Promise<boolean> {
   console.log(`\n  ${pc.green('Selected:')} ${pc.bold(selected.message)}`);
   if (selected.body) {
     console.log(`  ${pc.dim(selected.body)}`);
   }
 
   if (auto) {
-    try {
-      const result = commit(selected.message, selected.body);
-      console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      outro(pc.red(`Commit failed: ${msg}`));
-      process.exitCode = 1;
-      return false;
-    }
-
-    try {
-      await appendEntry({
-        timestamp: new Date().toISOString(),
-        message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
-        diff,
-        model: config.model,
-        provider: config.provider,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`));
-    }
-
-    outro(pc.green('Commit completed.'));
-    return true;
+    return commitWithVerifiedIndexSnapshot(selected, config, diff);
   }
 
-  const edit = await confirm({
+  const edit = await prompts.confirm({
     message: 'Edit message before committing?',
     initialValue: false,
   });
@@ -472,7 +561,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
   let finalBody = selected.body;
 
   if (edit) {
-    const editedMessage = await text({
+    const editedMessage = await prompts.text({
       message: 'Edit commit message:',
       initialValue: selected.message,
     });
@@ -482,7 +571,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     }
     finalMessage = editedMessage;
 
-    const editedBody = await text({
+    const editedBody = await prompts.text({
       message: 'Edit body (optional):',
       initialValue: selected.body ?? '',
     });
@@ -493,7 +582,7 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     finalBody = editedBody || undefined;
   }
 
-  const confirmCommit = await confirm({
+  const confirmCommit = await prompts.confirm({
     message: 'Commit with this message?',
     initialValue: true,
   });
@@ -503,30 +592,5 @@ async function acceptAndCommit(selected: Suggestion, config: Config, diff: strin
     return true;
   }
 
-  let result;
-
-  try {
-    result = commit(finalMessage, finalBody);
-    console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
-  } catch (err) {
-    outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
-    process.exitCode = 1;
-    return false;
-  }
-
-  try {
-    await appendEntry({
-      timestamp: new Date().toISOString(),
-      message: finalBody ? `${finalMessage}\n\n${finalBody}` : finalMessage,
-      diff,
-      model: config.model,
-      provider: config.provider,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`));
-  }
-
-  outro(pc.green('Commit completed.'));
-  return true;
+  return commitWithVerifiedIndexSnapshot({ ...selected, message: finalMessage, body: finalBody }, config, diff);
 }
