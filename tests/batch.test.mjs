@@ -260,16 +260,16 @@ test('hasUnstagedChanges detects tracked and untracked worktree changes', () => 
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
-    writeFileSync(join(repo, 'tracked.txt'), 'initial\\n', 'utf-8');
+    writeFileSync(join(repo, 'tracked.txt'), 'initial\n', 'utf-8');
     git(['add', 'tracked.txt'], repo);
     git(['commit', '-m', 'feat: initial'], repo);
 
     assert.equal(hasUnstagedChanges(repo), false);
 
-    writeFileSync(join(repo, 'tracked.txt'), 'modified\\n', 'utf-8');
+    writeFileSync(join(repo, 'tracked.txt'), 'modified\n', 'utf-8');
     assert.equal(hasUnstagedChanges(repo), true);
 
-    writeFileSync(join(repo, 'untracked.txt'), 'new file\\n', 'utf-8');
+    writeFileSync(join(repo, 'untracked.txt'), 'new file\n', 'utf-8');
     assert.equal(hasUnstagedChanges(repo), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
