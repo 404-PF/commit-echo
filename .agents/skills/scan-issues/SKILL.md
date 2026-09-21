@@ -86,7 +86,10 @@ for label in "${labels[@]}"; do
   args+=(--label "$label")
 done
 
-gh "${args[@]}"
+if ! gh "${args[@]}"; then
+  echo "Failed to create the GitHub issue." >&2
+  exit 1
+fi
 ```
 
 Never interpolate generated text directly into shell command source.
