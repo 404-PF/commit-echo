@@ -15,6 +15,11 @@ export interface CommitResult {
   output: string;
 }
 
+export interface IndexSnapshot {
+  path: string;
+  cleanup: () => void;
+}
+
 const GIT_DIFF_MAX_BUFFER = 100 * 1024 * 1024;
 const GIT_REPOSITORY_ENV_VARS = [
   'GIT_DIR',
@@ -127,17 +132,37 @@ export function hasCommits(): boolean {
   }
 }
 
-export function getStagedDiff(cwd = process.cwd()): DiffResult {
+export function getStagedDiff(cwd = process.cwd(), indexFile?: string): DiffResult {
   const diff = execFileSync(getGitExecutable(), ['diff', '--cached'], {
     cwd,
     encoding: 'utf-8',
-    env: getGitEnv(),
+    env: getGitEnv(indexFile ? { GIT_INDEX_FILE: indexFile } : {}),
     maxBuffer: GIT_DIFF_MAX_BUFFER,
   });
   return {
     diff,
     hasChanges: diff.trim().length > 0,
     staged: true,
+  };
+}
+
+export function createIndexSnapshot(cwd = process.cwd()): IndexSnapshot {
+  const tempDir = mkdtempSync(join(tmpdir(), 'commit-echo-index-snapshot-'));
+  const indexFile = join(tempDir, 'index');
+
+  try {
+    const indexPath = getGitPath('index', cwd);
+    if (existsSync(indexPath)) {
+      copyFileSync(indexPath, indexFile);
+    }
+  } catch (err) {
+    rmSync(tempDir, { recursive: true, force: true });
+    throw err;
+  }
+
+  return {
+    path: indexFile,
+    cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
   };
 }
 
@@ -271,12 +296,12 @@ function parseCommitOutput(output: string): CommitResult {
   };
 }
 
-export function commit(message: string, body?: string, cwd = process.cwd()): CommitResult {
+export function commit(message: string, body?: string, cwd = process.cwd(), indexFile?: string): CommitResult {
   const fullMessage = body ? `${message}\n\n${body}` : message;
   const result = spawnSync(getGitExecutable(), ['commit', '-F', '-'], {
     cwd,
     encoding: 'utf-8',
-    env: getGitEnv(),
+    env: getGitEnv(indexFile ? { GIT_INDEX_FILE: indexFile } : {}),
     input: fullMessage,
     shell: false,
   });

@@ -15,6 +15,7 @@ import test from "node:test";
 import {
   checkGitRepo,
   commit,
+  createIndexSnapshot,
   getBranchName,
   getLastCommitMessage,
   getRepoRoot,
@@ -343,6 +344,34 @@ test("commit commits staged changes and returns output with the commit hash", ()
 
     assert.match(hash, /^[a-f0-9]{40}$/);
     assert.ok(log.includes("test: add file"));
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("commit uses the provided index snapshot instead of a later index change", () => {
+  const repoDir = initRepo();
+
+  try {
+    writeFileSync(join(repoDir, "file.txt"), "initial\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+    git(["commit", "-m", "initial commit"], repoDir);
+
+    writeFileSync(join(repoDir, "file.txt"), "verified content\n", "utf-8");
+    git(["add", "file.txt"], repoDir);
+    const indexSnapshot = createIndexSnapshot(repoDir);
+
+    try {
+      writeFileSync(join(repoDir, "file.txt"), "changed after verification\n", "utf-8");
+      git(["add", "file.txt"], repoDir);
+
+      commit("test: commit verified snapshot", undefined, repoDir, indexSnapshot.path);
+    } finally {
+      indexSnapshot.cleanup();
+    }
+
+    assert.equal(git(["show", "HEAD:file.txt"], repoDir), "verified content\n");
+    assert.equal(git(["show", ":file.txt"], repoDir), "changed after verification\n");
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
   }

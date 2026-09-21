@@ -10,6 +10,7 @@ import {
   checkGitRepo,
   hasCommits,
   getStagedDiff,
+  createIndexSnapshot,
   getUnstagedDiff,
   getBranchName,
   getLastCommitMessage,
@@ -138,12 +139,12 @@ export function verifyStagedDiff(analyzedDiff: string, currentDiff: DiffResult):
   return currentDiff.diff;
 }
 
-function getVerifiedStagedDiff(analyzedDiff: string): string | undefined {
-  return verifyStagedDiff(analyzedDiff, getStagedDiff());
+function getVerifiedStagedDiff(analyzedDiff: string, indexFile?: string): string | undefined {
+  return verifyStagedDiff(analyzedDiff, getStagedDiff(process.cwd(), indexFile));
 }
 
-function verifyStagedDiffBeforeCommit(analyzedDiff: string): string | undefined {
-  const verifiedDiff = getVerifiedStagedDiff(analyzedDiff);
+function verifyStagedDiffBeforeCommit(analyzedDiff: string, indexFile?: string): string | undefined {
+  const verifiedDiff = getVerifiedStagedDiff(analyzedDiff, indexFile);
   if (verifiedDiff) {
     return verifiedDiff;
   }
@@ -156,6 +157,49 @@ function verifyStagedDiffBeforeCommit(analyzedDiff: string): string | undefined 
   );
   process.exitCode = 1;
   return undefined;
+}
+
+async function commitWithVerifiedIndexSnapshot(
+  selected: Suggestion,
+  config: Config,
+  analyzedDiff: string,
+): Promise<boolean> {
+  const indexSnapshot = createIndexSnapshot();
+
+  try {
+    const verifiedDiff = verifyStagedDiffBeforeCommit(analyzedDiff, indexSnapshot.path);
+    if (!verifiedDiff) {
+      return false;
+    }
+
+    let result: ReturnType<typeof commit>;
+    try {
+      result = commit(selected.message, selected.body, process.cwd(), indexSnapshot.path);
+      console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
+    } catch (err) {
+      outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
+      process.exitCode = 1;
+      return false;
+    }
+
+    try {
+      await appendEntry({
+        timestamp: new Date().toISOString(),
+        message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
+        diff: verifiedDiff,
+        model: config.model,
+        provider: config.provider,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`));
+    }
+
+    outro(pc.green('Commit completed.'));
+    return true;
+  } finally {
+    indexSnapshot.cleanup();
+  }
 }
 
 export async function suggestCommand(
@@ -501,36 +545,7 @@ async function acceptAndCommit(
   }
 
   if (auto) {
-    const verifiedDiff = verifyStagedDiffBeforeCommit(diff);
-    if (!verifiedDiff) {
-      return false;
-    }
-
-    try {
-      const result = commit(selected.message, selected.body);
-      console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      outro(pc.red(`Commit failed: ${msg}`));
-      process.exitCode = 1;
-      return false;
-    }
-
-    try {
-      await appendEntry({
-        timestamp: new Date().toISOString(),
-        message: selected.body ? `${selected.message}\n\n${selected.body}` : selected.message,
-        diff: verifiedDiff,
-        model: config.model,
-        provider: config.provider,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`));
-    }
-
-    outro(pc.green('Commit completed.'));
-    return true;
+    return commitWithVerifiedIndexSnapshot(selected, config, diff);
   }
 
   const edit = await prompts.confirm({
@@ -577,35 +592,5 @@ async function acceptAndCommit(
     return true;
   }
 
-  const verifiedDiff = verifyStagedDiffBeforeCommit(diff);
-  if (!verifiedDiff) {
-    return false;
-  }
-
-  let result;
-
-  try {
-    result = commit(finalMessage, finalBody);
-    console.log(`${pc.green('✓ Commit created')} ${pc.bold(result.hash)} ${result.summary}`);
-  } catch (err) {
-    outro(pc.red(`Commit failed: ${err instanceof Error ? err.message : 'Unknown error'}`));
-    process.exitCode = 1;
-    return false;
-  }
-
-  try {
-    await appendEntry({
-      timestamp: new Date().toISOString(),
-      message: finalBody ? `${finalMessage}\n\n${finalBody}` : finalMessage,
-      diff: verifiedDiff,
-      model: config.model,
-      provider: config.provider,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(pc.yellow(`⚠ Commit succeeded but failed to record in history: ${msg}`));
-  }
-
-  outro(pc.green('Commit completed.'));
-  return true;
+  return commitWithVerifiedIndexSnapshot({ ...selected, message: finalMessage, body: finalBody }, config, diff);
 }
