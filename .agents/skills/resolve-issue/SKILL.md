@@ -2,6 +2,7 @@
 name: resolve-issue
 description: "**WORKFLOW SKILL** — Systematically resolve GitHub issues from assignment through PR creation. USE FOR: working on assigned issues; following structured debugging workflows; implementing feature requests; fixing bugs reported in issues; creating focused PRs linked to issues. DO NOT USE FOR: creating new issues (use create-issue); reviewing PRs (use review-pr); general coding tasks without an issue context."
 user-invocable: true
+disable-model-invocation: true
 argument-hint: '[issue-number]'
 ---
 
