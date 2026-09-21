@@ -115,7 +115,7 @@ function normalizeDiff(diff: string): string {
     return diff.slice(start, end);
   });
 
-  return JSON.stringify({ prefix, sections: sections.sort(compareDiffSections) });
+  return JSON.stringify({ prefix, sections: sections.toSorted(compareDiffSections) });
 }
 
 function compareDiffSections(left: string, right: string): number {
