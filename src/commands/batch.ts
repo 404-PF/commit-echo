@@ -121,14 +121,18 @@ export async function batchCommand(
     // Batch commits only staged changes. Use the full staged diff because it is
     // needed for suggestions; use a cheap status check for unstaged-only worktrees.
     let diff: string;
-    let stagedDiff;
+    let stagedDiff: ReturnType<typeof getStagedDiff>;
     try {
       stagedDiff = getStagedDiff(repoPath);
     } catch (err) {
       const error = err as { stderr?: Buffer | string };
-      const detail = error.stderr ? String(error.stderr).trim() : err instanceof Error ? err.message : String(err);
+      const detail = error.stderr
+        ? String(error.stderr).trim()
+        : err instanceof Error
+          ? err.message
+          : String(err);
       const msg = `Staged diff check failed: ${detail}`;
-      console.log(`    ${pc.red(`✖ ${msg}`)}\\n`);
+      console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
       results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
       continue;
     }
@@ -141,13 +145,13 @@ export async function batchCommand(
         const error = err as { stderr?: Buffer | string };
         const detail = error.stderr ? String(error.stderr).trim() : err instanceof Error ? err.message : String(err);
         const msg = `Unstaged diff check failed: ${detail}`;
-        console.log(`    ${pc.red(`✖ ${msg}`)}\\n`);
+        console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
         results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
         continue;
       }
 
       if (!hasUnstaged) {
-        console.log(`    ${pc.yellow('↻ No changes found, skipping')}\\n`);
+        console.log(`    ${pc.yellow('↻ No changes found, skipping')}\n`);
         results.push({
           repo: repoPath,
           repoName,
@@ -157,7 +161,7 @@ export async function batchCommand(
         continue;
       }
 
-      console.log(`    ${pc.yellow('ℹ Unstaged changes only (stage with \`git add\` first), skipping')}\\n`);
+      console.log(`    ${pc.yellow('ℹ Unstaged changes only (stage with \`git add\` first), skipping')}\n`);
       results.push({
         repo: repoPath,
         repoName,
