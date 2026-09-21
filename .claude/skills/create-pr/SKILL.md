@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: 'Create a GitHub pull request from the current branch. Use when the user asks to create a PR, open a pull request, or submit a PR for review. Assumes branch is pushed. Auto-generates title and description from commit history.'
+description: 'Create a GitHub pull request from the current branch. Use when the user asks to create a PR, open a pull request, or submit a PR for review. Branch will be pushed if needed. Auto-generates title and description from commit history.'
 user-invocable: true
 argument-hint: 'Optional: base branch name (defaults to main)'
 ---
@@ -61,7 +61,7 @@ Before creating the PR, present:
 
 ### 5. Create the Pull Request
 
-Prefer **GitHub MCP tools** (`mcp_github_mcp_se_create_pull_request`) to create the PR. If MCP tools are unavailable or fail, fall back to **`gh` CLI** in the terminal:
+Prefer **GitHub MCP tools** (`mcp_github_mcp_se_create_pull_request`) to create the PR. If MCP tools are unavailable or fail, fall back to **`gh` CLI** in the terminal. Before running the snippet, expose the generated values to the shell as `GENERATED_TITLE`, `GENERATED_BODY`, `HEAD_BRANCH`, `BASE_BRANCH`, and `DRAFT` (where `DRAFT` is `true` or `false`).
 
 ```bash
 title="$GENERATED_TITLE"
@@ -69,23 +69,18 @@ body="$GENERATED_BODY"
 head="$HEAD_BRANCH"
 base="$BASE_BRANCH"
 body_file="$(mktemp)"
+trap 'rm -f "$body_file"' EXIT
 printf '%s\n' "$body" >"$body_file"
 
 draft_args=()
-if [ "$DRAFT" = "true" ]; then
+if [ "${DRAFT:-false}" = "true" ]; then
   draft_args+=(--draft)
 fi
 
 gh pr create --base "$base" --head "$head" --title "$title" --body-file "$body_file" "${draft_args[@]}"
-rm -f "$body_file"
 ```
 
-Set the following:
-- `title` → generated title
-- `body` → generated description
-- `head` → current branch
-- `base` → target branch
-- `draft` → based on user preference
+Set the shell variables above from the generated title/description, current branch, target branch, and user-selected draft state before invoking the snippet.
 
 Pass all generated metadata through quoted arguments or files; do not build shell command text from generated values. Preserve `--draft` whenever the user selected Draft.
 
