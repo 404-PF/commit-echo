@@ -2,7 +2,7 @@
 name: review-changes
 description: 'Review staged and unstaged changes before committing. Use for: code review, pre-commit checks, validating changes, checking diff quality, linting, test verification, security scan. Trigger phrases: review changes, review my changes, check changes, pre-commit review, review diff.'
 user-invocable: true
-argument-hint: '[optional: file path or branch to review]'
+argument-hint: '[optional: file path, branch, --staged, or --unstaged]'
 ---
 
 # Review Changes
