@@ -5,11 +5,7 @@ import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
 import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { buildProfile, appendEntry } from '../history/store.js';
-import {
-  getStagedDiff,
-  hasUnstagedChanges,
-  commit,
-} from '../git/diff.js';
+import { getStagedDiff, hasUnstagedChanges, commit } from '../git/diff.js';
 import { showVerboseInfo } from './suggest.js';
 import type { Config, Suggestion, TruncationInfo } from '../types.js';
 
