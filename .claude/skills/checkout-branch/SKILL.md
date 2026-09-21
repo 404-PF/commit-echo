@@ -30,14 +30,16 @@ Create a new Git branch and switch to it. Supports two input modes:
      - `enhancement`, `feature` → `feature/<number>-<slug>`
      - No matching label → `issue/<number>-<slug>`
    - Confirm the derived branch name with the user before proceeding
+   - After confirmation, record the confirmed name so it can be reused in Step 3.
 2. Go to Step 3
 
 ### 2b. Explicit Name Flow
 
-1. Use the provided name exactly and store it in a shell variable named `branch_name`
-2. Validate it by running `git check-ref-format --branch "$branch_name"`; exit status 0 means valid, non-zero means invalid
-3. If invalid, suggest a sanitized version and ask the user to confirm
-4. Go to Step 3
+1. Store the provided name as the confirmed `branch_name` value.
+2. Validate it by running `git check-ref-format --branch "$branch_name"`; exit status 0 means valid, non-zero means invalid.
+3. If invalid, suggest a sanitized version and ask the user to confirm.
+4. After confirmation, carry the confirmed branch name explicitly into Step 3; do not rely on shell variables persisting across separate tool invocations.
+5. Go to Step 3
 
 ### 3. Create and Switch
 
@@ -45,20 +47,32 @@ Resolve the GitHub remote before running the workflow:
 
 1. Inspect configured remotes with `git remote -v`.
 2. Select the GitHub remote to use; if none exists, stop and ask for a GitHub remote. If multiple GitHub remotes exist, ask the user which one to use.
-3. Store the selected remote name in `github_remote` and verify it with `git remote get-url "$github_remote"`.
-4. Fetch the latest refs with `git fetch "$github_remote"`.
-5. Determine the remote's default branch with `default_branch="$(git remote show "$github_remote" | awk -F': ' '/HEAD branch/ {print $2; exit}')"`; stop if no default branch is reported.
-
-Then create and switch:
+3. After the branch name is confirmed and the remote is selected, run the following block as one shell invocation. Set `branch_name` to the confirmed name and `github_remote` to the selected remote name inside this same invocation; do not rely on shell variables persisting across tool invocations.
 
 ```bash
+branch_name="<confirmed-branch-name>"
+github_remote="<selected-github-remote>"
+git remote get-url "$github_remote"
+git fetch "$github_remote"
+if ! git remote set-head "$github_remote" --auto >/dev/null; then
+  echo "Could not determine a unique default branch for $github_remote." >&2
+  exit 1
+fi
+default_ref="$(git symbolic-ref --quiet "refs/remotes/$github_remote/HEAD" || true)"
+if [ -z "$default_ref" ]; then
+  echo "No default branch is available for $github_remote." >&2
+  exit 1
+fi
+default_branch="${default_ref##*/}"
 git checkout -b "$branch_name" "$github_remote/$default_branch"
 ```
 
-If the branch already exists locally, ask the user whether to:
-- **Switch** to the existing branch (`git checkout "$branch_name"`)
-- **Reset** it to the latest remote (`git checkout -B "$branch_name" "$github_remote/$default_branch"`)
+If the branch already exists locally, ask the user whether to run one of these commands with the confirmed branch name as a quoted argument:
+- **Switch**: `git checkout "<confirmed-branch-name>"`
+- **Reset** it to the latest remote: `git checkout -B "<confirmed-branch-name>" "$github_remote/$default_branch"`
 - **Choose a different name**
+
+Do not interpolate a branch name directly into shell command text.
 
 ### 4. Verify
 
