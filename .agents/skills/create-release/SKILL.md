@@ -16,11 +16,15 @@ user-invocable: true
 
 ### 1. Analyze Recent Commits
 
-Gather recent commits to determine the appropriate version bump:
+Gather recent commits to determine the appropriate version bump. Use the full history when the repository has no tags:
 
 ```bash
-# Get commits since last tag (or all commits if no tags exist)
-git log --oneline --no-merges $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD")..HEAD
+LATEST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+if [ -n "$LATEST_TAG" ]; then
+  git log --oneline --no-merges "$LATEST_TAG..HEAD"
+else
+  git log --oneline --no-merges HEAD
+fi
 ```
 
 **Version determination rules:**
@@ -31,10 +35,17 @@ git log --oneline --no-merges $(git describe --tags --abbrev=0 2>/dev/null || ec
 ### 2. Determine Next Version
 
 ```bash
-# Get current version from latest tag (strip leading 'v')
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
-# Default to 0.0.0 if no tags exist
-CURRENT_VERSION=${LATEST_TAG:-0.0.0}
+LATEST_TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+if [ -n "$LATEST_TAG" ]; then
+  CURRENT_VERSION="$(printf '%s' "$LATEST_TAG" | sed 's/^v//')"
+else
+  CURRENT_VERSION="$(node -p "require('./package.json').version")"
+fi
+
+if [ -z "$CURRENT_VERSION" ]; then
+  echo "No release baseline is available; provide the current version explicitly."
+  exit 1
+fi
 
 # Parse version components
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
@@ -43,13 +54,15 @@ IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
 # (Check for breaking changes, features, or fixes as described above)
 ```
 
+When no tag exists, use `package.json` as the version baseline; do not default to `0.0.0`. If `package.json` cannot be read, require the user to provide the current version explicitly.
+
 ### 3. Generate Changelog
 
-Use the [update-changelog](../update-changelog/SKILL.md) skill to generate the changelog entry for this release. Follow the procedure in that skill to:
+Use the [update-changelog](../update-changelog/SKILL.md) skill to generate the changelog entry for this release. Invoke it with `NEW_VERSION` as its version argument and follow its procedure to:
 
 1. Categorize commits into Keep a Changelog sections (Added, Changed, Fixed, etc.)
-2. Write the entry to `CHANGELOG.md`
-3. Show the diff and get user confirmation before saving
+2. Build and show the proposed diff
+3. After explicit user confirmation, write the entry to `CHANGELOG.md`
 
 ### 4. Create Git Tag
 
@@ -67,17 +80,25 @@ git push origin "v$NEW_VERSION"
 
 ### 6. Create GitHub Release
 
-Use the GitHub CLI to create the release:
+Use the GitHub CLI to create the release. Extract only the newly generated version section into a temporary notes file:
 
 ```bash
-# Create release with changelog body
+release_notes_file="$(mktemp)"
+awk -v section="## [$NEW_VERSION]" '
+  $0 == section { in_section=1 }
+  in_section && $0 ~ /^## / && $0 != section { exit }
+  in_section { print }
+' CHANGELOG.md >"$release_notes_file"
+test -s "$release_notes_file"
+
 gh release create "v$NEW_VERSION" \
   --title "Release v$NEW_VERSION" \
-  --notes-file CHANGELOG.tmp
+  --notes-file "$release_notes_file"
 
-# Clean up temporary file
-rm CHANGELOG.tmp
+rm -f "$release_notes_file"
 ```
+
+The temporary file is created from `CHANGELOG.md` after the changelog confirmation step; never point cleanup at `CHANGELOG.md` itself.
 
 ### 7. Verify Release
 
