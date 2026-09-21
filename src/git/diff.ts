@@ -124,6 +124,19 @@ export function getStagedDiff(cwd = process.cwd()): DiffResult {
   };
 }
 
+/**
+ * Check for tracked unstaged or non-ignored untracked changes without
+ * constructing the full untracked-aware diff.
+ */
+export function hasUnstagedChanges(cwd = process.cwd()): boolean {
+  const status = execFileSync(getGitExecutable(), ['status', '--porcelain=v1', '--untracked-files=all'], {
+    cwd,
+    encoding: 'utf-8',
+    maxBuffer: GIT_DIFF_MAX_BUFFER,
+  });
+  return status.trim().length > 0;
+}
+
 function getGitPath(path: string, cwd: string): string {
   return resolve(
     cwd,
