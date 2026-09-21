@@ -411,6 +411,11 @@ export async function suggestCommand(
     if (options.autoCommit && suggestions.length > 0) {
       const first = suggestions[0]!;
       if (shouldCommit) {
+        if (!diffResult.staged) {
+          outro(pc.red('Auto-commit requires staged changes. Stage your changes with `git add` and try again.'));
+          process.exitCode = 1;
+          return false;
+        }
         return acceptAndCommit(first, config, diffResult.diff, true);
       } else {
         console.log(`\n  ${pc.green('Selected:')} ${pc.bold(first.message)}`);
