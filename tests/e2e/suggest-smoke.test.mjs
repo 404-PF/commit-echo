@@ -19,6 +19,35 @@ function onceExit(child) {
   });
 }
 
+function waitForStdout(child, getStdout, text) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for ${text}. stdout: ${getStdout()}`));
+    }, 5000);
+
+    const onData = () => {
+      if (getStdout().includes(text)) {
+        cleanup();
+        resolve();
+      }
+    };
+    const onExit = () => {
+      cleanup();
+      reject(new Error(`Exited before ${text}. stdout: ${getStdout()}`));
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      child.stdout.off('data', onData);
+      child.off('exit', onExit);
+    };
+
+    child.stdout.on('data', onData);
+    child.once('exit', onExit);
+    onData();
+  });
+}
+
 function stripAnsi(text) {
   return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
 }
@@ -509,6 +538,65 @@ test('suggest --commit --yes refuses a staged diff changed during analysis', asy
   assert.doesNotMatch(stdout, /Commit created/);
   assert.equal(execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(), 'feat: initial fixture');
   assert.match(execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }), /replacement during analysis/);
+});
+
+test('suggest --commit refuses a staged diff changed before interactive confirmation', async (t) => {
+  if (platform() === 'win32') {
+    t.skip('Interactive prompts require a pseudo-terminal unavailable to Node child processes on Windows.');
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), 'commit-echo-interactive-stale-diff-'));
+  const { home, repo, configDir } = await setupRepo(root);
+  const { server } = createChatCompletionServer({ content: '1. feat: reject interactive staged diff' });
+  const port = await listen(server);
+  t.after(async () => {
+    server.close();
+    await rm(root, { recursive: true, force: true });
+  });
+
+  await writeCustomProviderConfig(configDir, port);
+
+  const child = spawn(process.execPath, [join(process.cwd(), 'dist/index.js'), 'suggest', '--commit'], {
+    cwd: repo,
+    env: cliEnvFor(home),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  const resultPromise = onceExit(child);
+  const waitFor = (text) => waitForStdout(child, () => stripAnsi(stdout), text);
+
+  await waitFor('Choose an action:');
+  child.stdin.write('\n');
+  await waitFor('Select a commit message:');
+  child.stdin.write('\n');
+  await waitFor('Commit with this message?');
+
+  await writeFile(join(repo, 'README.md'), '# fixture\n\nreplacement before confirmation\n', 'utf8');
+  execFileSync('git', ['add', 'README.md'], { cwd: repo });
+  child.stdin.write('\n');
+
+  const result = await resultPromise;
+  const cleanStdout = stripAnsi(stdout);
+
+  assert.equal(result.code, 1);
+  assert.equal(result.signal, null);
+  assert.equal(stderr, '');
+  assert.match(cleanStdout, /Staged changes are empty or changed since suggestions were generated/);
+  assert.doesNotMatch(cleanStdout, /Commit created/);
+  assert.equal(
+    execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: repo, encoding: 'utf8' }).trim(),
+    'feat: initial fixture',
+  );
+  assert.match(execFileSync('git', ['diff', '--cached'], { cwd: repo, encoding: 'utf8' }), /replacement before confirmation/);
 });
 
 test('suggest reports beforeResponse failures instead of timing out', async (t) => {
