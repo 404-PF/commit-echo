@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, normalize, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getGitExecutable, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
@@ -68,7 +68,7 @@ function resolveHookPath(hookName: string): string {
 interface HookPaths {
   hookPath: string;
   backupPath: string;
-  legacyBackupPath: string;
+  legacyBackupSuffix: string;
   ownerPath: string;
 }
 
@@ -80,7 +80,8 @@ function resolveHookPaths(hookName: string): HookPaths {
   return {
     hookPath,
     backupPath,
-    legacyBackupPath: `${gitHookPath}.commit-echo.bak`,
+    // Older hooks embedded the raw git path, whose leading relative segments depended on cwd.
+    legacyBackupSuffix: legacyPathSuffix(`${gitHookPath}.commit-echo.bak`),
     ownerPath: `${backupPath}.owner`,
   };
 }
@@ -118,10 +119,18 @@ function shellQuote(value: string): string {
 }
 
 function legacyPathSuffix(value: string): string {
-  const normalized = toShellPath(normalize(value)).replace(/\/+/g, '/');
+  const normalized = toShellPath(value).replace(/\/+/g, '/');
   const gitDirectoryIndex = normalized.lastIndexOf('/.git/');
   if (gitDirectoryIndex >= 0) {
     return normalized.slice(gitDirectoryIndex + 1);
+  }
+  const gitDirectoryStart = normalized.indexOf('.git/');
+  if (gitDirectoryStart >= 0) {
+    return normalized.slice(gitDirectoryStart);
+  }
+  const hooksDirectoryIndex = normalized.lastIndexOf('/hooks/');
+  if (hooksDirectoryIndex >= 0) {
+    return normalized.slice(hooksDirectoryIndex + 1);
   }
   return normalized.replace(/^(?:\.\.\/)+/, '');
 }
@@ -131,7 +140,7 @@ function isManagedHookContent(hookName: string, content: string): boolean {
   return lines[0] === '#!/bin/sh' && lines[1] === buildManagedHookMarker(hookName);
 }
 
-function referencesBackupPath(content: string, backupPath: string, legacyBackupPath: string): boolean {
+function referencesBackupPath(content: string, backupPath: string, legacyBackupSuffix: string): boolean {
   if (content.includes(shellQuote(backupPath))) {
     return true;
   }
@@ -147,8 +156,7 @@ function referencesBackupPath(content: string, backupPath: string, legacyBackupP
   }
 
   const referencedPath = toShellPath(match[1]).replace(/\/+/g, '/');
-  const expectedLegacySuffix = legacyPathSuffix(legacyBackupPath);
-  return referencedPath === expectedLegacySuffix || referencedPath.endsWith(`/${expectedLegacySuffix}`);
+  return referencedPath === legacyBackupSuffix || referencedPath.endsWith(`/${legacyBackupSuffix}`);
 }
 
 export function shouldSkipPrepareCommitMsgHook(source = ''): boolean {
@@ -351,7 +359,7 @@ interface ManagedHookState {
 }
 
 async function inspectManagedHook(hookName: string): Promise<ManagedHookState> {
-  const { hookPath, backupPath, legacyBackupPath, ownerPath } = resolveHookPaths(hookName);
+  const { hookPath, backupPath, legacyBackupSuffix, ownerPath } = resolveHookPaths(hookName);
   const hookSnapshot = await snapshotPath(hookPath);
   const backupSnapshot = await snapshotPath(backupPath);
   const ownerSnapshot = await snapshotPath(ownerPath);
@@ -369,7 +377,7 @@ async function inspectManagedHook(hookName: string): Promise<ManagedHookState> {
     hasBackup: backupSnapshot.kind !== 'missing',
     hasOwner: ownerSnapshot.kind !== 'missing',
     validOwner: ownerSnapshot.kind === 'file' && ownerSnapshot.content.toString('utf8').trim() === BACKUP_OWNER_MARKER,
-    referencesBackup: isManagedHook && referencesBackupPath(existingHook, backupPath, legacyBackupPath),
+    referencesBackup: isManagedHook && referencesBackupPath(existingHook, backupPath, legacyBackupSuffix),
   };
 }
 
@@ -486,7 +494,7 @@ async function inspectHookForUninstall(hookName: string, paths: HookPaths): Prom
 
   const backupIsOwned = Boolean(
     backupStats &&
-    (ownerIsValid || (isManagedHook && referencesBackupPath(hookContent, backupPath, paths.legacyBackupPath))),
+    (ownerIsValid || (isManagedHook && referencesBackupPath(hookContent, backupPath, paths.legacyBackupSuffix))),
   );
 
   return { hookPath, backupPath, ownerPath, hookStats, backupStats, hookContent, isManagedHook, backupIsOwned };
@@ -497,7 +505,8 @@ async function restoreOwnedHookBackup(state: HookUninstallState): Promise<'resto
   if (
     !backupStats ||
     !state.backupIsOwned ||
-    !(state.isManagedHook || !state.hookStats || state.hookContent.trim().length === 0)
+    // An existing non-managed path may be a user replacement even when empty.
+    !(state.isManagedHook || !state.hookStats)
   ) {
     return null;
   }
