@@ -62,8 +62,22 @@ Before creating the PR, present:
 ### 5. Create the Pull Request
 
 Prefer **GitHub MCP tools** (`mcp_github_mcp_se_create_pull_request`) to create the PR. If MCP tools are unavailable or fail, fall back to **`gh` CLI** in the terminal:
+
 ```bash
-gh pr create --base <base> --head <head> --title "<title>" --body "<body>"
+title="$GENERATED_TITLE"
+body="$GENERATED_BODY"
+head="$HEAD_BRANCH"
+base="$BASE_BRANCH"
+body_file="$(mktemp)"
+printf '%s\n' "$body" >"$body_file"
+
+draft_args=()
+if [ "$DRAFT" = "true" ]; then
+  draft_args+=(--draft)
+fi
+
+gh pr create --base "$base" --head "$head" --title "$title" --body-file "$body_file" "${draft_args[@]}"
+rm -f "$body_file"
 ```
 
 Set the following:
@@ -72,6 +86,8 @@ Set the following:
 - `head` → current branch
 - `base` → target branch
 - `draft` → based on user preference
+
+Pass all generated metadata through quoted arguments or files; do not build shell command text from generated values. Preserve `--draft` whenever the user selected Draft.
 
 ### 6. Report Result
 - Display the created PR URL
