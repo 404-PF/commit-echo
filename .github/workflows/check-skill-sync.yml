@@ -1,0 +1,27 @@
+name: Check skill mirrors
+
+on:
+  pull_request:
+    paths:
+      - ".agents/skills/**"
+      - ".claude/skills/**"
+      - "scripts/sync-claude-skills.sh"
+      - ".github/workflows/check-skill-sync.yml"
+  push:
+    paths:
+      - ".agents/skills/**"
+      - ".claude/skills/**"
+      - "scripts/sync-claude-skills.sh"
+      - ".github/workflows/check-skill-sync.yml"
+
+jobs:
+  skill-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regenerate Claude skill mirror
+        run: bash scripts/sync-claude-skills.sh
+
+      - name: Check for drift
+        run: git diff --exit-code -- .claude/skills
