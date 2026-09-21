@@ -70,7 +70,26 @@ For each prioritized issue (or group of related issues), create a GitHub issue u
    - **Suggested fix**: How to resolve the issue
    - **Impact**: What could happen if left unaddressed
 
-If GitHub MCP tools are unavailable, fall back to `gh` CLI for each issue. For each finding, assign the generated values to quoted shell variables (`title="$GENERATED_TITLE"`, `body="$GENERATED_BODY"`), initialize `labels=()` and append each confirmed label, then create a temp body file with `body_file="$(mktemp)"` and register `trap 'rm -f "$body_file"' EXIT`. Write the body with `printf '%s\n' "$body" >"$body_file"`, pass `--title "$title" --body-file "$body_file"`, and pass each label with a separate quoted `--label "$label"` argument. Never interpolate generated text into shell command source.
+If GitHub MCP tools are unavailable, fall back to `gh` CLI for each issue. Populate the generated title and body in quoted shell variables and append each confirmed label before invoking `gh`.
+
+```bash
+title="$GENERATED_TITLE"
+body="$GENERATED_BODY"
+labels=()
+# Append each confirmed label, for example: labels+=("bug")
+body_file="$(mktemp)"
+trap 'rm -f "$body_file"' EXIT
+printf '%s\n' "$body" >"$body_file"
+
+args=(issue create --title "$title" --body-file "$body_file")
+for label in "${labels[@]}"; do
+  args+=(--label "$label")
+done
+
+gh "${args[@]}"
+```
+
+Never interpolate generated text directly into shell command source.
 
 ### 6. Summary Report
 
