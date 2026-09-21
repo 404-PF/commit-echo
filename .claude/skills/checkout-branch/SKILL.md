@@ -47,11 +47,11 @@ Resolve the GitHub remote before running the workflow:
 
 1. Inspect configured remotes with `git remote -v`.
 2. Select the GitHub remote to use; if none exists, stop and ask for a GitHub remote. If multiple GitHub remotes exist, ask the user which one to use.
-3. After the branch name is confirmed and the remote is selected, run the following block as one shell invocation. Set `branch_name` to the confirmed name and `github_remote` to the selected remote name inside this same invocation; do not rely on shell variables persisting across tool invocations.
+3. After the branch name is confirmed and the remote is selected, run the following block as one shell invocation, passing the confirmed branch name and selected remote as positional arguments rather than interpolating either value into shell source. `$1` is the confirmed branch name and `$2` is the selected GitHub remote; do not rely on shell variables persisting across tool invocations.
 
 ```bash
-branch_name="<confirmed-branch-name>"
-github_remote="<selected-github-remote>"
+branch_name="$1"
+github_remote="$2"
 git remote get-url "$github_remote"
 git fetch "$github_remote"
 if ! git remote set-head "$github_remote" --auto >/dev/null; then
@@ -63,7 +63,7 @@ if [ -z "$default_ref" ]; then
   echo "No default branch is available for $github_remote." >&2
   exit 1
 fi
-default_branch="${default_ref##*/}"
+default_branch="${default_ref#refs/remotes/$github_remote/}"
 git checkout -b "$branch_name" "$github_remote/$default_branch"
 ```
 
