@@ -6,7 +6,10 @@ SOURCE_DIR="$ROOT_DIR/.agents/skills"
 TARGET_DIR="$ROOT_DIR/.claude/skills"
 
 # .agents/skills is the canonical source; .claude/skills is the generated mirror.
-test -d "$SOURCE_DIR"
+if [[ ! -d "$SOURCE_DIR" ]]; then
+  echo "error: source skill directory not found: $SOURCE_DIR" >&2
+  exit 1
+fi
 
 rm -rf "$TARGET_DIR"
 mkdir -p "$TARGET_DIR"
