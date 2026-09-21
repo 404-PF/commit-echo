@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { findGitRepositories } from '../dist/commands/batch.js';
-import { getStagedDiff, getUnstagedDiff, commit } from '../dist/git/diff.js';
+import { getStagedDiff, getUnstagedDiff, hasUnstagedChanges, commit } from '../dist/git/diff.js';
 
 function createTempDir() {
   return realpathSync.native(
@@ -152,7 +152,7 @@ test('findGitRepositories returns rootDir even with recursive flag', () => {
   }
 });
 
-test('canonical diff detects staged changes', () => {
+test('getStagedDiff and getUnstagedDiff detect staged changes', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -166,7 +166,7 @@ test('canonical diff detects staged changes', () => {
   }
 });
 
-test('canonical diff detects unstaged changes', () => {
+test('getStagedDiff and getUnstagedDiff detect unstaged changes', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -183,7 +183,7 @@ test('canonical diff detects unstaged changes', () => {
   }
 });
 
-test('canonical diff returns false for clean repo', () => {
+test('getStagedDiff and getUnstagedDiff return false for clean repo', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -198,7 +198,7 @@ test('canonical diff returns false for clean repo', () => {
   }
 });
 
-test('canonical diff detects both staged and unstaged', () => {
+test('getStagedDiff and getUnstagedDiff detect both staged and unstaged changes', () => {
   const root = createTempDir();
   try {
     const repo = initRepo(root, 'repo');
@@ -256,6 +256,26 @@ test('getUnstagedDiff detects an untracked-only worktree', () => {
   }
 });
 
+test('hasUnstagedChanges detects tracked and untracked worktree changes', () => {
+  const root = createTempDir();
+  try {
+    const repo = initRepo(root, 'repo');
+    writeFileSync(join(repo, 'tracked.txt'), 'initial\\n', 'utf-8');
+    git(['add', 'tracked.txt'], repo);
+    git(['commit', '-m', 'feat: initial'], repo);
+
+    assert.equal(hasUnstagedChanges(repo), false);
+
+    writeFileSync(join(repo, 'tracked.txt'), 'modified\\n', 'utf-8');
+    assert.equal(hasUnstagedChanges(repo), true);
+
+    writeFileSync(join(repo, 'untracked.txt'), 'new file\\n', 'utf-8');
+    assert.equal(hasUnstagedChanges(repo), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('getUnstagedDiff combines tracked and untracked changes', () => {
   const root = createTempDir();
   try {
@@ -282,7 +302,7 @@ test('getUnstagedDiff combines tracked and untracked changes', () => {
 test('getStagedDiff throws on non-git directory', () => {
   const root = createTempDir();
   try {
-    assert.throws(() => getStagedDiff(root));
+    assert.throws(() => getStagedDiff(root), /not a git repository/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -298,7 +318,7 @@ test('getStagedDiff throws when git repo is corrupt (broken index)', () => {
 
     writeFileSync(join(repo, '.git', 'index'), 'not a valid index');
 
-    assert.throws(() => getStagedDiff(repo));
+    assert.throws(() => getStagedDiff(repo), /fatal|index file corrupt/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
