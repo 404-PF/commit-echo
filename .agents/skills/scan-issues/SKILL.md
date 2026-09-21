@@ -70,6 +70,8 @@ For each prioritized issue (or group of related issues), create a GitHub issue u
    - **Suggested fix**: How to resolve the issue
    - **Impact**: What could happen if left unaddressed
 
+If GitHub MCP tools are unavailable, fall back to `gh` CLI for each issue. Reuse the safe pattern from `create-issue`: keep the generated title in a quoted shell variable, write the generated body with `printf '%s\n' "$body" >"$body_file"`, pass it with `--body-file "$body_file"`, and pass each label with a separate quoted `--label "$label"` argument.
+
 ### 6. Summary Report
 
 After all issues are created, provide the user with a summary:
