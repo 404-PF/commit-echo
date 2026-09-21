@@ -126,11 +126,7 @@ export async function batchCommand(
       stagedDiff = getStagedDiff(repoPath);
     } catch (err) {
       const error = err as { stderr?: Buffer | string };
-      const detail = error.stderr
-        ? String(error.stderr).trim()
-        : err instanceof Error
-          ? err.message
-          : String(err);
+      const detail = error.stderr ? String(error.stderr).trim() : err instanceof Error ? err.message : String(err);
       const msg = `Staged diff check failed: ${detail}`;
       console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
       results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
@@ -143,11 +139,7 @@ export async function batchCommand(
         hasUnstaged = hasUnstagedChanges(repoPath);
       } catch (err) {
         const error = err as { stderr?: Buffer | string };
-        const detail = error.stderr
-          ? String(error.stderr).trim()
-          : err instanceof Error
-            ? err.message
-            : String(err);
+        const detail = error.stderr ? String(error.stderr).trim() : err instanceof Error ? err.message : String(err);
         const msg = `Unstaged diff check failed: ${detail}`;
         console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
         results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
