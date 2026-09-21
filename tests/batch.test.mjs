@@ -300,6 +300,7 @@ test('cwd-scoped git helpers ignore inherited repository environment', () => {
     writeFileSync(join(target, 'file.txt'), 'content\n', 'utf-8');
     git(['add', 'file.txt'], target);
 
+    let targetCommitHash;
     try {
       process.env.GIT_DIR = join(other, '.git');
       process.env.GIT_WORK_TREE = other;
@@ -317,7 +318,7 @@ test('cwd-scoped git helpers ignore inherited repository environment', () => {
       writeFileSync(join(target, 'untracked.txt'), 'new file\n', 'utf-8');
       assert.equal(getUnstagedDiff(target).hasChanges, true);
 
-      var targetCommitHash = result.hash;
+      targetCommitHash = result.hash;
     } finally {
       for (const name of gitEnvVars) {
         const value = previousEnv[name];
