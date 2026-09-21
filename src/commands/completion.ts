@@ -43,7 +43,8 @@ const SUBCOMMANDS: readonly Subcommand[] = [
     name: 'init',
     description: 'Run interactive setup wizard',
     options: [
-      { flag: '--install-hook', description: 'Install a prepare-commit-msg hook in the current repository' },
+      { flag: '--install-hook', description: 'Install commit-echo hooks (prepare-commit-msg and post-commit)' },
+      { flag: '--uninstall-hook', description: 'Remove commit-echo hooks and restore previous hooks' },
       { flag: '--help', description: 'Display help for init' },
     ],
   },

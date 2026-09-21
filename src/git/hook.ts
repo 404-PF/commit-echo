@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { copyFile, mkdir, chmod, readFile, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { chmod, copyFile, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
 import { checkGitRepo, getGitExecutable, getStagedDiff } from './diff.js';
 import type { DiffResult } from './diff.js';
@@ -14,6 +14,7 @@ const MANAGED_HOOK_MARKER = '# commit-echo managed hook';
 const PREPARE_COMMIT_MSG_HOOK_NAME = 'prepare-commit-msg';
 const POST_COMMIT_HOOK_NAME = 'post-commit';
 const PENDING_HOOK_ENTRY_FILE = 'commit-echo-pending-entry.json';
+const BACKUP_OWNER_MARKER = '# commit-echo managed backup';
 
 export interface PrepareCommitMsgHookArgs {
   messageFile: string;
@@ -43,16 +44,65 @@ export interface PrepareCommitMsgHookDeps {
   warn: (message: string) => void;
 }
 
+export interface InstalledCommitHooks {
+  prepareCommitMsgPath: string;
+  postCommitPath: string;
+}
+
+export interface UninstalledCommitHooks {
+  restored: string[];
+  removed: string[];
+  skipped: string[];
+  missing: string[];
+  unreadable: string[];
+}
+
 function resolveGitPath(gitPath: string): string {
   return execFileSync(getGitExecutable(), ['rev-parse', '--git-path', gitPath], { encoding: 'utf-8' }).trim();
 }
 
 function resolveHookPath(hookName: string): string {
-  return resolveGitPath(`hooks/${hookName}`);
+  return resolveHookPaths(hookName).hookPath;
+}
+
+interface HookPaths {
+  hookPath: string;
+  backupPath: string;
+  legacyBackupSuffix: string;
+  ownerPath: string;
+}
+
+function resolveHookPaths(hookName: string): HookPaths {
+  const gitHookPath = resolveGitPath(`hooks/${hookName}`);
+  const hookPath = resolve(gitHookPath);
+  const backupPath = `${hookPath}.commit-echo.bak`;
+
+  return {
+    hookPath,
+    backupPath,
+    // Older hooks embedded the raw git path, whose leading relative segments depended on cwd.
+    legacyBackupSuffix: legacyPathSuffix(`${gitHookPath}.commit-echo.bak`),
+    ownerPath: `${backupPath}.owner`,
+  };
 }
 
 function resolvePendingEntryPath(): string {
   return resolveGitPath(PENDING_HOOK_ENTRY_FILE);
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+}
+
+async function lstatIfExists(path: string): Promise<Awaited<ReturnType<typeof lstat>> | null> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function buildManagedHookMarker(hookName: string): string {
@@ -66,6 +116,47 @@ function toShellPath(value: string): string {
 function shellQuote(value: string): string {
   // POSIX-safe single-quote escaping: 'abc' -> 'abc', a'b -> 'a'"'"'b'
   return `'${toShellPath(value).replace(/'/g, `'"'"'`)}'`;
+}
+
+function legacyPathSuffix(value: string): string {
+  const normalized = toShellPath(value).replace(/\/+/g, '/');
+  const gitDirectoryIndex = normalized.lastIndexOf('/.git/');
+  if (gitDirectoryIndex >= 0) {
+    return normalized.slice(gitDirectoryIndex + 1);
+  }
+  const gitDirectoryStart = normalized.indexOf('.git/');
+  if (gitDirectoryStart >= 0) {
+    return normalized.slice(gitDirectoryStart);
+  }
+  const hooksDirectoryIndex = normalized.lastIndexOf('/hooks/');
+  if (hooksDirectoryIndex >= 0) {
+    return normalized.slice(hooksDirectoryIndex + 1);
+  }
+  return normalized.replace(/^(?:\.\.\/)+/, '');
+}
+
+function isManagedHookContent(hookName: string, content: string): boolean {
+  const lines = content.split(/\r?\n/);
+  return lines[0] === '#!/bin/sh' && lines[1] === buildManagedHookMarker(hookName);
+}
+
+function referencesBackupPath(content: string, backupPath: string, legacyBackupSuffix: string): boolean {
+  if (content.includes(shellQuote(backupPath))) {
+    return true;
+  }
+
+  const backupLine = content.split(/\r?\n/).find((line) => line.startsWith('if [ -f '));
+  if (!backupLine) {
+    return false;
+  }
+
+  const match = backupLine.match(/^if \[ -f '([^']+)' \];/);
+  if (!match) {
+    return false;
+  }
+
+  const referencedPath = toShellPath(match[1]).replace(/\/+/g, '/');
+  return referencedPath === legacyBackupSuffix || referencedPath.endsWith(`/${legacyBackupSuffix}`);
 }
 
 export function shouldSkipPrepareCommitMsgHook(source = ''): boolean {
@@ -117,35 +208,389 @@ export function buildPostCommitHookScript(cliPath: string, backupPath?: string):
   return buildHookScript(POST_COMMIT_HOOK_NAME, cliPath, backupPath);
 }
 
-async function installManagedHook(hookName: string, cliPath: string): Promise<string> {
-  const hookPath = resolveHookPath(hookName);
-  const hookDir = dirname(hookPath);
-  const backupPath = `${hookPath}.commit-echo.bak`;
-  const marker = buildManagedHookMarker(hookName);
+async function backupHook(
+  hookPath: string,
+  backupPath: string,
+  hookStats: Awaited<ReturnType<typeof lstat>>,
+): Promise<void> {
+  const stagedPath = `${backupPath}.tmp-${randomUUID()}`;
 
-  await mkdir(hookDir, { recursive: true });
+  if (hookStats.isSymbolicLink()) {
+    try {
+      await symlink(await readlink(hookPath, 'utf8'), stagedPath, 'file');
+      await rename(stagedPath, backupPath);
+    } catch (error) {
+      await rm(stagedPath, { force: true }).catch(() => {});
+      throw error;
+    }
+  } else {
+    try {
+      await copyFile(hookPath, stagedPath);
+      await chmod(stagedPath, Number(hookStats.mode) & 0o7777);
+      await rename(stagedPath, backupPath);
+    } catch (error) {
+      await rm(stagedPath, { force: true }).catch(() => {});
+      throw error;
+    }
+  }
+}
 
-  if (existsSync(hookPath)) {
-    const existingHook = await readFile(hookPath, 'utf-8').catch(() => '');
-    if (!existingHook.includes(marker) && !existsSync(backupPath)) {
-      await copyFile(hookPath, backupPath);
+async function writeBackupOwner(ownerPath: string): Promise<void> {
+  const stagedPath = `${ownerPath}.tmp-${randomUUID()}`;
+  try {
+    await writeFile(stagedPath, `${BACKUP_OWNER_MARKER}\n`, 'utf-8');
+    await rename(stagedPath, ownerPath);
+  } finally {
+    await rm(stagedPath, { force: true }).catch(() => {});
+  }
+}
+
+async function replacePreparedPath(preparedPath: string, targetPath: string): Promise<void> {
+  const displacedPath = `${targetPath}.tmp-restore-${randomUUID()}`;
+  const targetStats = await lstatIfExists(targetPath);
+  let displaced = false;
+
+  try {
+    if (targetStats) {
+      await rename(targetPath, displacedPath);
+      displaced = true;
+    }
+    await rename(preparedPath, targetPath);
+  } catch (error) {
+    if (displaced) {
+      await rename(displacedPath, targetPath).catch(() => {});
+    }
+    throw error;
+  }
+
+  if (displaced) {
+    await rm(displacedPath, { force: true });
+  }
+}
+
+async function restoreHookBackup(
+  hookPath: string,
+  backupPath: string,
+  backupStats: Awaited<ReturnType<typeof lstat>>,
+  ownerPath?: string,
+): Promise<void> {
+  if (!backupStats.isFile() && !backupStats.isSymbolicLink()) {
+    throw new Error(`Refusing to restore non-regular hook backup at ${backupPath}`);
+  }
+
+  const stagedPath = `${hookPath}.tmp-restore-${randomUUID()}`;
+
+  try {
+    if (backupStats.isSymbolicLink()) {
+      await symlink(await readlink(backupPath, 'utf8'), stagedPath, 'file');
+    } else {
+      await copyFile(backupPath, stagedPath);
+      await chmod(stagedPath, Number(backupStats.mode) & 0o7777);
+    }
+
+    await replacePreparedPath(stagedPath, hookPath);
+  } catch (error) {
+    await rm(stagedPath, { force: true }).catch(() => {});
+    throw error;
+  }
+
+  await rm(backupPath, { force: true });
+  if (ownerPath) {
+    await rm(ownerPath, { force: true });
+  }
+}
+
+type PathSnapshot =
+  | { kind: 'missing' }
+  | { kind: 'file'; content: Buffer; mode: number }
+  | { kind: 'symlink'; target: string };
+
+async function snapshotPath(path: string): Promise<PathSnapshot> {
+  const stats = await lstatIfExists(path);
+  if (!stats) {
+    return { kind: 'missing' };
+  }
+  if (stats.isSymbolicLink()) {
+    return { kind: 'symlink', target: await readlink(path, 'utf8') };
+  }
+  if (!stats.isFile()) {
+    throw new Error(`Expected a file or symlink at ${path}`);
+  }
+  return { kind: 'file', content: await readFile(path), mode: Number(stats.mode) & 0o7777 };
+}
+
+async function restoreSnapshot(path: string, snapshot: PathSnapshot): Promise<void> {
+  if (snapshot.kind === 'missing') {
+    await rm(path, { force: true });
+    return;
+  }
+
+  const stagedPath = `${path}.tmp-rollback-${randomUUID()}`;
+  try {
+    if (snapshot.kind === 'symlink') {
+      await symlink(snapshot.target, stagedPath, 'file');
+    } else {
+      await writeFile(stagedPath, snapshot.content);
+      await chmod(stagedPath, snapshot.mode);
+    }
+    await replacePreparedPath(stagedPath, path);
+  } finally {
+    await rm(stagedPath, { force: true }).catch(() => {});
+  }
+}
+
+interface InstalledHookChange {
+  path: string;
+  rollback: () => Promise<void>;
+}
+
+interface ManagedHookState {
+  hookPath: string;
+  backupPath: string;
+  ownerPath: string;
+  hookSnapshot: PathSnapshot;
+  backupSnapshot: PathSnapshot;
+  ownerSnapshot: PathSnapshot;
+  isManagedHook: boolean;
+  hasBackup: boolean;
+  hasOwner: boolean;
+  validOwner: boolean;
+  referencesBackup: boolean;
+}
+
+async function inspectManagedHook(hookName: string): Promise<ManagedHookState> {
+  const { hookPath, backupPath, legacyBackupSuffix, ownerPath } = resolveHookPaths(hookName);
+  const hookSnapshot = await snapshotPath(hookPath);
+  const backupSnapshot = await snapshotPath(backupPath);
+  const ownerSnapshot = await snapshotPath(ownerPath);
+  const existingHook = hookSnapshot.kind === 'file' ? hookSnapshot.content.toString('utf8') : '';
+  const isManagedHook = hookSnapshot.kind === 'file' && isManagedHookContent(hookName, existingHook);
+
+  return {
+    hookPath,
+    backupPath,
+    ownerPath,
+    hookSnapshot,
+    backupSnapshot,
+    ownerSnapshot,
+    isManagedHook,
+    hasBackup: backupSnapshot.kind !== 'missing',
+    hasOwner: ownerSnapshot.kind !== 'missing',
+    validOwner: ownerSnapshot.kind === 'file' && ownerSnapshot.content.toString('utf8').trim() === BACKUP_OWNER_MARKER,
+    referencesBackup: isManagedHook && referencesBackupPath(existingHook, backupPath, legacyBackupSuffix),
+  };
+}
+
+function validateManagedHookBackup(state: ManagedHookState): void {
+  if (state.hasOwner && !state.validOwner) {
+    throw new Error(
+      `Refusing to use invalid backup ownership marker at ${state.ownerPath}; remove that file to reinstall the hook.`,
+    );
+  }
+  if (state.hasBackup && !state.isManagedHook && !state.validOwner) {
+    throw new Error(`Refusing to overwrite existing backup at ${state.backupPath}`);
+  }
+  if (state.hasBackup && state.isManagedHook && !state.referencesBackup && !state.validOwner) {
+    throw new Error(`Refusing to use unowned backup at ${state.backupPath}`);
+  }
+}
+
+async function prepareManagedHookBackup(state: ManagedHookState): Promise<void> {
+  const isReplacement = state.hookSnapshot.kind !== 'missing' && !state.isManagedHook;
+  if (isReplacement && state.validOwner) {
+    await rm(state.backupPath, { force: true });
+    await rm(state.ownerPath, { force: true });
+  }
+
+  const latestBackupStats = await lstatIfExists(state.backupPath);
+  if (state.hookSnapshot.kind !== 'missing' && !state.isManagedHook && !latestBackupStats) {
+    await backupHook(state.hookPath, state.backupPath, await lstat(state.hookPath));
+    await writeBackupOwner(state.ownerPath);
+  } else if (state.isManagedHook && latestBackupStats && state.referencesBackup && !state.validOwner) {
+    // Adopt backups created by older commit-echo versions so future uninstall
+    // operations can distinguish them from user-owned collision files.
+    await writeBackupOwner(state.ownerPath);
+  }
+}
+
+async function installManagedHook(hookName: string, cliPath: string): Promise<InstalledHookChange> {
+  const state = await inspectManagedHook(hookName);
+  await mkdir(dirname(state.hookPath), { recursive: true });
+  validateManagedHookBackup(state);
+
+  try {
+    await prepareManagedHookBackup(state);
+
+    const effectiveBackupStats = await lstatIfExists(state.backupPath);
+    const script = buildHookScript(hookName, cliPath, effectiveBackupStats ? state.backupPath : undefined);
+    const stagedPath = `${state.hookPath}.tmp-install-${randomUUID()}`;
+    try {
+      await writeFile(stagedPath, `${script}\n`, 'utf-8');
+      await chmod(stagedPath, 0o755);
+      await replacePreparedPath(stagedPath, state.hookPath);
+    } finally {
+      await rm(stagedPath, { force: true }).catch(() => {});
+    }
+  } catch (error) {
+    await restoreSnapshot(state.ownerPath, state.ownerSnapshot).catch(() => {});
+    await restoreSnapshot(state.backupPath, state.backupSnapshot).catch(() => {});
+    await restoreSnapshot(state.hookPath, state.hookSnapshot).catch(() => {});
+    throw error;
+  }
+
+  return {
+    path: state.hookPath,
+    rollback: async () => {
+      await restoreSnapshot(state.ownerPath, state.ownerSnapshot);
+      await restoreSnapshot(state.backupPath, state.backupSnapshot);
+      await restoreSnapshot(state.hookPath, state.hookSnapshot);
+    },
+  };
+}
+
+type HookUninstallAction = 'restored' | 'removed' | 'skipped' | 'missing' | 'unreadable';
+
+interface HookUninstallState {
+  hookPath: string;
+  backupPath: string;
+  ownerPath: string;
+  hookStats: Awaited<ReturnType<typeof lstat>> | null;
+  backupStats: Awaited<ReturnType<typeof lstat>> | null;
+  hookContent: string;
+  isManagedHook: boolean;
+  backupIsOwned: boolean;
+}
+
+async function inspectHookForUninstall(hookName: string, paths: HookPaths): Promise<HookUninstallState | null> {
+  const { hookPath, backupPath, ownerPath } = paths;
+  const hookStats = await lstatIfExists(hookPath);
+  const backupStats = await lstatIfExists(backupPath);
+  const ownerStats = await lstatIfExists(ownerPath);
+  let isManagedHook = false;
+  let hookContent = '';
+
+  if (hookStats) {
+    try {
+      hookContent = await readFile(hookPath, 'utf-8');
+      isManagedHook = isManagedHookContent(hookName, hookContent);
+    } catch {
+      return null;
     }
   }
 
-  const script = buildHookScript(hookName, cliPath, existsSync(backupPath) ? backupPath : undefined);
-  await writeFile(hookPath, `${script}\n`, 'utf-8');
-  await chmod(hookPath, 0o755);
+  let ownerIsValid = false;
+  if (ownerStats) {
+    try {
+      ownerIsValid =
+        !ownerStats.isSymbolicLink() && (await readFile(ownerPath, 'utf-8')).trim() === BACKUP_OWNER_MARKER;
+    } catch {
+      return null;
+    }
+  }
 
-  return hookPath;
+  if (backupStats && !backupStats.isFile() && !backupStats.isSymbolicLink()) {
+    return null;
+  }
+
+  const backupIsOwned = Boolean(
+    backupStats &&
+    (ownerIsValid || (isManagedHook && referencesBackupPath(hookContent, backupPath, paths.legacyBackupSuffix))),
+  );
+
+  return { hookPath, backupPath, ownerPath, hookStats, backupStats, hookContent, isManagedHook, backupIsOwned };
 }
 
-export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
+async function restoreOwnedHookBackup(state: HookUninstallState): Promise<'restored' | 'unreadable' | null> {
+  const backupStats = state.backupStats;
+  if (
+    !backupStats ||
+    !state.backupIsOwned ||
+    // An existing non-managed path may be a user replacement even when empty.
+    !(state.isManagedHook || !state.hookStats)
+  ) {
+    return null;
+  }
+
+  try {
+    await restoreHookBackup(state.hookPath, state.backupPath, backupStats, state.ownerPath);
+    return 'restored';
+  } catch {
+    return 'unreadable';
+  }
+}
+
+async function uninstallManagedHook(hookName: string): Promise<{ path: string; action: HookUninstallAction }> {
+  const paths = resolveHookPaths(hookName);
+  const state = await inspectHookForUninstall(hookName, paths);
+  const { hookPath } = paths;
+  if (!state) {
+    return { path: hookPath, action: 'unreadable' };
+  }
+
+  const restoreAction = await restoreOwnedHookBackup(state);
+  if (restoreAction) {
+    return { path: hookPath, action: restoreAction };
+  }
+
+  if (state.isManagedHook) {
+    await rm(state.hookPath, { force: true });
+    await rm(state.ownerPath, { force: true });
+    return { path: hookPath, action: 'removed' };
+  }
+
+  if (state.backupStats && state.backupIsOwned) {
+    await rm(state.backupPath, { force: true });
+    await rm(state.ownerPath, { force: true });
+  }
+
+  return { path: hookPath, action: state.hookStats ? 'skipped' : 'missing' };
+}
+
+export async function installCommitHooks(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<InstalledCommitHooks> {
   const resolvedCliPath =
     cliPath === process.argv[1] ? fileURLToPath(new URL('../index.js', import.meta.url)) : cliPath;
 
   checkGitRepo();
-  await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath);
-  return installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, resolvedCliPath);
+  let installed: InstalledHookChange[] = [];
+  try {
+    installed = [await installManagedHook(POST_COMMIT_HOOK_NAME, resolvedCliPath)];
+    installed = [...installed, await installManagedHook(PREPARE_COMMIT_MSG_HOOK_NAME, resolvedCliPath)];
+  } catch (error) {
+    const rollbackOrder = [...installed];
+    rollbackOrder.reverse();
+    for (const change of rollbackOrder) {
+      await change.rollback().catch(() => {});
+    }
+    throw error;
+  }
+
+  return { prepareCommitMsgPath: installed[1].path, postCommitPath: installed[0].path };
+}
+
+export async function installPrepareCommitMsgHook(cliPath = process.argv[1] ?? 'dist/index.js'): Promise<string> {
+  const { prepareCommitMsgPath } = await installCommitHooks(cliPath);
+  return prepareCommitMsgPath;
+}
+
+export async function uninstallCommitHooks(): Promise<UninstalledCommitHooks> {
+  checkGitRepo();
+
+  const results = [];
+  for (const hookName of [PREPARE_COMMIT_MSG_HOOK_NAME, POST_COMMIT_HOOK_NAME]) {
+    try {
+      results.push(await uninstallManagedHook(hookName));
+    } catch {
+      results.push({ path: resolveHookPath(hookName), action: 'unreadable' as const });
+    }
+  }
+
+  return {
+    restored: results.filter((result) => result.action === 'restored').map((result) => result.path),
+    removed: results.filter((result) => result.action === 'removed').map((result) => result.path),
+    skipped: results.filter((result) => result.action === 'skipped').map((result) => result.path),
+    missing: results.filter((result) => result.action === 'missing').map((result) => result.path),
+    unreadable: results.filter((result) => result.action === 'unreadable').map((result) => result.path),
+  };
 }
 
 function buildPendingHookEntry(config: Config, diff: string): string {

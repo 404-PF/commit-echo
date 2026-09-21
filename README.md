@@ -11,7 +11,7 @@ LLM-powered CLI that learns your Git commit style and auto-suggests personalized
 - **Style learning** — Adapts to your commit conventions over time by analyzing your history
 - **Multi-provider** — Works with OpenAI, Anthropic, Ollama, and OpenAI-compatible endpoints
 - **Interactive setup** — Guided wizard to configure your provider and model
-- **Git hook integration** — Optional `prepare-commit-msg` hook installation from `commit-echo init --install-hook`
+- **Git hook integration** — Optional managed `prepare-commit-msg` and `post-commit` hooks from `commit-echo init --install-hook`, with reversible removal via `--uninstall-hook`
 - **Batch mode** — Process many repositories from one command with `commit-echo batch`
 - **Shell completions** — Generate bash, zsh, fish, or PowerShell completion scripts with `commit-echo completion`
 - **Non-destructive** — Review and edit suggestions before committing
@@ -46,8 +46,11 @@ commit-echo --yes
 # Interactive setup wizard
 commit-echo init
 
-# Interactive setup and install a prepare-commit-msg hook
+# Interactive setup and install the commit-echo hooks
 commit-echo init --install-hook
+
+# Remove commit-echo hooks and restore any hooks that were already present (from inside a Git repository)
+commit-echo init --uninstall-hook
 
 # Generate suggestions without committing
 commit-echo suggest
@@ -119,7 +122,7 @@ History and learned style data live alongside the config in the same directory (
 
 To add a custom provider, create a file in the `src/providers` directory (e.g., `src/providers/my-provider.ts`) and add it to the `BUILTIN_PROVIDERS` list. Then, wire it into the `createProvider()` function. You can also use the `__custom__` provider key for an OpenAI-compatible endpoint, configure the base URL with `commit-echo init` (or `COMMIT_ECHO_BASE_URL`), and set `CUSTOM_API_KEY` to the endpoint's API key.
 
-If you want `git commit` to prefill the first suggestion automatically, run `commit-echo init --install-hook` from inside a Git repository. This installs both a `prepare-commit-msg` hook (prefills the first suggestion) and a `post-commit` hook (logs the committed message for style learning). The hooks skip merge commits, cherry-picks, amend flows, and any commit where a message was already supplied.
+If you want `git commit` to prefill the first suggestion automatically, run `commit-echo init --install-hook` from inside a Git repository. This installs both a `prepare-commit-msg` hook (prefills the first suggestion) and a `post-commit` hook (logs the committed message for style learning), and prints both installed paths. Run `commit-echo init --uninstall-hook` from inside the same Git repository to remove commit-echo-managed hooks and restore any hooks that were present before installation. The hooks skip merge commits, cherry-picks, amend flows, and any commit where a message was already supplied.
 
 ### Options
 
