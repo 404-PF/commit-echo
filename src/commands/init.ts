@@ -189,18 +189,20 @@ async function promptProvider(existingConfig: Config | null): Promise<ProviderSe
 async function promptApiKey(
   provider: ProviderSetup,
   storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
-): Promise<string | undefined | null> {
-  if (!provider.needsApiKey) return undefined;
+): Promise<{ effectiveKey: string; persistKey: string | undefined } | null> {
+  if (!provider.needsApiKey) return { effectiveKey: '', persistKey: undefined };
 
-  const existingKey = getExistingApiKeyForProvider(
-    provider.providerKey,
-    provider.baseUrl,
-    storedConfig,
-    provider.apiKeyEnv,
-  );
-  const keyResult = await password(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
+  const rawConfiguredKey = getStoredApiKeyForProvider(provider.providerKey, provider.baseUrl, storedConfig) || '';
+  const envKey = process.env['COMMIT_ECHO_API_KEY']?.trim() || process.env[provider.apiKeyEnv]?.trim() || '';
+  const promptKey = rawConfiguredKey || envKey || '';
+
+  const keyResult = await password(buildApiKeyPrompt(promptKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
-  return keyResult || existingKey || '';
+
+  const effectiveKey = keyResult || envKey || rawConfiguredKey || '';
+  const persistKey = keyResult || rawConfiguredKey || undefined;
+
+  return { effectiveKey, persistKey };
 }
 
 interface PromptModelDependencies {
@@ -371,11 +373,15 @@ async function persistSetup(
   }
 }
 
-async function testConfiguration(config: Config, provider: ProviderSetup): Promise<boolean> {
+async function testConfiguration(
+  config: Config,
+  provider: ProviderSetup,
+  effectiveKey?: string,
+): Promise<boolean> {
   const testSpinner = spinner();
   testSpinner.start('Testing connection...');
   try {
-    const resolvedKey = config.apiKey ?? process.env[provider.apiKeyEnv] ?? '';
+    const resolvedKey = effectiveKey ?? config.apiKey ?? process.env[provider.apiKeyEnv] ?? '';
 
     const { testConnection } = await import('../llm/client.js');
     const modelName = await testConnection({ ...config, apiKey: resolvedKey });
@@ -404,6 +410,7 @@ function buildTemplateInfo(config: Config): string {
 interface CollectedSetup {
   config: Config;
   provider: ProviderSetup;
+  effectiveKey: string;
 }
 
 async function collectConfig(
@@ -413,10 +420,10 @@ async function collectConfig(
   const provider = await promptProvider(existingConfig);
   if (!provider) return null;
 
-  const apiKey = await promptApiKey(provider, storedConfig);
-  if (apiKey === null) return null;
+  const apiKeyResult = await promptApiKey(provider, storedConfig);
+  if (apiKeyResult === null) return null;
 
-  const selectedModel = await promptModel(provider, apiKey, existingConfig);
+  const selectedModel = await promptModel(provider, apiKeyResult.effectiveKey, existingConfig);
   if (!selectedModel) return null;
 
   const limits = await promptHistoryLimits(existingConfig);
@@ -427,11 +434,12 @@ async function collectConfig(
 
   return {
     provider,
+    effectiveKey: apiKeyResult.effectiveKey,
     config: {
       provider: provider.providerKey,
       model: selectedModel,
       baseUrl: provider.providerKey === CUSTOM_PROVIDER_KEY ? provider.baseUrl : undefined,
-      apiKey: apiKey ?? undefined,
+      apiKey: apiKeyResult.persistKey,
       historySize: limits.historySize,
       maxDiffSize: limits.maxDiffSize,
       ...withTemplateFilePrecedence(
@@ -468,9 +476,9 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
     return;
   }
 
-  const { config, provider } = setup;
+  const { config, provider, effectiveKey } = setup;
 
-  if (provider.needsApiKey && !config.apiKey && !process.env[provider.apiKeyEnv]) {
+  if (provider.needsApiKey && !effectiveKey) {
     await persistSetup(config, options);
     const apiKeyEnv = pc.cyan(`$${provider.apiKeyEnv}`);
     const warn = pc.yellow(`\n⚠  No API key provided. Make sure to set ${apiKeyEnv} before running suggestions.`);
@@ -478,7 +486,7 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
     return;
   }
 
-  if (!(await testConfiguration(config, provider))) {
+  if (!(await testConfiguration(config, provider, effectiveKey))) {
     outro('Setup cancelled.');
     return;
   }
