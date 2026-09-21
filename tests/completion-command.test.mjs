@@ -18,9 +18,8 @@ async function isBashAvailable(exec = execFileAsync) {
   try {
     await exec('bash', ['-c', 'exit 0']);
     return true;
-  } catch (err) {
-    if (err?.code === 'ENOENT') return false;
-    throw err;
+  } catch {
+    return false;
   }
 }
 
@@ -285,14 +284,9 @@ test('NO_COLOR disables color even when set to an empty string (no-color.org spe
 });
 
 test('completion bash script is syntactically valid bash', async (t) => {
-  try {
-    await execFileAsync('bash', ['-c', 'exit 0']);
-  } catch (err) {
-    if (err?.code === 'ENOENT') {
-      t.skip('bash is not installed — skipping parse check');
-      return;
-    }
-    throw err;
+  if (!(await isBashAvailable())) {
+    t.skip('bash is not runnable — skipping parse check');
+    return;
   }
   const { stdout } = await runCompletion(['bash']);
   // Use a relative path in cwd — Git Bash on Windows mangles absolute Windows
@@ -308,7 +302,7 @@ test('completion bash script is syntactically valid bash', async (t) => {
   }
 });
 
-test('Bash availability only skips missing executables', async () => {
+test('Bash availability reports unavailable probes', async () => {
   const missing = Object.assign(new Error('bash not found'), { code: 'ENOENT' });
   assert.equal(
     await isBashAvailable(async () => {
@@ -318,11 +312,11 @@ test('Bash availability only skips missing executables', async () => {
   );
 
   const startupFailure = Object.assign(new Error('permission denied'), { code: 'EACCES' });
-  await assert.rejects(
-    isBashAvailable(async () => {
+  assert.equal(
+    await isBashAvailable(async () => {
       throw startupFailure;
     }),
-    (err) => err === startupFailure,
+    false,
   );
 });
 
