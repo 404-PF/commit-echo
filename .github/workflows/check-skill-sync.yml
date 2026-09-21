@@ -26,4 +26,21 @@ jobs:
         run: bash scripts/sync-claude-skills.sh
 
       - name: Check for drift
-        run: git diff --exit-code -- .claude/skills && test -z "$(git status --porcelain=v1 --untracked-files=all -- .claude/skills)"
+        run: |
+          set -euo pipefail
+          status=0
+
+          if ! git diff --quiet -- .claude/skills; then
+            echo "Tracked drift detected in .claude/skills:" >&2
+            git diff -- .claude/skills
+            status=1
+          fi
+
+          changes="$(git status --porcelain=v1 --untracked-files=all -- .claude/skills)"
+          if [[ -n "$changes" ]]; then
+            echo "Untracked drift detected in .claude/skills:" >&2
+            printf "%s\n" "$changes" >&2
+            status=1
+          fi
+
+          exit "$status"
