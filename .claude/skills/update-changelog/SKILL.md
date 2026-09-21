@@ -22,12 +22,11 @@ Find the starting point for the changelog entry:
 
 - Check if a CHANGELOG.md exists. If it does, scan it for the most recent version header to understand the existing format.
 - Find the latest git tag with `git describe --tags --abbrev=0`.
-- If a tag exists, use that tag as the start of the range.
-- If no tag exists, review all history with `git log --oneline --no-merges HEAD` instead of using `HEAD..HEAD`.
-- If the user specifies a starting point (commit, tag, or date), use that instead.
-- Confirm the range with the user before categorizing it.
+- If the user specifies a starting point (commit, tag, or date), set `start` to that value.
+- Otherwise, if a tag exists, set `start` to the latest tag.
+- Confirm the selected range with the user before categorizing it.
 
-For a tagged range, run `git log "$start"..HEAD --oneline`; for the no-tag path, run `git log --oneline --no-merges HEAD`.
+Set `start` to the latest tag or user-specified starting point. If `start` is set, run `git log "$start"..HEAD --oneline`; only when no tag exists and no starting point was given, run `git log --oneline --no-merges HEAD`.
 
 ### 3. Categorize Commits
 
