@@ -22,6 +22,8 @@ Systematic pre-commit code review checklist for staged and unstaged changes.
 Honor the optional `argument-hint`:
 
 - **No argument**: review staged and unstaged changes plus all untracked files.
+- **`--staged`**: review only staged changes with `git diff --staged`.
+- **`--unstaged`**: review only unstaged changes with `git diff`.
 - **Existing path**: review only that path. Use path-limited diffs (`git diff --staged -- "$path"` and `git diff -- "$path"`) and `git status --short -- "$path"`. For an untracked path, read its contents directly before reviewing it; `git diff` does not include untracked content.
 - **Existing local branch**: review that branch's changes from its merge base with the current branch. Verify it with `git show-ref --verify --quiet "refs/heads/$branch"`, then use `base="$(git merge-base HEAD "$branch")"` and `git diff "$base..$branch"`.
 - **Anything else**: report that the scope argument is neither an existing path nor a local branch and stop rather than silently reviewing a different scope.
