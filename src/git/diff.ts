@@ -143,22 +143,9 @@ function getUntrackedDiff(): string {
     return '';
   }
 
-  const pathspecs = untrackedEntries.filter((entry) => {
-    if (!entry.endsWith('/')) {
-      return true;
-    }
-
-    try {
-      execFileSync(getGitExecutable(), ['rev-parse', '--verify', 'HEAD'], {
-        cwd: resolve(entry),
-        encoding: 'utf-8',
-        stdio: 'pipe',
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  });
+  // `git ls-files --others` emits file paths only (no trailing-slash directories),
+  // so the old submodule `endsWith('/')` branch was unreachable dead code.
+  const pathspecs = untrackedEntries;
   if (pathspecs.length === 0) {
     return '';
   }
