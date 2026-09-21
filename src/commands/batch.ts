@@ -5,7 +5,7 @@ import pc from 'picocolors';
 import { loadOrPromptConfig } from '../config/store.js';
 import { assertApiKeyAvailable, generateSuggestions } from '../llm/client.js';
 import { buildProfile, appendEntry } from '../history/store.js';
-import { getStagedDiff, getUnstagedDiff, commit } from '../git/diff.js';
+import { getStagedDiff, hasUnstagedChanges, commit } from '../git/diff.js';
 import { showVerboseInfo } from './suggest.js';
 import type { Config, Suggestion, TruncationInfo } from '../types.js';
 
@@ -118,41 +118,56 @@ export async function batchCommand(
     const repoName = basename(repoPath);
     console.log(`  ${pc.bold(pc.cyan(`▶ ${repoName}`))}  ${pc.dim(repoPath)}`);
 
-    // Batch commits only staged changes, but use the canonical unstaged
-    // diff to distinguish a clean repo from tracked/untracked worktree changes.
+    // Batch commits only staged changes. Use the full staged diff because it is
+    // needed for suggestions; use a cheap status check for unstaged-only worktrees.
     let diff: string;
+    let stagedDiff;
     try {
-      const stagedDiff = getStagedDiff(repoPath);
-      if (!stagedDiff.hasChanges) {
-        const unstagedDiff = getUnstagedDiff(repoPath);
-        if (!unstagedDiff.hasChanges) {
-          console.log(`    ${pc.yellow('↻ No changes found, skipping')}\n`);
-          results.push({
-            repo: repoPath,
-            repoName,
-            status: 'skipped',
-            message: 'No changes',
-          });
-          continue;
-        }
+      stagedDiff = getStagedDiff(repoPath);
+    } catch (err) {
+      const error = err as { stderr?: Buffer | string };
+      const detail = error.stderr ? String(error.stderr).trim() : err instanceof Error ? err.message : String(err);
+      const msg = `Staged diff check failed: ${detail}`;
+      console.log(`    ${pc.red(`✖ ${msg}`)}\\n`);
+      results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
+      continue;
+    }
 
-        console.log(`    ${pc.yellow('ℹ Unstaged changes only (stage with \`git add\` first), skipping')}\n`);
+    if (!stagedDiff.hasChanges) {
+      let hasUnstaged: boolean;
+      try {
+        hasUnstaged = hasUnstagedChanges(repoPath);
+      } catch (err) {
+        const error = err as { stderr?: Buffer | string };
+        const detail = error.stderr ? String(error.stderr).trim() : err instanceof Error ? err.message : String(err);
+        const msg = `Unstaged diff check failed: ${detail}`;
+        console.log(`    ${pc.red(`✖ ${msg}`)}\\n`);
+        results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
+        continue;
+      }
+
+      if (!hasUnstaged) {
+        console.log(`    ${pc.yellow('↻ No changes found, skipping')}\\n`);
         results.push({
           repo: repoPath,
           repoName,
           status: 'skipped',
-          message: 'Unstaged only',
+          message: 'No changes',
         });
         continue;
       }
 
-      diff = stagedDiff.diff;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.log(`    ${pc.red(`✖ ${msg}`)}\n`);
-      results.push({ repo: repoPath, repoName, status: 'failed', message: msg });
+      console.log(`    ${pc.yellow('ℹ Unstaged changes only (stage with \`git add\` first), skipping')}\\n`);
+      results.push({
+        repo: repoPath,
+        repoName,
+        status: 'skipped',
+        message: 'Unstaged only',
+      });
       continue;
     }
+
+    diff = stagedDiff.diff;
 
     // Generate suggestions using the shared profile
     let suggestions: Suggestion[];
