@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { maskApiKey } from '../dist/commands/config.js';
+import { resolveApiKey } from '../dist/llm/client.js';
 import { assertFriendlyCommandError, assertJsonCommandError, writeInvalidConfig } from './cli-error-helpers.mjs';
 const execFileAsync = promisify(execFile);
 
@@ -372,6 +373,33 @@ test('config set clears stale baseUrl when switching away from custom provider',
     assert.equal(config.provider, 'openai');
     assert.equal(config.baseUrl, undefined);
     assert.equal(config.apiKey, 'sk-still-valid-for-next-provider');
+  });
+});
+
+test('config set clears the API key when switching providers and uses the new provider env key', async () => {
+  await withTempHome(async (homeDir) => {
+    writeConfig(homeDir, {
+      provider: 'openai',
+      apiKey: 'sk-openai',
+    });
+
+    await runConfigWithArgs(homeDir, ['set', 'provider', 'anthropic']);
+    const config = readConfig(homeDir);
+
+    assert.equal(config.provider, 'anthropic');
+    assert.equal(config.apiKey, undefined);
+
+    const original = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-anthropic';
+    try {
+      assert.equal(resolveApiKey(config), 'sk-anthropic');
+    } finally {
+      if (original === undefined) {
+        delete process.env.ANTHROPIC_API_KEY;
+      } else {
+        process.env.ANTHROPIC_API_KEY = original;
+      }
+    }
   });
 });
 
