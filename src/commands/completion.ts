@@ -51,7 +51,10 @@ const SUBCOMMANDS: readonly Subcommand[] = [
   {
     name: 'config',
     description: 'View current configuration',
-    options: [{ flag: '--help', description: 'Display help for config' }],
+    options: [
+      { flag: 'set', description: 'Update a configuration value' },
+      { flag: '--help', description: 'Display help for config' },
+    ],
   },
   {
     name: 'suggest',

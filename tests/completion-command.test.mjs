@@ -73,6 +73,13 @@ test('completion fish script includes all subcommands', async () => {
   }
 });
 
+test('completion scripts suggest config set', async () => {
+  for (const shell of ['bash', 'zsh', 'fish', 'powershell']) {
+    const { stdout } = await runCompletion([shell]);
+    assert.match(stdout, /set/, `${shell} completion should include config set`);
+  }
+});
+
 test('completion prints error and exits for unsupported shell', async () => {
   try {
     await runCompletion(['tcsh']);
