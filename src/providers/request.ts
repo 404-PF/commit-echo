@@ -24,6 +24,8 @@ export async function fetchWithTimeout(
     }
   }
 
+  let timeout: ReturnType<typeof setTimeout>;
+
   const cleanup = () => {
     clearTimeout(timeout);
     if (externalSignal && externalAbortListener) {
@@ -32,7 +34,7 @@ export async function fetchWithTimeout(
     }
   };
 
-  const timeout = setTimeout(() => {
+  timeout = setTimeout(() => {
     timedOut = true;
     timeoutError = new Error(`${label} timed out after ${timeoutMs}ms`);
     controller.abort(timeoutError);
