@@ -49,7 +49,7 @@ test('prefers the trimmed generic API key env override during init reconfigurati
 });
 
 test('falls back to the provider-specific API key env when no generic or matching stored key exists', () => {
-  const env = { OPENAI_API_KEY: 'sk-openai' };
+  const env = { OPENAI_API_KEY: '  sk-openai  ' };
 
   assert.equal(
     getExistingApiKeyForProvider('openai', { provider: 'anthropic', apiKey: 'sk-anthropic' }, 'OPENAI_API_KEY', env),
