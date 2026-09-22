@@ -17,7 +17,6 @@ test('leaves the API key prompt blank for new configs', () => {
   assert.equal(Object.hasOwn(prompt, 'initialValue'), false);
 });
 
-
 test('reuses a trimmed stored API key only for the same provider', () => {
   assert.equal(
     getStoredApiKeyForProvider('openai', { provider: 'openai', apiKey: '  sk-openai  ' }),
@@ -29,9 +28,17 @@ test('reuses a trimmed stored API key only for the same provider', () => {
   );
 });
 
-test('prefers the generic API key env override during init reconfiguration', () => {
+test('ignores a non-string stored API key for the selected provider', () => {
+  assert.equal(
+    getStoredApiKeyForProvider('openai', { provider: 'openai', apiKey: 123 }),
+    undefined,
+  );
+});
+
+
+test('prefers the trimmed generic API key env override during init reconfiguration', () => {
   const env = {
-    COMMIT_ECHO_API_KEY: 'sk-generic',
+    COMMIT_ECHO_API_KEY: '  sk-generic  ',
     OPENAI_API_KEY: 'sk-openai',
   };
 
