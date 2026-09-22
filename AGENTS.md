@@ -102,7 +102,7 @@ The `example` provider is a no-op provider useful for testing without an API key
 
 ## Skills
 
-The project includes reusable agent skills in `.agents/skills/` for common GitHub workflows:
+The project includes reusable agent skills in `.agents/skills/` for common GitHub workflows. `.claude/skills/` is a generated mirror; after changing a source skill, run `bash scripts/sync-claude-skills.sh` and commit the regenerated mirror.
 
 | Skill | Description |
 |---|---|
