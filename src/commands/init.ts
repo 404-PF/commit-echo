@@ -9,7 +9,7 @@ import {
   getProviderInfo,
   fetchModels,
 } from '../providers/index.js';
-import { saveConfig, configExists, loadConfig } from '../config/store.js';
+import { saveConfig, configExists, loadConfig, loadRawConfig } from '../config/store.js';
 import type { Config } from '../types.js';
 import { getAvailableTemplateVars } from '../llm/prompt.js';
 import { installCommitHooks, uninstallCommitHooks } from '../git/hook.js';
@@ -25,9 +25,16 @@ export function resolveBaseUrl(providerKey: string, existingBaseUrl?: string): s
 
 export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   return {
-    message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
+    message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`${apiKeyEnv}`)} env var:`,
     placeholder: existingKey ? '•••••••• (already configured)' : '',
   };
+}
+
+export function getStoredApiKeyForProvider(
+  selectedProvider: string,
+  storedConfig: Pick<Config, 'provider' | 'apiKey'> | null,
+): string | undefined {
+  return storedConfig?.provider === selectedProvider ? storedConfig.apiKey : undefined;
 }
 
 /**
@@ -146,11 +153,11 @@ async function promptProvider(existingConfig: Config | null): Promise<ProviderSe
 
 async function promptApiKey(
   provider: ProviderSetup,
-  existingConfig: Config | null,
+  storedConfig: Pick<Config, 'provider' | 'apiKey'> | null,
 ): Promise<string | undefined | null> {
   if (!provider.needsApiKey) return undefined;
 
-  const existingKey = existingConfig?.apiKey ?? process.env[provider.apiKeyEnv] ?? '';
+  const existingKey = getStoredApiKeyForProvider(provider.providerKey, storedConfig) ?? process.env[provider.apiKeyEnv] ?? '';
   const keyResult = await text(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
   return keyResult || existingKey || '';
@@ -339,11 +346,14 @@ interface CollectedSetup {
   provider: ProviderSetup;
 }
 
-async function collectConfig(existingConfig: Config | null): Promise<CollectedSetup | null> {
+async function collectConfig(
+  existingConfig: Config | null,
+  storedConfig: Pick<Config, 'provider' | 'apiKey'> | null,
+): Promise<CollectedSetup | null> {
   const provider = await promptProvider(existingConfig);
   if (!provider) return null;
 
-  const apiKey = await promptApiKey(provider, existingConfig);
+  const apiKey = await promptApiKey(provider, storedConfig);
   if (apiKey === null) return null;
 
   const selectedModel = await promptModel(provider, apiKey, existingConfig);
@@ -379,6 +389,7 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
 
   const isReconfig = configExists();
   const existingConfig = isReconfig ? await loadConfig().catch(() => null) : null;
+  const storedConfig = isReconfig ? await loadRawConfig().catch(() => null) : null;
 
   if (isReconfig) {
     const reconfirm = await confirm({
@@ -391,7 +402,7 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
     }
   }
 
-  const setup = await collectConfig(existingConfig);
+  const setup = await collectConfig(existingConfig, storedConfig);
   if (!setup) {
     outro('Setup cancelled.');
     return;
