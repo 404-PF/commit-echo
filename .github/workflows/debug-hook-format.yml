@@ -2,6 +2,9 @@ name: debug-hook-format
 
 on:
   pull_request:
+  push:
+    branches:
+      - fix/prepare-hook-timeout-271
   workflow_dispatch:
 
 permissions:
