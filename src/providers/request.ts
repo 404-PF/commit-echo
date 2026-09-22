@@ -57,6 +57,13 @@ export async function fetchWithTimeout(
     }
 
     const reader = response.body.getReader();
+    let readerReleased = false;
+    const releaseReader = () => {
+      if (!readerReleased) {
+        reader.releaseLock();
+        readerReleased = true;
+      }
+    };
     const wrappedBody = new ReadableStream<Uint8Array>({
       async pull(streamController) {
         try {
@@ -64,17 +71,23 @@ export async function fetchWithTimeout(
           if (result.done) {
             cleanup();
             streamController.close();
+            releaseReader();
             return;
           }
           streamController.enqueue(result.value);
         } catch (error) {
           cleanup();
           streamController.error(timedOut ? timeoutError : error);
+          releaseReader();
         }
       },
       async cancel(reason) {
         cleanup();
-        await reader.cancel(reason).catch(() => {});
+        try {
+          await reader.cancel(reason).catch(() => {});
+        } finally {
+          releaseReader();
+        }
       },
     });
 
