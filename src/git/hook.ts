@@ -749,6 +749,7 @@ export async function runPrepareCommitMsgHook(
     if (timeoutId) clearTimeout(timeoutId);
   }
 }
+
 export async function runPostCommitHook(
   deps: PostCommitHookDeps = {
     checkGitRepo,
