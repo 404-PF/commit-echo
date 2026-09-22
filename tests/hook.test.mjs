@@ -915,3 +915,60 @@ test('runPostCommitHook clears pending entry when history append fails', async (
 
   assert.equal(removed, true);
 });
+
+test('runPrepareCommitMsgHook times out LLM work without changing the message', async () => {
+  const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-timeout-'));
+  const messageFile = join(repoDir, 'COMMIT_EDITMSG');
+  const originalMessage = 'original commit title\n';
+  writeFileSync(messageFile, originalMessage, 'utf-8');
+
+  try {
+    let aborted = false;
+    let pendingCleared = 0;
+    let warning = '';
+
+    const deps = {
+      checkGitRepo: () => {},
+      loadConfig: async () => ({
+        provider: 'mock',
+        model: 'mock-model',
+        historySize: 3,
+        maxDiffSize: 4000,
+      }),
+      getStagedDiff: () => ({ diff: 'diff --git a/file b/file\n+hello', hasChanges: true, staged: true }),
+      buildProfile: async () => MOCK_PROFILE,
+      generateSuggestions: async (_config, _diff, _profile, _apiKey, _truncation, signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => {
+              aborted = true;
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+      readMessageFile: async (filePath) => readFileSync(filePath, 'utf-8'),
+      writeMessageFile: async (filePath, content) => writeFileSync(filePath, content, 'utf-8'),
+      writePendingEntryFile: async () => {
+        throw new Error('pending entry should not be written after timeout');
+      },
+      removePendingEntryFile: async () => {
+        pendingCleared += 1;
+      },
+      warn: (message) => {
+        warning = message;
+      },
+      timeoutMs: 20,
+    };
+
+    await runPrepareCommitMsgHook({ messageFile, source: 'template' }, deps);
+
+    assert.equal(aborted, true);
+    assert.equal(readFileSync(messageFile, 'utf-8'), originalMessage);
+    assert.equal(pendingCleared, 1);
+    assert.match(warning, /timed out after 20ms/);
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
