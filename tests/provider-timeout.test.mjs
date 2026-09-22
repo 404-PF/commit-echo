@@ -149,7 +149,17 @@ test('preserves external cancellation after response headers for streaming reque
         }
 
         return new Promise((_resolve, reject) => {
-          init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+          const fallback = setTimeout(() => {
+            reject(new Error('stalled body mock did not observe the abort signal'));
+          }, 1000);
+          init.signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(fallback);
+              reject(init.signal.reason);
+            },
+            { once: true },
+          );
         });
       },
     });
