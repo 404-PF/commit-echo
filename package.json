@@ -18,7 +18,7 @@
     "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --write \"src/**/*.ts\" && git diff -- src/commands/init.ts && exit 1"
+    "format:check": "prettier --check \"src/**/*.ts\""
   },
   "files": [
     "dist"
