@@ -15,6 +15,7 @@ const PREPARE_COMMIT_MSG_HOOK_NAME = 'prepare-commit-msg';
 const POST_COMMIT_HOOK_NAME = 'post-commit';
 const PENDING_HOOK_ENTRY_FILE = 'commit-echo-pending-entry.json';
 const BACKUP_OWNER_MARKER = '# commit-echo managed backup';
+export const PREPARE_COMMIT_MSG_HOOK_TIMEOUT_MS = 5_000;
 
 export interface PrepareCommitMsgHookArgs {
   messageFile: string;
@@ -29,6 +30,7 @@ export interface PostCommitHookDeps {
   appendHistoryEntry: (entry: CommitEntry) => Promise<void>;
   removePendingEntryFile: () => Promise<void>;
   warn: (message: string) => void;
+  timeoutMs?: number;
 }
 
 export interface PrepareCommitMsgHookDeps {
@@ -638,19 +640,64 @@ export async function runPrepareCommitMsgHook(
       return;
     }
 
-    const profile = await deps.buildProfile(config.historySize);
-    const { suggestions } = await deps.generateSuggestions(config, diffResult.diff, profile);
-    const selected = suggestions[0];
-    if (!selected) {
-      deps.warn('commit-echo hook: no suggestions were generated; leaving commit message unchanged.');
-      await clearPendingEntryFile(deps.removePendingEntryFile);
-      return;
-    }
+    const controller = new AbortController();
+    const timeoutMs = deps.timeoutMs ?? PREPARE_COMMIT_MSG_HOOK_TIMEOUT_MS;
+    let timeoutError: Error | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-    const existingContent = await deps.readMessageFile(args.messageFile).catch(() => '');
-    const nextContent = buildHookCommitMessage(selected, existingContent);
-    await deps.writeMessageFile(args.messageFile, nextContent);
-    await deps.writePendingEntryFile(buildPendingHookEntry(config, diffResult.diff));
+    const ensureWithinDeadline = () => {
+      if (controller.signal.aborted) {
+        throw controller.signal.reason instanceof Error
+          ? controller.signal.reason
+          : (timeoutError ?? new Error('commit-echo hook request was cancelled'));
+      }
+    };
+
+    const hookOperation = (async () => {
+      const profile = await deps.buildProfile(config.historySize);
+      ensureWithinDeadline();
+
+      const { suggestions } = await deps.generateSuggestions(
+        config,
+        diffResult.diff,
+        profile,
+        undefined,
+        undefined,
+        controller.signal,
+      );
+      ensureWithinDeadline();
+
+      const selected = suggestions[0];
+      if (!selected) {
+        deps.warn('commit-echo hook: no suggestions were generated; leaving commit message unchanged.');
+        return;
+      }
+
+      const existingContent = await deps.readMessageFile(args.messageFile).catch(() => '');
+      ensureWithinDeadline();
+
+      const nextContent = buildHookCommitMessage(selected, existingContent);
+      ensureWithinDeadline();
+      await deps.writeMessageFile(args.messageFile, nextContent);
+      ensureWithinDeadline();
+      await deps.writePendingEntryFile(buildPendingHookEntry(config, diffResult.diff));
+    })();
+
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timeoutError = new Error(
+          `commit-echo hook timed out after ${timeoutMs}ms; leaving commit message unchanged.`,
+        );
+        controller.abort(timeoutError);
+        reject(timeoutError);
+      }, timeoutMs);
+    });
+
+    try {
+      await Promise.race([hookOperation, timeout]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
   } catch (err) {
     await clearPendingEntryFile(deps.removePendingEntryFile);
     const message = err instanceof Error ? err.message : String(err);
