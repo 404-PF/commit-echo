@@ -157,7 +157,8 @@ async function promptApiKey(
 ): Promise<string | undefined | null> {
   if (!provider.needsApiKey) return undefined;
 
-  const existingKey = getStoredApiKeyForProvider(provider.providerKey, storedConfig) ?? process.env[provider.apiKeyEnv] ?? '';
+  const existingKey =
+    getStoredApiKeyForProvider(provider.providerKey, storedConfig) ?? process.env[provider.apiKeyEnv] ?? '';
   const keyResult = await text(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
   return keyResult || existingKey || '';
