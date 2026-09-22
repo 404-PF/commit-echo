@@ -7,6 +7,7 @@ export async function fetchWithTimeout(
   timeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
   controller = new AbortController(),
   externalSignal?: AbortSignal,
+  keepTimeoutThroughBody = true,
 ): Promise<Response> {
   let timedOut = false;
   let timeoutError: Error | undefined;
@@ -46,7 +47,7 @@ export async function fetchWithTimeout(
       signal: controller.signal,
     });
 
-    if (!response.body) {
+    if (!keepTimeoutThroughBody || !response.body) {
       cleanup();
       return response;
     }
