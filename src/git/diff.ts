@@ -126,7 +126,6 @@ export async function checkGitRepoWithSignal(signal?: AbortSignal): Promise<void
   try {
     await execFileAsync(executable, ['rev-parse', '--git-dir'], {
       encoding: 'utf-8',
-      stdio: 'pipe',
       signal,
     });
   } catch (err) {
