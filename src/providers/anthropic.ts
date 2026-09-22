@@ -48,6 +48,9 @@ export class AnthropicProvider implements Provider {
         body: JSON.stringify(body),
       },
       'Anthropic API request',
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      new AbortController(),
+      params.signal,
     );
 
     if (!response.ok) {
@@ -92,6 +95,7 @@ export class AnthropicProvider implements Provider {
       'Anthropic streaming request',
       DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
       controller,
+      params.signal,
     );
 
     if (!response.ok) {
