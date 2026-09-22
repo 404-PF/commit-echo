@@ -32,7 +32,7 @@ export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
 
 export function getStoredApiKeyForProvider(
   selectedProvider: string,
-  storedConfig: Pick<Config, 'provider' | 'apiKey'> | null,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
 ): string | undefined {
   return storedConfig?.provider === selectedProvider ? storedConfig.apiKey : undefined;
 }
