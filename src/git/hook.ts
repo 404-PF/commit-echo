@@ -624,36 +624,74 @@ export async function runPrepareCommitMsgHook(
     return;
   }
 
+  const controller = new AbortController();
+  const timeoutMs = deps.timeoutMs ?? PREPARE_COMMIT_MSG_HOOK_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  let timeoutError: Error | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  let originalMessage: string | undefined;
+  let messageWriteAttempted = false;
+
+  const abortForTimeout = () => {
+    if (timedOut) {
+      return;
+    }
+    timedOut = true;
+    timeoutError = new Error('timed out after ' + timeoutMs + 'ms; leaving commit message unchanged.');
+    controller.abort(timeoutError);
+  };
+
+  const ensureWithinDeadline = () => {
+    if (controller.signal.aborted) {
+      throw controller.signal.reason instanceof Error
+        ? controller.signal.reason
+        : (timeoutError ?? new Error('commit-echo hook request was cancelled'));
+    }
+
+    if (Date.now() >= deadline) {
+      abortForTimeout();
+      throw timeoutError!;
+    }
+  };
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      abortForTimeout();
+      reject(timeoutError!);
+    }, timeoutMs);
+  });
+
+  let hookOperation: Promise<void> | undefined;
+
   try {
-    deps.checkGitRepo();
+    hookOperation = (async () => {
+      deps.checkGitRepo();
+      ensureWithinDeadline();
 
-    const config = await deps.loadConfig().catch(() => null);
-    if (!config) {
-      deps.warn('commit-echo hook: no configuration found; skipping.');
-      await clearPendingEntryFile(deps.removePendingEntryFile);
-      return;
-    }
-
-    const diffResult = deps.getStagedDiff();
-    if (!diffResult.hasChanges) {
-      await clearPendingEntryFile(deps.removePendingEntryFile);
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeoutMs = deps.timeoutMs ?? PREPARE_COMMIT_MSG_HOOK_TIMEOUT_MS;
-    let timeoutError: Error | undefined;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-    const ensureWithinDeadline = () => {
-      if (controller.signal.aborted) {
-        throw controller.signal.reason instanceof Error
-          ? controller.signal.reason
-          : (timeoutError ?? new Error('commit-echo hook request was cancelled'));
+      let config: Config | null;
+      try {
+        config = await deps.loadConfig();
+      } catch {
+        ensureWithinDeadline();
+        config = null;
       }
-    };
+      ensureWithinDeadline();
 
-    const hookOperation = (async () => {
+      if (!config) {
+        deps.warn('commit-echo hook: no configuration found; skipping.');
+        await clearPendingEntryFile(deps.removePendingEntryFile);
+        return;
+      }
+
+      const diffResult = deps.getStagedDiff();
+      ensureWithinDeadline();
+
+      if (!diffResult.hasChanges) {
+        await clearPendingEntryFile(deps.removePendingEntryFile);
+        return;
+      }
+
       const profile = await deps.buildProfile(config.historySize);
       ensureWithinDeadline();
 
@@ -674,36 +712,41 @@ export async function runPrepareCommitMsgHook(
         return;
       }
 
-      const existingContent = await deps.readMessageFile(args.messageFile).catch(() => '');
+      originalMessage = await deps.readMessageFile(args.messageFile).catch(() => '');
       ensureWithinDeadline();
 
-      const nextContent = buildHookCommitMessage(selected, existingContent);
+      const nextContent = buildHookCommitMessage(selected, originalMessage);
       ensureWithinDeadline();
+      messageWriteAttempted = true;
       await deps.writeMessageFile(args.messageFile, nextContent);
       ensureWithinDeadline();
+
       await deps.writePendingEntryFile(buildPendingHookEntry(config, diffResult.diff));
+      ensureWithinDeadline();
     })();
 
-    const timeout = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        timeoutError = new Error(`commit-echo hook timed out after ${timeoutMs}ms; leaving commit message unchanged.`);
-        controller.abort(timeoutError);
-        reject(timeoutError);
-      }, timeoutMs);
-    });
-
-    try {
-      await Promise.race([hookOperation, timeout]);
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-    }
+    await Promise.race([hookOperation, timeout]);
   } catch (err) {
+    if (timedOut) {
+      await hookOperation?.catch(() => {});
+
+      if (messageWriteAttempted && originalMessage !== undefined) {
+        await deps.writeMessageFile(args.messageFile, originalMessage).catch(() => {});
+      }
+
+      await clearPendingEntryFile(deps.removePendingEntryFile);
+      const message = timeoutError?.message ?? (err instanceof Error ? err.message : String(err));
+      deps.warn('commit-echo hook: ' + message);
+      return;
+    }
+
     await clearPendingEntryFile(deps.removePendingEntryFile);
     const message = err instanceof Error ? err.message : String(err);
-    deps.warn(`commit-echo hook: ${message}`);
+    deps.warn('commit-echo hook: ' + message);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
-
 export async function runPostCommitHook(
   deps: PostCommitHookDeps = {
     checkGitRepo,
