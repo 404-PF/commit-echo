@@ -30,7 +30,6 @@ export interface PostCommitHookDeps {
   appendHistoryEntry: (entry: CommitEntry) => Promise<void>;
   removePendingEntryFile: () => Promise<void>;
   warn: (message: string) => void;
-  timeoutMs?: number;
 }
 
 export interface PrepareCommitMsgHookDeps {
@@ -44,6 +43,7 @@ export interface PrepareCommitMsgHookDeps {
   writePendingEntryFile: (content: string) => Promise<void>;
   removePendingEntryFile: () => Promise<void>;
   warn: (message: string) => void;
+  timeoutMs?: number;
 }
 
 export interface InstalledCommitHooks {
