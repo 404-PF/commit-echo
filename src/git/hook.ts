@@ -4,7 +4,7 @@ import { chmod, copyFile, lstat, mkdir, readFile, readlink, rename, rm, symlink,
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
-import { checkGitRepoWithSignal, getGitExecutable, getStagedDiffWithSignal } from './diff.js';
+import { checkGitRepo, checkGitRepoWithSignal, getGitExecutable, getStagedDiffWithSignal } from './diff.js';
 import type { DiffResult } from './diff.js';
 import { loadConfig } from '../config/store.js';
 import { appendEntry, buildProfile } from '../history/store.js';
@@ -609,7 +609,7 @@ export async function runPrepareCommitMsgHook(
   deps: PrepareCommitMsgHookDeps = {
     checkGitRepo: checkGitRepoWithSignal,
     loadConfig,
-    getStagedDiff: getStagedDiffWithSignal,
+    getStagedDiff: (signal) => getStagedDiffWithSignal(process.cwd(), undefined, signal),
     buildProfile,
     generateSuggestions,
     readMessageFile: async (messageFile) => readFile(messageFile, 'utf-8'),
