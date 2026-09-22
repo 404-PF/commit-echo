@@ -4,7 +4,7 @@ import { chmod, copyFile, lstat, mkdir, readFile, readlink, rename, rm, symlink,
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import type { CommitEntry, Config, Suggestion, StyleProfile } from '../types.js';
-import { checkGitRepo, getGitExecutable, getStagedDiff } from './diff.js';
+import { checkGitRepoWithSignal, getGitExecutable, getStagedDiffWithSignal } from './diff.js';
 import type { DiffResult } from './diff.js';
 import { loadConfig } from '../config/store.js';
 import { appendEntry, buildProfile } from '../history/store.js';
@@ -33,9 +33,9 @@ export interface PostCommitHookDeps {
 }
 
 export interface PrepareCommitMsgHookDeps {
-  checkGitRepo: () => void;
+  checkGitRepo: (signal?: AbortSignal) => void | Promise<void>;
   loadConfig: () => Promise<Config>;
-  getStagedDiff: () => DiffResult;
+  getStagedDiff: (signal?: AbortSignal) => DiffResult | Promise<DiffResult>;
   buildProfile: (historySize: number) => Promise<StyleProfile>;
   generateSuggestions: typeof generateSuggestions;
   readMessageFile: (messageFile: string) => Promise<string>;
@@ -607,9 +607,9 @@ function buildPendingHookEntry(config: Config, diff: string): string {
 export async function runPrepareCommitMsgHook(
   args: PrepareCommitMsgHookArgs,
   deps: PrepareCommitMsgHookDeps = {
-    checkGitRepo,
+    checkGitRepo: checkGitRepoWithSignal,
     loadConfig,
-    getStagedDiff,
+    getStagedDiff: getStagedDiffWithSignal,
     buildProfile,
     generateSuggestions,
     readMessageFile: async (messageFile) => readFile(messageFile, 'utf-8'),
@@ -666,7 +666,7 @@ export async function runPrepareCommitMsgHook(
 
   try {
     hookOperation = (async () => {
-      deps.checkGitRepo();
+      await deps.checkGitRepo(controller.signal);
       ensureWithinDeadline();
 
       let config: Config | null;
@@ -684,7 +684,7 @@ export async function runPrepareCommitMsgHook(
         return;
       }
 
-      const diffResult = deps.getStagedDiff();
+      const diffResult = await deps.getStagedDiff(controller.signal);
       ensureWithinDeadline();
 
       if (!diffResult.hasChanges) {
@@ -712,7 +712,7 @@ export async function runPrepareCommitMsgHook(
         return;
       }
 
-      originalMessage = await deps.readMessageFile(args.messageFile).catch(() => '');
+      originalMessage = await deps.readMessageFile(args.messageFile);
       ensureWithinDeadline();
 
       const nextContent = buildHookCommitMessage(selected, originalMessage);
@@ -730,6 +730,8 @@ export async function runPrepareCommitMsgHook(
     if (timedOut) {
       if (messageWriteAttempted) {
         await hookOperation?.catch(() => {});
+      } else {
+        void hookOperation?.catch(() => {});
       }
 
       if (messageWriteAttempted && originalMessage !== undefined) {
