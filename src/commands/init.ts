@@ -47,7 +47,10 @@ export function getExistingApiKeyForProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   return (
-    env['COMMIT_ECHO_API_KEY']?.trim() ?? getStoredApiKeyForProvider(provider, storedConfig) ?? env[apiKeyEnv] ?? ''
+    env['COMMIT_ECHO_API_KEY']?.trim() ??
+    getStoredApiKeyForProvider(provider, storedConfig) ??
+    env[apiKeyEnv]?.trim() ??
+    ''
   );
 }
 
