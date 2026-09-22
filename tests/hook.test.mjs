@@ -977,20 +977,20 @@ test('runPrepareCommitMsgHook times out LLM work without changing the message', 
 test('runPrepareCommitMsgHook applies its deadline to config loading', async () => {
   let warning = '';
   let configLoaded = false;
+  let resolveConfig;
 
-  await runPrepareCommitMsgHook(
+  const configPromise = new Promise((resolve) => {
+    resolveConfig = resolve;
+  });
+
+  const hookPromise = runPrepareCommitMsgHook(
     { messageFile: '/tmp/commit-echo-timeout-test', source: 'template' },
     {
       checkGitRepo: () => {},
       loadConfig: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 40));
+        const config = await configPromise;
         configLoaded = true;
-        return {
-          provider: 'mock',
-          model: 'mock-model',
-          historySize: 3,
-          maxDiffSize: 4000,
-        };
+        return config;
       },
       getStagedDiff: () => {
         throw new Error('staged diff should not run after the config deadline expires');
@@ -1008,8 +1008,18 @@ test('runPrepareCommitMsgHook applies its deadline to config loading', async () 
     },
   );
 
-  assert.equal(configLoaded, true);
+  await hookPromise;
+  assert.equal(configLoaded, false);
   assert.equal(warning, 'commit-echo hook: timed out after 20ms; leaving commit message unchanged.');
+
+  resolveConfig({
+    provider: 'mock',
+    model: 'mock-model',
+    historySize: 3,
+    maxDiffSize: 4000,
+  });
+  await configPromise;
+  assert.equal(configLoaded, true);
 });
 
 test('runPrepareCommitMsgHook waits for and rolls back a late message write', async () => {
