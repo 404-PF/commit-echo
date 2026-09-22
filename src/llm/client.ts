@@ -39,6 +39,7 @@ export async function generateSuggestions(
   profileParam?: StyleProfile,
   apiKeyParam?: string,
   precomputedTruncation?: TruncationInfo,
+  cwd = process.cwd(),
 ): Promise<{
   suggestions: Suggestion[];
   profile: StyleProfile;
@@ -49,9 +50,9 @@ export async function generateSuggestions(
 
   const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
 
-  const branch = getBranchName();
+  const branch = getBranchName(cwd);
   const profileStr = formatProfile(profile);
-  const message = getLastCommitMessage();
+  const message = getLastCommitMessage(cwd);
 
   const vars = {
     diff: truncatedDiff,
