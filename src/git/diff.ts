@@ -1,7 +1,8 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { accessSync, copyFileSync, existsSync, constants, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, normalize, resolve } from 'node:path';
+import { promisify } from 'node:util';
 
 export interface DiffResult {
   diff: string;
@@ -31,6 +32,7 @@ const GIT_REPOSITORY_ENV_VARS = [
 ] as const;
 const GIT_EXECUTABLE_NAME = process.platform === 'win32' ? 'git.exe' : 'git';
 let gitExecutable: string | undefined;
+const execFileAsync = promisify(execFile);
 
 function getGitEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env = { ...process.env };
@@ -116,6 +118,55 @@ export function checkGitRepo(): void {
     }
     const stderr = nodeErr.stderr?.trim();
     throw new Error(stderr || 'Not a git repository');
+  }
+}
+
+export async function checkGitRepoWithSignal(signal?: AbortSignal): Promise<void> {
+  const executable = getGitExecutable();
+  try {
+    await execFileAsync(executable, ['rev-parse', '--git-dir'], {
+      encoding: 'utf-8',
+      signal,
+    });
+  } catch (err) {
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error ? signal.reason : new Error('Git repository check was cancelled');
+    }
+
+    const nodeErr = err as NodeJS.ErrnoException & { stderr?: string };
+    if (nodeErr.code === 'ENOENT') {
+      throw new Error('git is not installed or not found in a supported location');
+    }
+
+    const stderr = nodeErr.stderr?.trim();
+    throw new Error(stderr || 'Not a git repository');
+  }
+}
+
+export async function getStagedDiffWithSignal(
+  cwd = process.cwd(),
+  indexFile?: string,
+  signal?: AbortSignal,
+): Promise<DiffResult> {
+  try {
+    const { stdout } = await execFileAsync(getGitExecutable(), ['diff', '--cached'], {
+      cwd,
+      encoding: 'utf-8',
+      env: getGitEnv(indexFile ? { GIT_INDEX_FILE: indexFile } : {}),
+      maxBuffer: GIT_DIFF_MAX_BUFFER,
+      signal,
+    });
+
+    return {
+      diff: stdout,
+      hasChanges: stdout.trim().length > 0,
+      staged: true,
+    };
+  } catch (err) {
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error ? signal.reason : new Error('Git staged diff was cancelled');
+    }
+    throw err;
   }
 }
 

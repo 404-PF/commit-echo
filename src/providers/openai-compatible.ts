@@ -43,6 +43,9 @@ export class OpenAICompatibleProvider implements Provider {
         body: JSON.stringify(buildOpenAiRequestBody(params)),
       },
       'OpenAI-compatible API request',
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      new AbortController(),
+      params.signal,
     );
 
     if (!response.ok) {
@@ -89,6 +92,8 @@ export class OpenAICompatibleProvider implements Provider {
       'OpenAI-compatible streaming request',
       DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
       controller,
+      params.signal,
+      false,
     );
 
     if (!response.ok) {

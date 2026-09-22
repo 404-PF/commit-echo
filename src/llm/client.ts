@@ -39,6 +39,7 @@ export async function generateSuggestions(
   profileParam?: StyleProfile,
   apiKeyParam?: string,
   precomputedTruncation?: TruncationInfo,
+  signal?: AbortSignal,
 ): Promise<{
   suggestions: Suggestion[];
   profile: StyleProfile;
@@ -73,6 +74,7 @@ export async function generateSuggestions(
     temperature: 0.7,
     maxTokens: 1024,
     apiKey,
+    signal,
   });
 
   const parsed = parseSuggestions(result.content);

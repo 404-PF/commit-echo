@@ -1,5 +1,5 @@
 import type { ChatParams, ChatResult, Provider } from '../types.js';
-import { fetchWithTimeout } from './request.js';
+import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
 
 export class CohereProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
@@ -40,6 +40,9 @@ export class CohereProvider implements Provider {
         body: JSON.stringify(body),
       },
       'Cohere API request',
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      new AbortController(),
+      params.signal,
     );
 
     if (!response.ok) {
