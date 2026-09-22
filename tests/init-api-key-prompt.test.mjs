@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildApiKeyPrompt } from '../dist/commands/init.js';
+import { buildApiKeyPrompt, getStoredApiKeyForProvider } from '../dist/commands/init.js';
 
 test('does not prefill an existing API key in the init prompt', () => {
   const prompt = buildApiKeyPrompt('sk-live-secret', 'OPENAI_API_KEY');
@@ -15,4 +15,16 @@ test('leaves the API key prompt blank for new configs', () => {
 
   assert.equal(prompt.placeholder, '');
   assert.equal(Object.hasOwn(prompt, 'initialValue'), false);
+});
+
+
+test('reuses a stored API key only for the same provider', () => {
+  assert.equal(
+    getStoredApiKeyForProvider('openai', { provider: 'openai', apiKey: 'sk-openai' }),
+    'sk-openai',
+  );
+  assert.equal(
+    getStoredApiKeyForProvider('anthropic', { provider: 'openai', apiKey: 'sk-openai' }),
+    undefined,
+  );
 });
