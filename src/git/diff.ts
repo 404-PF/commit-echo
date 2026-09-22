@@ -244,17 +244,18 @@ export function getRepoRoot(): string {
   return normalize(execFileSync(getGitExecutable(), ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim());
 }
 
-export function getBranchName(): string {
+export function getBranchName(cwd = process.cwd()): string {
   try {
-    return execFileSync(getGitExecutable(), ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
+    return execFileSync(getGitExecutable(), ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf-8' }).trim();
   } catch {
     return 'unknown';
   }
 }
 
-export function getLastCommitMessage(): string {
+export function getLastCommitMessage(cwd = process.cwd()): string {
   try {
     return execFileSync(getGitExecutable(), ['log', '-1', '--format=%s'], {
+      cwd,
       encoding: 'utf-8',
       stdio: 'pipe',
     }).trim();
