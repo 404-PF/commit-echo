@@ -93,6 +93,7 @@ export class OpenAICompatibleProvider implements Provider {
       DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
       controller,
       params.signal,
+      false,
     );
 
     if (!response.ok) {
