@@ -251,7 +251,7 @@ export async function batchCommand(
     let truncation: TruncationInfo | undefined;
     let model: string;
     try {
-      const result = await generateSuggestions(config, diff, profile, apiKey);
+      const result = await generateSuggestions(config, diff, profile, apiKey, undefined, repoPath);
       suggestions = result.suggestions;
       model = result.model;
       truncation = result.truncation;
