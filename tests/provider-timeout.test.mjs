@@ -27,7 +27,7 @@ test('preserves the reason when the caller aborts a provider request', async () 
   }
 });
 
-test('clears the provider timeout after response headers arrive', async () => {
+test('clears the provider timeout after the response body is consumed', async () => {
   const originalFetch = globalThis.fetch;
   const controller = new AbortController();
 
@@ -37,7 +37,14 @@ test('clears the provider timeout after response headers arrive', async () => {
   };
 
   try {
-    await fetchWithTimeout('https://example.invalid/models', {}, 'Provider request', 10, controller);
+    const response = await fetchWithTimeout(
+      'https://example.invalid/models',
+      {},
+      'Provider request',
+      10,
+      controller,
+    );
+    assert.equal(await response.text(), 'ok');
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(controller.signal.aborted, false);
   } finally {
