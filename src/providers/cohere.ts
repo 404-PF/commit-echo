@@ -1,9 +1,16 @@
 import type { ChatParams, ChatResult, Provider } from '../types.js';
-import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
+import {
+  DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+  ProviderResponseTimeoutError,
+  fetchWithTimeout,
+  readResponseJsonWithTimeout,
+  readResponseTextWithTimeout,
+} from './request.js';
 
 export class CohereProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
     const { model, messages, temperature = 0.7, maxTokens = 1024, apiKey, baseUrl } = params;
+    const controller = new AbortController();
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat`;
 
@@ -41,19 +48,27 @@ export class CohereProvider implements Provider {
       },
       'Cohere API request',
       DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
-      new AbortController(),
+      controller,
       params.signal,
+      false,
     );
 
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
+      let errorBody = '';
+      try {
+        errorBody = await readResponseTextWithTimeout(response, controller, 'Cohere API response');
+      } catch (error) {
+        if (error instanceof ProviderResponseTimeoutError) {
+          throw error;
+        }
+      }
       throw new Error(`Cohere API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
-    const data = (await response.json()) as {
+    const data = await readResponseJsonWithTimeout<{
       text?: string;
       meta?: { api_version?: { version?: string } };
-    };
+    }>(response, controller, 'Cohere API response');
 
     if (!data.text) {
       throw new Error('Cohere returned empty response.');
@@ -66,6 +81,7 @@ export class CohereProvider implements Provider {
   }
 
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
+    const controller = new AbortController();
     const url = `${baseUrl.replace(/\/+$/, '')}/models`;
 
     const response = await fetchWithTimeout(
@@ -76,15 +92,19 @@ export class CohereProvider implements Provider {
         },
       },
       'Cohere model request',
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      controller,
+      undefined,
+      false,
     );
 
     if (!response.ok) {
       throw new Error(`Failed to fetch models (${response.status}): ${response.statusText}`);
     }
 
-    const data = (await response.json()) as {
+    const data = await readResponseJsonWithTimeout<{
       models?: { name?: string; id?: string }[];
-    };
+    }>(response, controller, 'Cohere model response');
 
     if (data.models && Array.isArray(data.models)) {
       return data.models

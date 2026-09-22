@@ -1,5 +1,11 @@
 import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../types.js';
-import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
+import {
+  DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+  ProviderResponseTimeoutError,
+  fetchWithTimeout,
+  readResponseJsonWithTimeout,
+  readResponseTextWithTimeout,
+} from './request.js';
 import { parseOpenAiSseLine, streamSseResponse, SSE_STREAM_END } from './sse.js';
 
 const MAX_BUFFERED_REASONING_CHARS = 1024 * 1024;
@@ -25,6 +31,7 @@ function buildOpenAiRequestBody(params: ChatParams, options: { stream?: boolean 
 export class OpenAICompatibleProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
     const { model, apiKey, baseUrl } = params;
+    const controller = new AbortController();
 
     const url = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
@@ -44,19 +51,27 @@ export class OpenAICompatibleProvider implements Provider {
       },
       'OpenAI-compatible API request',
       DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
-      new AbortController(),
+      controller,
       params.signal,
+      false,
     );
 
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
+      let errorBody = '';
+      try {
+        errorBody = await readResponseTextWithTimeout(response, controller, 'OpenAI-compatible API response');
+      } catch (error) {
+        if (error instanceof ProviderResponseTimeoutError) {
+          throw error;
+        }
+      }
       throw new Error(`OpenAI-compatible API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
-    const data = (await response.json()) as {
+    const data = await readResponseJsonWithTimeout<{
       choices?: { message?: { content?: string } }[];
       model?: string;
-    };
+    }>(response, controller, 'OpenAI-compatible API response');
 
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
@@ -140,6 +155,7 @@ export class OpenAICompatibleProvider implements Provider {
   }
 
   async fetchModels(baseUrl: string, apiKey: string): Promise<string[]> {
+    const controller = new AbortController();
     const url = `${baseUrl.replace(/\/+$/, '')}/models`;
 
     const headers: Record<string, string> = {
@@ -149,15 +165,23 @@ export class OpenAICompatibleProvider implements Provider {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const response = await fetchWithTimeout(url, { headers }, 'OpenAI-compatible model request');
+    const response = await fetchWithTimeout(
+      url,
+      { headers },
+      'OpenAI-compatible model request',
+      DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+      controller,
+      undefined,
+      false,
+    );
 
     if (!response.ok) {
       throw new Error(`Failed to fetch models (${response.status}): ${response.statusText}`);
     }
 
-    const data = (await response.json()) as {
+    const data = await readResponseJsonWithTimeout<{
       data?: { id: string; object?: string }[];
-    };
+    }>(response, controller, 'OpenAI-compatible model response');
 
     if (!data.data || !Array.isArray(data.data)) {
       throw new Error('Unexpected response format when fetching models');

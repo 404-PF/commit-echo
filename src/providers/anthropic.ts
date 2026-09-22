@@ -1,5 +1,11 @@
 import type { ChatParams, ChatResult, Provider, ProviderStreamChunk } from '../types.js';
-import { DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS, fetchWithTimeout } from './request.js';
+import {
+  DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+  ProviderResponseTimeoutError,
+  fetchWithTimeout,
+  readResponseJsonWithTimeout,
+  readResponseTextWithTimeout,
+} from './request.js';
 import { parseAnthropicSseLine, streamSseResponse } from './sse.js';
 
 function buildAnthropicRequestBody(params: ChatParams, options: { stream?: boolean } = {}): Record<string, unknown> {
@@ -32,6 +38,7 @@ function buildAnthropicRequestBody(params: ChatParams, options: { stream?: boole
 export class AnthropicProvider implements Provider {
   async complete(params: ChatParams): Promise<ChatResult> {
     const { model, apiKey, baseUrl } = params;
+    const controller = new AbortController();
 
     const url = `${baseUrl.replace(/\/+$/, '')}/messages`;
     const body = buildAnthropicRequestBody(params);
@@ -49,19 +56,27 @@ export class AnthropicProvider implements Provider {
       },
       'Anthropic API request',
       DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
-      new AbortController(),
+      controller,
       params.signal,
+      false,
     );
 
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
+      let errorBody = '';
+      try {
+        errorBody = await readResponseTextWithTimeout(response, controller, 'Anthropic API response');
+      } catch (error) {
+        if (error instanceof ProviderResponseTimeoutError) {
+          throw error;
+        }
+      }
       throw new Error(`Anthropic API error (${response.status}): ${errorBody || response.statusText}`);
     }
 
-    const data = (await response.json()) as {
+    const data = await readResponseJsonWithTimeout<{
       content?: { type: string; text: string }[];
       model?: string;
-    };
+    }>(response, controller, 'Anthropic API response');
 
     const textContent = data.content?.find((c) => c.type === 'text');
     if (!textContent?.text) {
