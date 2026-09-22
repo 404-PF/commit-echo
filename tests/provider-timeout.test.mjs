@@ -66,3 +66,38 @@ test('aborts provider requests that exceed the timeout', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('times out and aborts a response body that stalls after headers', async () => {
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  let sawAbort = false;
+
+  globalThis.fetch = async (_url, init) => {
+    init.signal.addEventListener('abort', () => {
+      sawAbort = true;
+    }, { once: true });
+
+    const body = new ReadableStream({
+      async pull() {
+        await new Promise(() => {});
+      },
+    });
+
+    return new Response(body);
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      'https://example.invalid/models',
+      {},
+      'Provider request',
+      5,
+      controller,
+    );
+    await assert.rejects(response.text(), /Provider request timed out after 5ms/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(sawAbort, true);
+});
