@@ -728,7 +728,9 @@ export async function runPrepareCommitMsgHook(
     await Promise.race([hookOperation, timeout]);
   } catch (err) {
     if (timedOut) {
-      await hookOperation?.catch(() => {});
+      if (messageWriteAttempted) {
+        await hookOperation?.catch(() => {});
+      }
 
       if (messageWriteAttempted && originalMessage !== undefined) {
         await deps.writeMessageFile(args.messageFile, originalMessage).catch(() => {});
