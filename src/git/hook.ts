@@ -670,6 +670,7 @@ export async function runPrepareCommitMsgHook(
       const selected = suggestions[0];
       if (!selected) {
         deps.warn('commit-echo hook: no suggestions were generated; leaving commit message unchanged.');
+        await clearPendingEntryFile(deps.removePendingEntryFile);
         return;
       }
 
