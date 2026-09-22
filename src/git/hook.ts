@@ -686,9 +686,7 @@ export async function runPrepareCommitMsgHook(
 
     const timeout = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
-        timeoutError = new Error(
-          `commit-echo hook timed out after ${timeoutMs}ms; leaving commit message unchanged.`,
-        );
+        timeoutError = new Error(`commit-echo hook timed out after ${timeoutMs}ms; leaving commit message unchanged.`);
         controller.abort(timeoutError);
         reject(timeoutError);
       }, timeoutMs);
