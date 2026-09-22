@@ -1,5 +1,11 @@
 export const DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS = 30_000;
 
+export class ProviderResponseTimeoutError extends Error {
+  constructor(label: string, timeoutMs: number) {
+    super(`${label} timed out after ${timeoutMs}ms`);
+    this.name = 'ProviderResponseTimeoutError';
+  }
+}
 export async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -10,7 +16,7 @@ export async function fetchWithTimeout(
   keepTimeoutThroughBody = true,
 ): Promise<Response> {
   let timedOut = false;
-  let timeoutError: Error | undefined;
+  let timeoutError: ProviderResponseTimeoutError | undefined;
   let externalAbortListener: (() => void) | undefined;
 
   if (externalSignal) {
@@ -37,7 +43,7 @@ export async function fetchWithTimeout(
 
   timeout = setTimeout(() => {
     timedOut = true;
-    timeoutError = new Error(`${label} timed out after ${timeoutMs}ms`);
+    timeoutError = new ProviderResponseTimeoutError(label, timeoutMs);
     controller.abort(timeoutError);
   }, timeoutMs);
 
@@ -103,4 +109,64 @@ export async function fetchWithTimeout(
     }
     throw error;
   }
+}
+
+export async function readResponseTextWithTimeout(
+  response: Response,
+  controller: AbortController,
+  label: string,
+  timeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return '';
+  }
+
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+    void reader.cancel().catch(() => undefined);
+  }, timeoutMs);
+
+  try {
+    const decoder = new TextDecoder();
+    let text = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        text += decoder.decode(value, { stream: true });
+      }
+      if (timedOut) {
+        throw new ProviderResponseTimeoutError(label, timeoutMs);
+      }
+    }
+
+    if (timedOut) {
+      throw new ProviderResponseTimeoutError(label, timeoutMs);
+    }
+
+    text += decoder.decode();
+    return text;
+  } catch (error) {
+    if (timedOut) {
+      throw new ProviderResponseTimeoutError(label, timeoutMs);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    reader.releaseLock();
+  }
+}
+
+export async function readResponseJsonWithTimeout<T>(
+  response: Response,
+  controller: AbortController,
+  label: string,
+  timeoutMs = DEFAULT_PROVIDER_REQUEST_TIMEOUT_MS,
+): Promise<T> {
+  const text = await readResponseTextWithTimeout(response, controller, label, timeoutMs);
+  return JSON.parse(text) as T;
 }
