@@ -25,7 +25,7 @@ export function resolveBaseUrl(providerKey: string, existingBaseUrl?: string): s
 
 export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   return {
-    message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`${apiKeyEnv}`)} env var:`,
+    message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
     placeholder: existingKey ? '•••••••• (already configured)' : '',
   };
 }
@@ -153,7 +153,7 @@ async function promptProvider(existingConfig: Config | null): Promise<ProviderSe
 
 async function promptApiKey(
   provider: ProviderSetup,
-  storedConfig: Pick<Config, 'provider' | 'apiKey'> | null,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
 ): Promise<string | undefined | null> {
   if (!provider.needsApiKey) return undefined;
 
@@ -349,7 +349,7 @@ interface CollectedSetup {
 
 async function collectConfig(
   existingConfig: Config | null,
-  storedConfig: Pick<Config, 'provider' | 'apiKey'> | null,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
 ): Promise<CollectedSetup | null> {
   const provider = await promptProvider(existingConfig);
   if (!provider) return null;
