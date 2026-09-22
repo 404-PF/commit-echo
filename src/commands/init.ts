@@ -34,7 +34,21 @@ export function getStoredApiKeyForProvider(
   selectedProvider: string,
   storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
 ): string | undefined {
-  return storedConfig?.provider === selectedProvider ? storedConfig.apiKey : undefined;
+  return storedConfig?.provider === selectedProvider ? storedConfig.apiKey?.trim() : undefined;
+}
+
+export function getExistingApiKeyForProvider(
+  provider: string,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
+  apiKeyEnv: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return (
+    env['COMMIT_ECHO_API_KEY'] ??
+    getStoredApiKeyForProvider(provider, storedConfig) ??
+    env[apiKeyEnv] ??
+    ''
+  );
 }
 
 /**
@@ -157,8 +171,11 @@ async function promptApiKey(
 ): Promise<string | undefined | null> {
   if (!provider.needsApiKey) return undefined;
 
-  const existingKey =
-    getStoredApiKeyForProvider(provider.providerKey, storedConfig) ?? process.env[provider.apiKeyEnv] ?? '';
+  const existingKey = getExistingApiKeyForProvider(
+    provider.providerKey,
+    storedConfig,
+    provider.apiKeyEnv,
+  );
   const keyResult = await text(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
   return keyResult || existingKey || '';
