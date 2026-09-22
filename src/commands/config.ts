@@ -117,13 +117,21 @@ function updateConfigField<K extends ConfigSetKey>(config: Config, key: K, value
 
 function applyProviderChange(config: Config, provider: Config['provider']): Config {
   const nextConfig = updateConfigField(config, 'provider', provider);
-  if (provider === CUSTOM_PROVIDER_KEY) {
+  if (config.provider === provider) {
     return nextConfig;
+  }
+
+  if (provider === CUSTOM_PROVIDER_KEY) {
+    return {
+      ...nextConfig,
+      apiKey: undefined,
+    };
   }
 
   return {
     ...nextConfig,
     baseUrl: undefined,
+    apiKey: undefined,
   };
 }
 
