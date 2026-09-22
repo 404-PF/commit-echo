@@ -359,7 +359,7 @@ test('config set rejects unknown provider keys and lists valid options', async (
   });
 });
 
-test('config set clears stale baseUrl when switching away from custom provider', async () => {
+test('config set clears stale baseUrl and API key when switching away from custom provider', async () => {
   await withTempHome(async (homeDir) => {
     writeConfig(homeDir, {
       apiKey: 'sk-still-valid-for-next-provider',
@@ -372,7 +372,7 @@ test('config set clears stale baseUrl when switching away from custom provider',
 
     assert.equal(config.provider, 'openai');
     assert.equal(config.baseUrl, undefined);
-    assert.equal(config.apiKey, 'sk-still-valid-for-next-provider');
+    assert.equal(config.apiKey, undefined);
   });
 });
 
