@@ -64,6 +64,7 @@ export interface ChatParams {
   maxTokens?: number;
   apiKey: string;
   baseUrl: string;
+  signal?: AbortSignal;
 }
 
 export interface ChatResult {
