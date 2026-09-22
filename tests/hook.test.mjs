@@ -967,7 +967,116 @@ test('runPrepareCommitMsgHook times out LLM work without changing the message', 
     assert.equal(aborted, true);
     assert.equal(readFileSync(messageFile, 'utf-8'), originalMessage);
     assert.equal(pendingCleared, 1);
-    assert.match(warning, /timed out after 20ms/);
+    assert.equal(warning, 'commit-echo hook: timed out after 20ms; leaving commit message unchanged.');
+  } finally {
+    rmSync(repoDir, { recursive: true, force: true });
+  }
+});
+
+
+test('runPrepareCommitMsgHook applies its deadline to config loading', async () => {
+  let warning = '';
+  let configLoaded = false;
+
+  await runPrepareCommitMsgHook(
+    { messageFile: '/tmp/commit-echo-timeout-test', source: 'template' },
+    {
+      checkGitRepo: () => {},
+      loadConfig: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        configLoaded = true;
+        return {
+          provider: 'mock',
+          model: 'mock-model',
+          historySize: 3,
+          maxDiffSize: 4000,
+        };
+      },
+      getStagedDiff: () => {
+        throw new Error('staged diff should not run after the config deadline expires');
+      },
+      buildProfile: async () => MOCK_PROFILE,
+      generateSuggestions: async () => ({ suggestions: [] }),
+      readMessageFile: async () => '',
+      writeMessageFile: async () => {},
+      writePendingEntryFile: async () => {},
+      removePendingEntryFile: async () => {},
+      warn: (message) => {
+        warning = message;
+      },
+      timeoutMs: 20,
+    },
+  );
+
+  assert.equal(configLoaded, true);
+  assert.equal(warning, 'commit-echo hook: timed out after 20ms; leaving commit message unchanged.');
+});
+
+test('runPrepareCommitMsgHook waits for and rolls back a late message write', async () => {
+  const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-write-timeout-'));
+  const messageFile = join(repoDir, 'COMMIT_EDITMSG');
+  const originalMessage = 'original commit title\n';
+  writeFileSync(messageFile, originalMessage, 'utf-8');
+
+  try {
+    let releaseWrite;
+    let signalWriteStarted;
+    const writeStarted = new Promise((resolve) => {
+      signalWriteStarted = resolve;
+    });
+    let pendingCleared = 0;
+    let warning = '';
+
+    const hookPromise = runPrepareCommitMsgHook(
+      { messageFile, source: 'template' },
+      {
+        checkGitRepo: () => {},
+        loadConfig: async () => ({
+          provider: 'mock',
+          model: 'mock-model',
+          historySize: 3,
+          maxDiffSize: 4000,
+        }),
+        getStagedDiff: () => ({
+          diff: 'diff --git a/file b/file\n+hello',
+          hasChanges: true,
+          staged: true,
+        }),
+        buildProfile: async () => MOCK_PROFILE,
+        generateSuggestions: async () => ({
+          suggestions: [{ index: 1, message: 'feat: generated message' }],
+        }),
+        readMessageFile: async (filePath) => readFileSync(filePath, 'utf-8'),
+        writeMessageFile: async (filePath, nextContent) => {
+          if (nextContent !== originalMessage) {
+            await new Promise((resolve) => {
+              releaseWrite = resolve;
+              signalWriteStarted();
+            });
+          }
+          writeFileSync(filePath, nextContent, 'utf-8');
+        },
+        writePendingEntryFile: async () => {
+          throw new Error('pending entry should not be written after the late message write');
+        },
+        removePendingEntryFile: async () => {
+          pendingCleared += 1;
+        },
+        warn: (message) => {
+          warning = message;
+        },
+        timeoutMs: 20,
+      },
+    );
+
+    await writeStarted;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    releaseWrite();
+    await hookPromise;
+
+    assert.equal(readFileSync(messageFile, 'utf-8'), originalMessage);
+    assert.equal(pendingCleared, 1);
+    assert.equal(warning, 'commit-echo hook: timed out after 20ms; leaving commit message unchanged.');
   } finally {
     rmSync(repoDir, { recursive: true, force: true });
   }
