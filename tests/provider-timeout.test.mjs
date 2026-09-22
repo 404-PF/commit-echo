@@ -78,8 +78,10 @@ test('times out and aborts a response body that stalls after headers', async () 
     }, { once: true });
 
     const body = new ReadableStream({
-      async pull() {
-        await new Promise(() => {});
+      pull() {
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+        });
       },
     });
 
