@@ -86,8 +86,22 @@ test('times out and aborts a response body that stalls after headers', async () 
 
     const body = new ReadableStream({
       pull() {
+        if (init.signal.aborted) {
+          return Promise.reject(init.signal.reason);
+        }
+
         return new Promise((_resolve, reject) => {
-          init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+          const fallback = setTimeout(() => {
+            reject(new Error('stalled body mock did not observe the abort signal'));
+          }, 1000);
+          init.signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(fallback);
+              reject(init.signal.reason);
+            },
+            { once: true },
+          );
         });
       },
     });
@@ -109,4 +123,56 @@ test('times out and aborts a response body that stalls after headers', async () 
   }
 
   assert.equal(sawAbort, true);
+});
+
+
+test('preserves external cancellation after response headers for streaming requests', async () => {
+  const originalFetch = globalThis.fetch;
+  const controller = new AbortController();
+  const externalController = new AbortController();
+  const reason = new DOMException('Cancelled by caller', 'AbortError');
+  let sawInternalAbort = false;
+
+  globalThis.fetch = async (_url, init) => {
+    init.signal.addEventListener(
+      'abort',
+      () => {
+        sawInternalAbort = true;
+      },
+      { once: true },
+    );
+
+    const body = new ReadableStream({
+      pull() {
+        if (init.signal.aborted) {
+          return Promise.reject(init.signal.reason);
+        }
+
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true });
+        });
+      },
+    });
+
+    return new Response(body);
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      'https://example.invalid/stream',
+      {},
+      'Provider streaming request',
+      1000,
+      controller,
+      externalController.signal,
+      false,
+    );
+    const bodyPromise = response.text();
+    externalController.abort(reason);
+
+    await assert.rejects(bodyPromise, (error) => error === reason);
+    assert.equal(sawInternalAbort, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
