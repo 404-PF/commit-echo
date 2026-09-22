@@ -47,9 +47,13 @@ export async function fetchWithTimeout(
       signal: controller.signal,
     });
 
-    if (!keepTimeoutThroughBody || !response.body) {
+    if (!response.body) {
       cleanup();
       return response;
+    }
+
+    if (!keepTimeoutThroughBody) {
+      clearTimeout(timeout);
     }
 
     const reader = response.body.getReader();
