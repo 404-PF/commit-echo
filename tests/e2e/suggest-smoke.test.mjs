@@ -12,11 +12,49 @@ function listen(server) {
   });
 }
 
+async function closeServer(server) {
+  if (!server.listening) return;
+
+  const close = new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+
+  server.closeAllConnections();
+  await close;
+}
+
 function onceExit(child) {
   return new Promise((resolve, reject) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve({ code: child.exitCode, signal: child.signalCode });
+      return;
+    }
+
     child.on('error', reject);
     child.on('exit', (code, signal) => resolve({ code, signal }));
   });
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function stopChild(child, graceMs = 1000) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+
+  const exit = onceExit(child);
+  child.kill('SIGINT');
+
+  if (!(await Promise.race([exit, wait(graceMs)]))) {
+    child.kill('SIGKILL');
+    await Promise.race([exit, wait(graceMs)]);
+  }
 }
 
 function stripAnsi(text) {
@@ -78,18 +116,21 @@ function runSuggestUntil(args, { cwd, env, text }) {
     let stderr = '';
     let settled = false;
     const timeout = setTimeout(() => {
+      if (settled) return;
       settled = true;
-      child.kill('SIGINT');
-      reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
+      void stopChild(child)
+        .catch(() => undefined)
+        .finally(() => {
+          reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
+        });
     }, 5000);
     child.stdout.on('data', async (chunk) => {
       stdout += chunk.toString();
       if (!settled && stdout.includes(text)) {
         settled = true;
         clearTimeout(timeout);
-        child.kill('SIGINT');
         try {
-          await onceExit(child);
+          await stopChild(child);
           resolve({ stdout, stderr });
         } catch (err) {
           reject(err);
@@ -127,9 +168,15 @@ function runNodeProcess(args, { cwd, env }, label) {
     const child = spawn(process.execPath, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
+    let settled = false;
     const timeout = setTimeout(() => {
-      child.kill('SIGINT');
-      reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
+      if (settled) return;
+      settled = true;
+      void stopChild(child)
+        .catch(() => undefined)
+        .finally(() => {
+          reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
+        });
     }, 8000);
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -138,10 +185,14 @@ function runNodeProcess(args, { cwd, env }, label) {
       stderr += chunk.toString();
     });
     child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
       reject(err);
     });
     child.on('exit', (code, signal) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
       resolve({ code, signal, stdout, stderr });
     });
@@ -266,7 +317,7 @@ async function setupShowDiffFixture(
   const { requests, server } = createChatCompletionServer({ content, streamContent, requireStream });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -283,6 +334,47 @@ async function setupShowDiffFixture(
 
   return { home, repo, requests };
 }
+
+test('stubborn child processes are forcibly cleaned up after SIGINT', async () => {
+  const child = spawn(process.execPath, [
+    '-e',
+    "process.stdout.write('ready\\n'); process.on('SIGINT', () => {}); setInterval(() => {}, 1000);",
+  ], {
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      void stopChild(child)
+        .catch(() => undefined)
+        .finally(() => {
+          reject(new Error('Timed out waiting for stubborn child readiness'));
+        });
+    }, 5000);
+
+    child.stdout.setEncoding('utf8');
+    child.stdout.once('data', (chunk) => {
+      clearTimeout(timeout);
+      if (chunk.includes('ready')) {
+        resolve();
+      } else {
+        reject(new Error('Stubborn child did not signal readiness'));
+      }
+    });
+    child.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      reject(new Error(`Stubborn child exited before signaling readiness (code: ${code}, signal: ${signal})`));
+    });
+  });
+
+  await stopChild(child);
+
+  assert.ok(child.exitCode !== null || child.signalCode !== null);
+});
 
 test('suggest smoke test boots the CLI, loads config, and prints suggestions', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'commit-echo-e2e-'));
@@ -311,7 +403,7 @@ test('suggest smoke test boots the CLI, loads config, and prints suggestions', a
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -401,7 +493,7 @@ test('suggest --auto selects the first suggestion like --yes without committing'
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -456,7 +548,7 @@ test('top-level --auto commits the first suggestion like --yes', async (t) => {
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -502,7 +594,7 @@ test('suggest --commit --yes refuses a staged diff changed during analysis', asy
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -529,7 +621,7 @@ test('suggest --commit rejects a staged diff changed during interactive confirma
   const { server } = createChatCompletionServer({ content: '1. feat: reject interactive changed diff' });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -590,7 +682,7 @@ test('suggest reports beforeResponse failures instead of timing out', async (t) 
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -685,7 +777,7 @@ test('suggest --model overrides configured model for one invocation and -m is an
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -926,7 +1018,7 @@ test('suggest --stream prints incremental SSE output', async (t) => {
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -1006,7 +1098,7 @@ test('suggest --stream prints incremental Anthropic SSE output', async (t) => {
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -1080,7 +1172,7 @@ test('suggest --stream --yes streams output and auto-commits the first suggestio
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
@@ -1197,7 +1289,7 @@ test('suggest --stream reports parse failure for unparseable streamed output', a
   });
   const port = await listen(server);
   t.after(async () => {
-    server.close();
+    await closeServer(server);
     await rm(root, { recursive: true, force: true });
   });
 
