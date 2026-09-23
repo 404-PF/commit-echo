@@ -40,8 +40,12 @@ export function getStoredApiKeyForProvider(
   }
 
   if (selectedProvider === CUSTOM_PROVIDER_KEY) {
-    const storedUrl = storedConfig.baseUrl ? normalizeBaseUrl(storedConfig.baseUrl) : undefined;
-    const selectedUrl = selectedBaseUrl ? normalizeBaseUrl(selectedBaseUrl) : undefined;
+    if (typeof storedConfig.baseUrl !== 'string' || typeof selectedBaseUrl !== 'string') {
+      return undefined;
+    }
+
+    const storedUrl = normalizeBaseUrl(storedConfig.baseUrl);
+    const selectedUrl = normalizeBaseUrl(selectedBaseUrl);
     if (storedUrl !== selectedUrl) {
       return undefined;
     }
