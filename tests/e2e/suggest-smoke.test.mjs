@@ -116,9 +116,11 @@ function runSuggestUntil(args, { cwd, env, text }) {
     let stderr = '';
     let settled = false;
     const timeout = setTimeout(() => {
+      if (settled) return;
       settled = true;
-      child.kill('SIGINT');
-      reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
+      void stopChild(child).finally(() => {
+        reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
+      });
     }, 5000);
     child.stdout.on('data', async (chunk) => {
       stdout += chunk.toString();
@@ -164,9 +166,13 @@ function runNodeProcess(args, { cwd, env }, label) {
     const child = spawn(process.execPath, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
+    let settled = false;
     const timeout = setTimeout(() => {
-      child.kill('SIGINT');
-      reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
+      if (settled) return;
+      settled = true;
+      void stopChild(child).finally(() => {
+        reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
+      });
     }, 8000);
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -175,10 +181,14 @@ function runNodeProcess(args, { cwd, env }, label) {
       stderr += chunk.toString();
     });
     child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
       reject(err);
     });
     child.on('exit', (code, signal) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
       resolve({ code, signal, stdout, stderr });
     });
