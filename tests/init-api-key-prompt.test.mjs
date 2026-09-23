@@ -58,6 +58,32 @@ test('ignores a non-string stored API key for the selected provider', () => {
   );
 });
 
+test('does not reuse a custom API key when either endpoint is missing or malformed', () => {
+  assert.equal(
+    getStoredApiKeyForProvider('__custom__', 'https://api.example.com/v1', {
+      provider: '__custom__',
+      baseUrl: 123,
+      apiKey: 'sk-custom',
+    }),
+    undefined,
+  );
+  assert.equal(
+    getStoredApiKeyForProvider('__custom__', 'https://api.example.com/v1', {
+      provider: '__custom__',
+      apiKey: 'sk-custom',
+    }),
+    undefined,
+  );
+  assert.equal(
+    getStoredApiKeyForProvider('__custom__', undefined, {
+      provider: '__custom__',
+      baseUrl: 'https://api.example.com/v1',
+      apiKey: 'sk-custom',
+    }),
+    undefined,
+  );
+});
+
 
 test('prefers the trimmed generic API key env override during init reconfiguration', () => {
   const env = {
