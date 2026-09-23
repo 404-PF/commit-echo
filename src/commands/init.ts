@@ -32,24 +32,36 @@ export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
 
 export function getStoredApiKeyForProvider(
   selectedProvider: string,
-  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
+  selectedBaseUrl: string | undefined,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
 ): string | undefined {
   if (storedConfig?.provider !== selectedProvider || typeof storedConfig.apiKey !== 'string') {
     return undefined;
   }
-  return storedConfig.apiKey.trim();
+
+  if (selectedProvider === CUSTOM_PROVIDER_KEY) {
+    const storedUrl = storedConfig.baseUrl ? normalizeBaseUrl(storedConfig.baseUrl) : undefined;
+    const selectedUrl = selectedBaseUrl ? normalizeBaseUrl(selectedBaseUrl) : undefined;
+    if (storedUrl !== selectedUrl) {
+      return undefined;
+    }
+  }
+
+  const storedKey = storedConfig.apiKey.trim();
+  return storedKey || undefined;
 }
 
 export function getExistingApiKeyForProvider(
   provider: string,
-  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
+  baseUrl: string | undefined,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
   apiKeyEnv: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   return (
-    env['COMMIT_ECHO_API_KEY']?.trim() ??
-    getStoredApiKeyForProvider(provider, storedConfig) ??
-    env[apiKeyEnv]?.trim() ??
+    env['COMMIT_ECHO_API_KEY']?.trim() ||
+    getStoredApiKeyForProvider(provider, baseUrl, storedConfig) ||
+    env[apiKeyEnv]?.trim() ||
     ''
   );
 }
@@ -170,11 +182,16 @@ async function promptProvider(existingConfig: Config | null): Promise<ProviderSe
 
 async function promptApiKey(
   provider: ProviderSetup,
-  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
 ): Promise<string | undefined | null> {
   if (!provider.needsApiKey) return undefined;
 
-  const existingKey = getExistingApiKeyForProvider(provider.providerKey, storedConfig, provider.apiKeyEnv);
+  const existingKey = getExistingApiKeyForProvider(
+    provider.providerKey,
+    provider.baseUrl,
+    storedConfig,
+    provider.apiKeyEnv,
+  );
   const keyResult = await text(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
   return keyResult || existingKey || '';
@@ -365,7 +382,7 @@ interface CollectedSetup {
 
 async function collectConfig(
   existingConfig: Config | null,
-  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey'> | null,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
 ): Promise<CollectedSetup | null> {
   const provider = await promptProvider(existingConfig);
   if (!provider) return null;
