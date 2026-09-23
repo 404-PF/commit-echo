@@ -118,9 +118,11 @@ function runSuggestUntil(args, { cwd, env, text }) {
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      void stopChild(child).finally(() => {
-        reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
-      });
+      void stopChild(child)
+        .catch(() => undefined)
+        .finally(() => {
+          reject(new Error(`Timed out waiting for ${text}. stdout: ${stdout} stderr: ${stderr}`));
+        });
     }, 5000);
     child.stdout.on('data', async (chunk) => {
       stdout += chunk.toString();
@@ -170,9 +172,11 @@ function runNodeProcess(args, { cwd, env }, label) {
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      void stopChild(child).finally(() => {
-        reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
-      });
+      void stopChild(child)
+        .catch(() => undefined)
+        .finally(() => {
+          reject(new Error(`Timed out running ${label}. stdout: ${stdout} stderr: ${stderr}`));
+        });
     }, 8000);
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -340,15 +344,31 @@ test('stubborn child processes are forcibly cleaned up after SIGINT', async () =
   });
 
   await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      void stopChild(child)
+        .catch(() => undefined)
+        .finally(() => {
+          reject(new Error('Timed out waiting for stubborn child readiness'));
+        });
+    }, 5000);
+
     child.stdout.setEncoding('utf8');
     child.stdout.once('data', (chunk) => {
+      clearTimeout(timeout);
       if (chunk.includes('ready')) {
         resolve();
       } else {
         reject(new Error('Stubborn child did not signal readiness'));
       }
     });
-    child.once('error', reject);
+    child.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      reject(new Error(`Stubborn child exited before signaling readiness (code: ${code}, signal: ${signal})`));
+    });
   });
 
   await stopChild(child);
