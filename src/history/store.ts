@@ -131,6 +131,15 @@ function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 }
 
+function isRetryableHistoryLockError(error: unknown): boolean {
+  if (hasErrorCode(error, 'EEXIST')) return true;
+  if (process.platform !== 'win32') return false;
+
+  // libuv maps Windows sharing violations to EBUSY. Keep ordinary permission
+  // failures as errors instead of misclassifying them as lock contention.
+  return hasErrorCode(error, 'EBUSY');
+}
+
 function waitForHistoryLockRetry(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, HISTORY_LOCK_RETRY_MS));
 }
@@ -206,8 +215,9 @@ async function hasHistoryLockTakeover(lockPath: string): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    if (!hasErrorCode(error, 'ENOENT')) throw error;
-    return false;
+    if (hasErrorCode(error, 'ENOENT')) return false;
+    if (isRetryableHistoryLockError(error)) return true;
+    throw error;
   }
 }
 
@@ -224,9 +234,8 @@ async function removeStaleHistoryLock(lockPath: string): Promise<void> {
       await takeover.writeFile(lockSnapshot.ownerToken, 'utf-8');
       await takeover.close();
     } catch (error) {
-      if (hasErrorCode(error, 'EEXIST')) return;
-      if (!hasErrorCode(error, 'ENOENT')) throw error;
-      return;
+      if (hasErrorCode(error, 'ENOENT') || isRetryableHistoryLockError(error)) return;
+      throw error;
     }
 
     try {
@@ -252,12 +261,12 @@ async function removeStaleHistoryLock(lockPath: string): Promise<void> {
         }
       }
     } catch (error) {
-      if (!hasErrorCode(error, 'ENOENT')) throw error;
+      if (!hasErrorCode(error, 'ENOENT') && !isRetryableHistoryLockError(error)) throw error;
     } finally {
       await unlink(takeoverPath).catch(() => {});
     }
   } catch (error) {
-    if (!hasErrorCode(error, 'ENOENT')) throw error;
+    if (!hasErrorCode(error, 'ENOENT') && !isRetryableHistoryLockError(error)) throw error;
   }
 }
 
@@ -292,9 +301,11 @@ async function acquireHistoryLock(historyPath: string): Promise<() => Promise<vo
         await removeHistoryLock(lockPath, ownerToken);
       };
     } catch (error) {
-      if (!hasErrorCode(error, 'EEXIST')) throw error;
+      if (!isRetryableHistoryLockError(error)) throw error;
 
-      await removeStaleHistoryLock(lockPath);
+      if (hasErrorCode(error, 'EEXIST')) {
+        await removeStaleHistoryLock(lockPath);
+      }
       if (Date.now() >= deadline) {
         throw new Error(`Timed out waiting to update commit history: ${historyPath}`);
       }
