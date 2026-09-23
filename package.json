@@ -1,6 +1,6 @@
 {
   "name": "@404-pf/commit-echo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "LLM-powered CLI that learns your Git commit style and auto-suggests personalized commit messages",
   "type": "module",
   "bin": {
