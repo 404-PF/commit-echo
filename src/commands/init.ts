@@ -9,7 +9,7 @@ import {
   getProviderInfo,
   fetchModels,
 } from '../providers/index.js';
-import { saveConfig, configExists, loadConfig } from '../config/store.js';
+import { saveConfig, configExists, loadConfig, loadRawConfig } from '../config/store.js';
 import type { Config } from '../types.js';
 import { getAvailableTemplateVars } from '../llm/prompt.js';
 import { installCommitHooks, uninstallCommitHooks } from '../git/hook.js';
@@ -28,6 +28,46 @@ export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
     message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
     placeholder: existingKey ? '•••••••• (already configured)' : '',
   };
+}
+
+export function getStoredApiKeyForProvider(
+  selectedProvider: string,
+  selectedBaseUrl: string | undefined,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
+): string | undefined {
+  if (storedConfig?.provider !== selectedProvider || typeof storedConfig.apiKey !== 'string') {
+    return undefined;
+  }
+
+  if (selectedProvider === CUSTOM_PROVIDER_KEY) {
+    if (typeof storedConfig.baseUrl !== 'string' || typeof selectedBaseUrl !== 'string') {
+      return undefined;
+    }
+
+    const storedUrl = normalizeBaseUrl(storedConfig.baseUrl);
+    const selectedUrl = normalizeBaseUrl(selectedBaseUrl);
+    if (storedUrl !== selectedUrl) {
+      return undefined;
+    }
+  }
+
+  const storedKey = storedConfig.apiKey.trim();
+  return storedKey || undefined;
+}
+
+export function getExistingApiKeyForProvider(
+  provider: string,
+  baseUrl: string | undefined,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
+  apiKeyEnv: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return (
+    env['COMMIT_ECHO_API_KEY']?.trim() ||
+    getStoredApiKeyForProvider(provider, baseUrl, storedConfig) ||
+    env[apiKeyEnv]?.trim() ||
+    ''
+  );
 }
 
 /**
@@ -146,11 +186,16 @@ async function promptProvider(existingConfig: Config | null): Promise<ProviderSe
 
 async function promptApiKey(
   provider: ProviderSetup,
-  existingConfig: Config | null,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
 ): Promise<string | undefined | null> {
   if (!provider.needsApiKey) return undefined;
 
-  const existingKey = existingConfig?.apiKey ?? process.env[provider.apiKeyEnv] ?? '';
+  const existingKey = getExistingApiKeyForProvider(
+    provider.providerKey,
+    provider.baseUrl,
+    storedConfig,
+    provider.apiKeyEnv,
+  );
   const keyResult = await text(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
   return keyResult || existingKey || '';
@@ -339,11 +384,14 @@ interface CollectedSetup {
   provider: ProviderSetup;
 }
 
-async function collectConfig(existingConfig: Config | null): Promise<CollectedSetup | null> {
+async function collectConfig(
+  existingConfig: Config | null,
+  storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
+): Promise<CollectedSetup | null> {
   const provider = await promptProvider(existingConfig);
   if (!provider) return null;
 
-  const apiKey = await promptApiKey(provider, existingConfig);
+  const apiKey = await promptApiKey(provider, storedConfig);
   if (apiKey === null) return null;
 
   const selectedModel = await promptModel(provider, apiKey, existingConfig);
@@ -379,6 +427,7 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
 
   const isReconfig = configExists();
   const existingConfig = isReconfig ? await loadConfig().catch(() => null) : null;
+  const storedConfig = isReconfig ? await loadRawConfig().catch(() => null) : null;
 
   if (isReconfig) {
     const reconfirm = await confirm({
@@ -391,7 +440,7 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
     }
   }
 
-  const setup = await collectConfig(existingConfig);
+  const setup = await collectConfig(existingConfig, storedConfig);
   if (!setup) {
     outro('Setup cancelled.');
     return;
