@@ -131,6 +131,15 @@ function hasErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 }
 
+function isRetryableHistoryLockError(error: unknown): boolean {
+  if (hasErrorCode(error, 'EEXIST')) return true;
+  if (process.platform !== 'win32') return false;
+
+  // Windows can briefly report sharing violations while another handle is closing
+  // or a lock file is being removed. Treat those as contention and retry.
+  return hasErrorCode(error, 'EPERM') || hasErrorCode(error, 'EACCES');
+}
+
 function waitForHistoryLockRetry(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, HISTORY_LOCK_RETRY_MS));
 }
@@ -292,9 +301,11 @@ async function acquireHistoryLock(historyPath: string): Promise<() => Promise<vo
         await removeHistoryLock(lockPath, ownerToken);
       };
     } catch (error) {
-      if (!hasErrorCode(error, 'EEXIST')) throw error;
+      if (!isRetryableHistoryLockError(error)) throw error;
 
-      await removeStaleHistoryLock(lockPath);
+      if (hasErrorCode(error, 'EEXIST')) {
+        await removeStaleHistoryLock(lockPath);
+      }
       if (Date.now() >= deadline) {
         throw new Error(`Timed out waiting to update commit history: ${historyPath}`);
       }
