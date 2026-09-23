@@ -84,7 +84,6 @@ test('does not reuse a custom API key when either endpoint is missing or malform
   );
 });
 
-
 test('prefers the trimmed generic API key env override during init reconfiguration', () => {
   const env = {
     COMMIT_ECHO_API_KEY: '  sk-generic  ',
