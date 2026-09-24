@@ -212,11 +212,11 @@ async function promptModelManually(existingConfig: Config | null, promptText: ty
     message: 'Enter model name manually:',
     placeholder: existingConfig?.model ?? 'gpt-4o',
     validate: (value) => {
-      if (!value) return 'Model name is required';
+      if (!value.trim()) return 'Model name is required';
     },
   });
   if (isCancel(manualResult)) return null;
-  return manualResult;
+  return manualResult.trim();
 }
 
 export async function promptModel(
