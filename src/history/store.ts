@@ -92,6 +92,20 @@ function splitCompleteLines(combined: Buffer): { lines: Buffer[]; remainder: Buf
   return { lines, remainder: combined.subarray(0, firstLineEnd) };
 }
 
+function isCommitEntry(value: unknown): value is CommitEntry {
+  if (typeof value !== 'object' || value === null) return false;
+
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.timestamp === 'string' &&
+    !Number.isNaN(Date.parse(entry.timestamp)) &&
+    typeof entry.message === 'string' &&
+    typeof entry.diff === 'string' &&
+    typeof entry.model === 'string' &&
+    typeof entry.provider === 'string'
+  );
+}
+
 /** Parse a single line buffer, pushing valid entries or recording corrupted line numbers. */
 function processHistoryLine(
   lineBytes: Buffer,
@@ -103,7 +117,12 @@ function processHistoryLine(
   if (line.trim().length === 0) return;
 
   try {
-    entries.push(JSON.parse(line) as CommitEntry);
+    const parsed: unknown = JSON.parse(line);
+    if (!isCommitEntry(parsed)) {
+      corruptedLineIndexesFromEnd.push(lineIndexFromEnd);
+      return;
+    }
+    entries.push(parsed);
   } catch {
     corruptedLineIndexesFromEnd.push(lineIndexFromEnd);
   }
