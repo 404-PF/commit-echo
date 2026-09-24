@@ -112,7 +112,7 @@ test('buildHookCommitMessage preserves template whitespace exactly', () => {
   assert.equal(result, `feat: add hook support\n\nExplain the change.\n\n${template}`);
 });
 
-test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and shell fallback', () => {
+test('buildPrepareCommitMsgHookScript chains backup hook with the captured CLI and PATH fallback', () => {
   const script = buildPrepareCommitMsgHookScript(
     'c:\\tools\\commit-echo\\dist\\index.js',
     'c:\\repo\\.git\\hooks\\prepare-commit-msg.commit-echo.bak',
@@ -120,15 +120,11 @@ test('buildPrepareCommitMsgHookScript chains backup hook with direct exec and sh
 
   assert.match(
     script,
-    /if \[ -f 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo\.bak' \][\s\S]*if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/,
+    /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; fi/,
   );
   assert.match(
     script,
-    /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'prepare-commit-msg' "\$@"; fi/,
-  );
-  assert.match(
-    script,
-    /if \[ -x 'c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo.bak' \]; then 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; else sh 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; fi/,
+    /if \[ -x 'c:\/repo\/\.git\/hooks\/prepare-commit-msg\.commit-echo\.bak' \]; then 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; else sh 'c:\/repo\/\.git\/hooks\/prepare-commit-msg.commit-echo.bak' "\$@" \|\| exit \$\?; fi/,
   );
 });
 
@@ -141,7 +137,7 @@ test('buildPostCommitHookScript invokes the post-commit entry point', () => {
   assert.match(script, /commit-echo managed hook post-commit/);
   assert.match(
     script,
-    /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'post-commit' "\$@"; elif \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'post-commit' "\$@"; fi/,
+    /if \[ -f 'c:\/tools\/commit-echo\/dist\/index\.js' \]; then node 'c:\/tools\/commit-echo\/dist\/index\.js' hook 'post-commit' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'post-commit' "\$@"; fi/,
   );
 });
 
@@ -150,8 +146,59 @@ test('buildPrepareCommitMsgHookScript safely quotes paths containing shell metac
 
   assert.match(
     script,
-    /if command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@"; elif \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook 'prepare-commit-msg' "\$@";/,
+    /if \[ -f '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' \]; then node '\/tmp\/commit-echo\/it'"'"'s\/\$\(bad\)\/index\.js' hook 'prepare-commit-msg' "\$@"; elif command -v commit-echo >\/dev\/null 2>&1; then commit-echo hook 'prepare-commit-msg' "\$@";/,
   );
+});
+
+test('generated hooks prefer the captured CLI over PATH and fall back when it is missing', { skip: process.platform === 'win32' }, () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-resolution-test-'));
+  const binDir = join(tempDir, 'bin');
+  const cliPath = join(tempDir, 'saved-cli.js');
+  const hookPath = join(tempDir, 'hook.sh');
+  const messagePath = join(tempDir, 'message');
+  const resultPath = join(tempDir, 'result');
+  const pathCliPath = join(binDir, 'commit-echo');
+
+  mkdirSync(binDir, { recursive: true });
+  writeFileSync(
+    cliPath,
+    "require('node:fs').writeFileSync(process.env.COMMIT_ECHO_RESULT, 'saved');",
+    'utf-8',
+  );
+  writeFileSync(
+    pathCliPath,
+    '#!/bin/sh\nprintf "%s" path > "$COMMIT_ECHO_RESULT"\n',
+    'utf-8',
+  );
+  chmodSync(pathCliPath, 0o755);
+  writeFileSync(
+    hookPath,
+    `#!/bin/sh
+${buildPrepareCommitMsgHookScript(cliPath)}
+`,
+    'utf-8',
+  );
+  chmodSync(hookPath, 0o755);
+
+  const env = {
+    ...process.env,
+    PATH: `${binDir}${process.env.PATH ? `:${process.env.PATH}` : ''}`,
+    COMMIT_ECHO_RESULT: resultPath,
+  };
+
+  try {
+    const firstRun = spawnSync(hookPath, [messagePath], { env, encoding: 'utf-8' });
+    assert.equal(firstRun.status, 0, firstRun.stderr);
+    assert.equal(readFileSync(resultPath, 'utf-8'), 'saved');
+
+    rmSync(cliPath);
+    rmSync(resultPath);
+    const fallbackRun = spawnSync(hookPath, [messagePath], { env, encoding: 'utf-8' });
+    assert.equal(fallbackRun.status, 0, fallbackRun.stderr);
+    assert.equal(readFileSync(resultPath, 'utf-8'), 'path');
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test('installPrepareCommitMsgHook writes a managed hook file inside the current repository', async () => {

@@ -195,7 +195,7 @@ function buildHookScript(hookName: string, cliPath: string, backupPath?: string)
     quotedBackupPath
       ? `if [ -f ${quotedBackupPath} ]; then if [ -x ${quotedBackupPath} ]; then ${quotedBackupPath} "$@" || exit $?; else sh ${quotedBackupPath} "$@" || exit $?; fi; fi`
       : '',
-    `if command -v commit-echo >/dev/null 2>&1; then commit-echo hook ${quotedHookName} "$@"; elif [ -f ${quotedCliPath} ]; then node ${quotedCliPath} hook ${quotedHookName} "$@"; fi`,
+    `if [ -f ${quotedCliPath} ]; then node ${quotedCliPath} hook ${quotedHookName} "$@"; elif command -v commit-echo >/dev/null 2>&1; then commit-echo hook ${quotedHookName} "$@"; fi`,
     '',
   ]
     .filter((line) => line.length > 0)
