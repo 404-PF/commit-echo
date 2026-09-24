@@ -326,10 +326,12 @@ test('Anthropic completeStream propagates malformed JSON and releases the respon
   let cancelled = false;
   let malformedSent = false;
   let closeTimer;
+  let sourceController;
   const response = new Response(
     new ReadableStream({
-      start(stream) {
-        stream.enqueue(new TextEncoder().encode('event: content_block_delta\n'));
+      start(controller) {
+        sourceController = controller;
+        controller.enqueue(new TextEncoder().encode('event: content_block_delta\n'));
       },
       pull(stream) {
         if (malformedSent) return;
@@ -337,7 +339,7 @@ test('Anthropic completeStream propagates malformed JSON and releases the respon
         stream.enqueue(new TextEncoder().encode('data: {"delta":{"text":"before"}}\n'));
         stream.enqueue(new TextEncoder().encode('data: {not valid JSON}\n'));
         closeTimer = setTimeout(() => {
-          if (!cancelled) response.body?.getReader;
+          if (!cancelled) sourceController.close();
         }, 100);
       },
       cancel() {
