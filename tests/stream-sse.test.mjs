@@ -269,6 +269,24 @@ test('parseAnthropicSseLine extracts model from message_start', () => {
   assert.deepEqual(result, { kind: 'model', model: 'claude-sonnet-4' });
 });
 
+test('parseAnthropicSseLine rejects malformed message_start JSON', () => {
+  const state = { currentEvent: '' };
+  parseAnthropicSseLine('event: message_start', state);
+  assert.throws(
+    () => parseAnthropicSseLine('data: {not valid JSON}', state),
+    /Malformed Anthropic SSE data: invalid JSON/,
+  );
+});
+
+test('parseAnthropicSseLine rejects malformed content_block_delta JSON', () => {
+  const state = { currentEvent: '' };
+  parseAnthropicSseLine('event: content_block_delta', state);
+  assert.throws(
+    () => parseAnthropicSseLine('data: {not valid JSON}', state),
+    /Malformed Anthropic SSE data: invalid JSON/,
+  );
+});
+
 test('parseAnthropicSseLine returns SSE_STREAM_END on message_stop', () => {
   const state = { currentEvent: '' };
   parseAnthropicSseLine('event: message_stop', state);
@@ -303,6 +321,38 @@ test('Anthropic completeStream reassembles event/data split across network chunk
     },
   );
  });
+
+test('Anthropic completeStream propagates malformed JSON and releases the response stream', async () => {
+  let cancelled = false;
+  const response = new Response(
+    new ReadableStream({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode('event: content_block_delta\n'));
+      },
+      pull(stream) {
+        stream.enqueue(new TextEncoder().encode('data: {"delta":{"text":"before"}}\n'));
+        stream.enqueue(new TextEncoder().encode('data: {not valid JSON}\n'));
+        stream.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }),
+    { status: 200 },
+  );
+
+  await withMockedFetch(
+    async () => response,
+    async () => {
+      const iterator = new AnthropicProvider().completeStream(anthropicParams)[Symbol.asyncIterator]();
+      assert.deepEqual(await iterator.next(), { done: false, value: { kind: 'text', text: 'before' } });
+      await assert.rejects(() => iterator.next(), /Malformed Anthropic SSE data: invalid JSON/);
+
+      assert.equal(cancelled, true);
+      assert.equal(response.body.locked, false);
+    },
+  );
+});
 test('OpenAI completeStream emits reasoning progressively and keeps it separate from visible content', async () => {
   const provider = new OpenAICompatibleProvider();
   const responses = [
