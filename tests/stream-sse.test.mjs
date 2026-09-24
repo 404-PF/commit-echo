@@ -324,18 +324,25 @@ test('Anthropic completeStream reassembles event/data split across network chunk
 
 test('Anthropic completeStream propagates malformed JSON and releases the response stream', async () => {
   let cancelled = false;
+  let malformedSent = false;
+  let closeTimer;
   const response = new Response(
     new ReadableStream({
       start(stream) {
         stream.enqueue(new TextEncoder().encode('event: content_block_delta\n'));
       },
       pull(stream) {
+        if (malformedSent) return;
+        malformedSent = true;
         stream.enqueue(new TextEncoder().encode('data: {"delta":{"text":"before"}}\n'));
         stream.enqueue(new TextEncoder().encode('data: {not valid JSON}\n'));
-        stream.close();
+        closeTimer = setTimeout(() => {
+          if (!cancelled) response.body?.getReader;
+        }, 100);
       },
       cancel() {
         cancelled = true;
+        if (closeTimer) clearTimeout(closeTimer);
       },
     }),
     { status: 200 },
@@ -350,6 +357,7 @@ test('Anthropic completeStream propagates malformed JSON and releases the respon
 
       assert.equal(cancelled, true);
       assert.equal(response.body.locked, false);
+      await iterator.return?.().catch(() => {});
     },
   );
 });
