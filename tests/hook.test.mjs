@@ -150,7 +150,7 @@ test('buildPrepareCommitMsgHookScript safely quotes paths containing shell metac
   );
 });
 
-test('generated hooks prefer the captured CLI over PATH and fall back when it is missing', () => {
+test('generated hooks prefer the captured CLI over PATH and fall back when it is missing', { skip: process.platform === 'win32' }, () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-resolution-test-'));
   const binDir = join(tempDir, 'bin');
   const cliPath = join(tempDir, 'saved-cli.js');
