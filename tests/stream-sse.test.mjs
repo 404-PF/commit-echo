@@ -287,6 +287,18 @@ test('parseAnthropicSseLine rejects malformed content_block_delta JSON', () => {
   );
 });
 
+test('parseAnthropicSseLine ignores null message_start JSON', () => {
+  const state = { currentEvent: '' };
+  parseAnthropicSseLine('event: message_start', state);
+  assert.equal(parseAnthropicSseLine('data: null', state), null);
+});
+
+test('parseAnthropicSseLine ignores null content_block_delta JSON', () => {
+  const state = { currentEvent: '' };
+  parseAnthropicSseLine('event: content_block_delta', state);
+  assert.equal(parseAnthropicSseLine('data: null', state), null);
+});
+
 test('parseAnthropicSseLine returns SSE_STREAM_END on message_stop', () => {
   const state = { currentEvent: '' };
   parseAnthropicSseLine('event: message_stop', state);
