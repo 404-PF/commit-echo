@@ -916,6 +916,64 @@ test('runPostCommitHook clears pending entry when history append fails', async (
   assert.equal(removed, true);
 });
 
+test('runPostCommitHook clears pending entry when repository validation fails', async () => {
+  let removed = false;
+  let warning = '';
+
+  await runPostCommitHook({
+    checkGitRepo: () => {
+      throw new Error('not a git repository');
+    },
+    readLatestCommitMessage: () => 'feat: should not read a commit message',
+    readPendingEntryFile: async () => 'stale',
+    appendHistoryEntry: async () => {
+      throw new Error('history should not be written');
+    },
+    removePendingEntryFile: async () => {
+      removed = true;
+    },
+    warn: (message) => {
+      warning = message;
+    },
+  });
+
+  assert.equal(removed, true);
+  assert.equal(warning, 'commit-echo hook: not a git repository');
+});
+
+test('runPostCommitHook clears pending entry when reading the latest commit fails', async () => {
+  let removed = false;
+  let appended = false;
+  let warning = '';
+
+  await runPostCommitHook({
+    checkGitRepo: () => {},
+    readLatestCommitMessage: () => {
+      throw new Error('git log failed');
+    },
+    readPendingEntryFile: async () =>
+      JSON.stringify({
+        timestamp: '2026-06-01T00:00:00.000Z',
+        diff: 'diff --git a/file b/file\\n+hello',
+        model: 'mock-model',
+        provider: 'mock',
+      }),
+    appendHistoryEntry: async () => {
+      appended = true;
+    },
+    removePendingEntryFile: async () => {
+      removed = true;
+    },
+    warn: (message) => {
+      warning = message;
+    },
+  });
+
+  assert.equal(appended, false);
+  assert.equal(removed, true);
+  assert.equal(warning, 'commit-echo hook: git log failed');
+});
+
 test('runPrepareCommitMsgHook times out LLM work without changing the message', async () => {
   const repoDir = mkdtempSync(join(tmpdir(), 'commit-echo-hook-timeout-'));
   const messageFile = join(repoDir, 'COMMIT_EDITMSG');
