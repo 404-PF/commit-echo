@@ -122,16 +122,35 @@ test('loadEntries warns about multiple corrupted lines', async () => {
         ['feat: keep latest valid entry', 'fix: keep first valid entry'],
       );
       assert.equal(warnings.length, 1);
-      assert.match(warnings[0], /ignored 2 corrupted commit history entries/);
-      assert.match(warnings[0], /line 2, 3/);
+      assert.match(warnings[0], /ignored 3 corrupted commit history entries/);
+      assert.match(warnings[0], /line 2, 3, 4/);
     },
   );
 });
 
 test('loadEntries ignores schema-invalid JSON rows and buildProfile uses valid entries', async () => {
   const invalidEntries = [
-    JSON.stringify({ timestamp: '2026-06-01T00:00:02Z', message: 123, diff: '', model: 'test-model', provider: 'local' }),
-    JSON.stringify({ timestamp: '2026-06-01T00:00:01Z', message: 'fix: valid entry', diff: '', model: 'test-model', provider: null }),
+    JSON.stringify({
+      timestamp: '2026-06-01T00:00:02Z',
+      message: 123,
+      diff: '',
+      model: 'test-model',
+      provider: 'local',
+    }),
+    JSON.stringify({
+      timestamp: '2026-06-01T00:00:01Z',
+      message: 'fix: valid entry',
+      diff: '',
+      model: 'test-model',
+      provider: null,
+    }),
+    JSON.stringify({
+      timestamp: 'not-a-date',
+      message: 'fix: invalid timestamp',
+      diff: '',
+      model: 'test-model',
+      provider: 'local',
+    }),
   ];
 
   await withIsolatedHistory(
