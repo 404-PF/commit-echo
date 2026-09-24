@@ -170,6 +170,33 @@ export async function getStagedDiffWithSignal(
   }
 }
 
+function isUnbornHead(): boolean {
+  let headRef: string;
+  try {
+    headRef = execFileSync(getGitExecutable(), ['symbolic-ref', '--quiet', 'HEAD'], {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    }).trim();
+  } catch {
+    // A detached or malformed HEAD is not the normal empty-repository state.
+    return false;
+  }
+
+  try {
+    const refs = execFileSync(getGitExecutable(), ['for-each-ref', '--format=%(refname)', headRef], {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    })
+      .split(/\r?\n/)
+      .filter(Boolean);
+
+    return headRef.length > 0 && !refs.includes(headRef);
+  } catch {
+    // If the ref database cannot be queried, keep the original fatal Git error.
+    return false;
+  }
+}
+
 export function hasCommits(): boolean {
   try {
     const count = execFileSync(getGitExecutable(), ['rev-list', '--count', 'HEAD'], {
@@ -178,8 +205,14 @@ export function hasCommits(): boolean {
     }).trim();
 
     return Number.parseInt(count, 10) > 0;
-  } catch {
-    return false;
+  } catch (err) {
+    if (isUnbornHead()) {
+      return false;
+    }
+
+    const nodeErr = err as NodeJS.ErrnoException & { stderr?: string };
+    const stderr = nodeErr.stderr?.trim();
+    throw new Error(stderr || nodeErr.message || 'Failed to inspect git history');
   }
 }
 
