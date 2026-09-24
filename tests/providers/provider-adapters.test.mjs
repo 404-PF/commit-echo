@@ -261,6 +261,21 @@ test('CohereProvider fetchModels surfaces API errors', async (t) => {
   );
 });
 
+test('CohereProvider fetchModels returns an empty list for a successful empty catalogue response', async (t) => {
+  const provider = new CohereProvider();
+
+  mockFetch(
+    t,
+    async () =>
+      new Response(JSON.stringify({ models: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  );
+
+  assert.deepEqual(await provider.fetchModels('https://cohere.example.com', 'test-key'), []);
+});
+
 test('CohereProvider complete rejects empty text responses', async (t) => {
   const provider = new CohereProvider();
 
@@ -359,6 +374,23 @@ test('OpenAICompatibleProvider complete surfaces API errors with the response bo
     }),
     /OpenAI-compatible API error \(500\): server exploded/,
   );
+});
+
+test('OpenAICompatibleProvider fetchModels returns an empty list for a successful empty catalogue response', async (t) => {
+  const provider = new OpenAICompatibleProvider();
+
+  mockFetch(
+    t,
+    async (url) => {
+      assert.equal(url, 'https://openai.example.com/v1/models');
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    },
+  );
+
+  assert.deepEqual(await provider.fetchModels('https://openai.example.com/v1', 'test-key'), []);
 });
 
 test('OpenAICompatibleProvider complete rejects empty choices', async (t) => {
