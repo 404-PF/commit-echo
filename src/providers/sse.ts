@@ -176,27 +176,35 @@ export function parseAnthropicSseLine(
   const payload = trimmed.slice(5).trim();
 
   if (state.currentEvent === 'message_start') {
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(payload) as {
-        message?: { model?: string };
-      };
-      if (parsed.message?.model) {
-        return { kind: 'model', model: parsed.message.model };
-      }
+      parsed = JSON.parse(payload);
     } catch {
       throw new Error('Malformed Anthropic SSE data: invalid JSON');
+    }
+
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const data = parsed as { message?: { model?: string } };
+    if (data.message?.model) {
+      return { kind: 'model', model: data.message.model };
     }
     return null;
   }
 
   if (state.currentEvent === 'content_block_delta') {
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(payload) as { delta?: { text?: string } };
-      if (parsed.delta?.text) {
-        return { kind: 'text', text: parsed.delta.text };
-      }
+      parsed = JSON.parse(payload);
     } catch {
       throw new Error('Malformed Anthropic SSE data: invalid JSON');
+    }
+
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    const data = parsed as { delta?: { text?: string } };
+    if (data.delta?.text) {
+      return { kind: 'text', text: data.delta.text };
     }
     return null;
   }
