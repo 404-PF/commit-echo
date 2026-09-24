@@ -183,18 +183,17 @@ function isUnbornHead(): boolean {
   }
 
   try {
-    execFileSync(getGitExecutable(), ['show-ref', '--verify', '--quiet', headRef], {
+    const refs = execFileSync(getGitExecutable(), ['for-each-ref', '--format=%(refname)', headRef], {
       encoding: 'utf-8',
       stdio: 'pipe',
-    });
-    return false;
-  } catch (err) {
-    const nodeErr = err as NodeJS.ErrnoException & { status?: number };
-    if (nodeErr.status === 1) {
-      return headRef.length > 0;
-    }
+    })
+      .split(/\r?\n/)
+      .filter(Boolean);
 
-    throw err;
+    return headRef.length > 0 && !refs.includes(headRef);
+  } catch {
+    // If the ref database cannot be queried, keep the original fatal Git error.
+    return false;
   }
 }
 
