@@ -118,8 +118,8 @@ test("hasCommits propagates a fatal HEAD error", () => {
   try {
     git(["commit", "--allow-empty", "-m", "initial commit"], repoDir);
     const headRef = git(["symbolic-ref", "--quiet", "HEAD"], repoDir).trim();
-    const headPath = join(repoDir, ".git", headRef.slice("refs/heads/".length));
-    writeFileSync(headPath, "deadbeef\\n", "utf-8");
+    const headPath = join(repoDir, ".git", "refs", "heads", headRef.slice("refs/heads/".length));
+    writeFileSync(headPath, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n", "utf-8");
 
     withCwd(repoDir, () => {
       assert.throws(() => hasCommits(), /unknown revision|bad object|ambiguous argument/i);
