@@ -1,5 +1,5 @@
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
-import { accessSync, copyFileSync, existsSync, constants, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { accessSync, copyFileSync, existsSync, constants, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, normalize, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -170,27 +170,6 @@ export async function getStagedDiffWithSignal(
   }
 }
 
-function hasStoredHeadRef(ref: string): boolean {
-  try {
-    const refPath = getGitPath(ref, process.cwd());
-    if (existsSync(refPath)) {
-      return true;
-    }
-
-    const packedRefsPath = getGitPath('packed-refs', process.cwd());
-    if (!existsSync(packedRefsPath)) {
-      return false;
-    }
-
-    return readFileSync(packedRefsPath, 'utf-8')
-      .split('\n')
-      .some((line) => line.length > 41 && line.slice(41) === ref && /^[0-9a-f]{40} /.test(line));
-  } catch {
-    // If the ref layout cannot be inspected, do not classify the failure as an empty repository.
-    return true;
-  }
-}
-
 function isUnbornHead(): boolean {
   let headRef: string;
   try {
@@ -203,7 +182,20 @@ function isUnbornHead(): boolean {
     return false;
   }
 
-  return headRef.length > 0 && !hasStoredHeadRef(headRef);
+  try {
+    execFileSync(getGitExecutable(), ['show-ref', '--verify', '--quiet', headRef], {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+    });
+    return false;
+  } catch (err) {
+    const nodeErr = err as NodeJS.ErrnoException & { status?: number };
+    if (nodeErr.status === 1) {
+      return headRef.length > 0;
+    }
+
+    throw err;
+  }
 }
 
 export function hasCommits(): boolean {
