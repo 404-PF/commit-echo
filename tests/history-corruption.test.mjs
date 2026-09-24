@@ -122,8 +122,8 @@ test('loadEntries warns about multiple corrupted lines', async () => {
         ['feat: keep latest valid entry', 'fix: keep first valid entry'],
       );
       assert.equal(warnings.length, 1);
-      assert.match(warnings[0], /ignored 3 corrupted commit history entries/);
-      assert.match(warnings[0], /line 2, 3, 4/);
+      assert.match(warnings[0], /ignored 2 corrupted commit history entries/);
+      assert.match(warnings[0], /line 2, 3/);
     },
   );
 });
@@ -167,8 +167,8 @@ test('loadEntries ignores schema-invalid JSON rows and buildProfile uses valid e
         ['feat: newest valid entry', 'chore: older valid entry'],
       );
       assert.equal(warnings.length, 1);
-      assert.match(warnings[0], /ignored 2 corrupted commit history entries/);
-      assert.match(warnings[0], /line 2, 3/);
+      assert.match(warnings[0], /ignored 3 corrupted commit history entries/);
+      assert.match(warnings[0], /line 2, 3, 4/);
 
       const profile = await buildProfile(10);
       assert.equal(profile.totalCommits, 2);
