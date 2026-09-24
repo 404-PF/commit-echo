@@ -8,7 +8,7 @@ import test from 'node:test';
 
 import { batchCommand } from '../dist/commands/batch.js';
 import { generateSuggestionsStream } from '../dist/llm/client.js';
-import { getConfigPath, getHistoryPath, invalidateConfigCache } from '../dist/config/store.js';
+import { CONFIG_ENV_VARS, getConfigPath, getHistoryPath, invalidateConfigCache } from '../dist/config/store.js';
 
 function createTempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -97,10 +97,14 @@ test('batch resolves branch and previous message from each repository', async ()
   const previousXdg = process.env.XDG_CONFIG_HOME;
   const previousHome = process.env.HOME;
   const previousAppData = process.env.APPDATA;
+  const previousConfigEnv = Object.fromEntries(CONFIG_ENV_VARS.map((name) => [name, process.env[name]]));
   const requests = [];
   const { server, baseUrl } = await startFixtureServer(requests);
 
   try {
+    for (const name of CONFIG_ENV_VARS) delete process.env[name];
+    invalidateConfigCache();
+
     const repoA = initRepo(parent, 'alpha-repo', 'alpha-feature', 'alpha base commit');
     const repoB = initRepo(parent, 'beta-repo', 'beta-feature', 'beta base commit');
     git(['init'], callerRepo);
@@ -144,6 +148,11 @@ test('batch resolves branch and previous message from each repository', async ()
     else process.env.HOME = previousHome;
     if (previousAppData === undefined) delete process.env.APPDATA;
     else process.env.APPDATA = previousAppData;
+    for (const name of CONFIG_ENV_VARS) {
+      const value = previousConfigEnv[name];
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     invalidateConfigCache();
     await stopServer(server);
     rmSync(parent, { recursive: true, force: true });
