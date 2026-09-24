@@ -207,10 +207,7 @@ interface PromptModelDependencies {
   select: typeof select;
 }
 
-async function promptModelManually(
-  existingConfig: Config | null,
-  promptText: typeof text,
-): Promise<string | null> {
+async function promptModelManually(existingConfig: Config | null, promptText: typeof text): Promise<string | null> {
   const manualResult = await promptText({
     message: 'Enter model name manually:',
     placeholder: existingConfig?.model ?? 'gpt-4o',
