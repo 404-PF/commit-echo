@@ -776,13 +776,11 @@ export async function runPostCommitHook(
       pending = JSON.parse(rawEntry) as CommitEntry;
     } catch {
       deps.warn('commit-echo hook: invalid pending hook entry; clearing stale state.');
-      await deps.removePendingEntryFile();
       return;
     }
 
     const message = deps.readLatestCommitMessage().trim();
     if (!message) {
-      await deps.removePendingEntryFile();
       return;
     }
 
@@ -794,13 +792,11 @@ export async function runPostCommitHook(
       provider: pending.provider,
     };
 
-    try {
-      await deps.appendHistoryEntry(entry);
-    } finally {
-      await deps.removePendingEntryFile();
-    }
+    await deps.appendHistoryEntry(entry);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     deps.warn(`commit-echo hook: ${message}`);
+  } finally {
+    await clearPendingEntryFile(deps.removePendingEntryFile);
   }
 }
