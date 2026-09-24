@@ -40,6 +40,7 @@ export async function generateSuggestions(
   apiKeyParam?: string,
   precomputedTruncation?: TruncationInfo,
   signal?: AbortSignal,
+  cwdParam = process.cwd(),
 ): Promise<{
   suggestions: Suggestion[];
   profile: StyleProfile;
@@ -50,9 +51,9 @@ export async function generateSuggestions(
 
   const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
 
-  const branch = getBranchName();
+  const branch = getBranchName(cwdParam);
   const profileStr = formatProfile(profile);
-  const message = getLastCommitMessage();
+  const message = getLastCommitMessage(cwdParam);
 
   const vars = {
     diff: truncatedDiff,
@@ -116,14 +117,15 @@ export async function* generateSuggestionsStream(
   apiKeyParam?: string,
   provider?: Provider,
   precomputedTruncation?: TruncationInfo,
+  cwdParam = process.cwd(),
 ): AsyncGenerator<SuggestionStreamEvent> {
   const profile = profileParam ?? (await buildProfile(config.historySize));
 
   const { diff: truncatedDiff, info: truncation } = truncateDiff(diff, config.maxDiffSize);
 
-  const branch = getBranchName();
+  const branch = getBranchName(cwdParam);
   const profileStr = formatProfile(profile);
-  const message = getLastCommitMessage();
+  const message = getLastCommitMessage(cwdParam);
 
   const vars = {
     diff: truncatedDiff,
