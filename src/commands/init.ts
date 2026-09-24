@@ -1,4 +1,4 @@
-import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
+import { intro, outro, select, text, confirm, password, spinner, isCancel, note } from '@clack/prompts';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pc from 'picocolors';
@@ -25,8 +25,10 @@ export function resolveBaseUrl(providerKey: string, existingBaseUrl?: string): s
 
 export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   return {
-    message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
-    placeholder: existingKey ? '•••••••• (already configured)' : '',
+    message:
+      `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:` +
+      (existingKey ? ` ${pc.dim('•••••••• (already configured)')}` : ''),
+    mask: '•',
   };
 }
 
@@ -196,7 +198,7 @@ async function promptApiKey(
     storedConfig,
     provider.apiKeyEnv,
   );
-  const keyResult = await text(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
+  const keyResult = await password(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
   return keyResult || existingKey || '';
 }

@@ -3,18 +3,22 @@ import test from 'node:test';
 
 import { buildApiKeyPrompt, getExistingApiKeyForProvider, getStoredApiKeyForProvider } from '../dist/commands/init.js';
 
-test('does not prefill an existing API key in the init prompt', () => {
+test('uses masked input without pre-filling an existing API key', () => {
   const prompt = buildApiKeyPrompt('sk-live-secret', 'OPENAI_API_KEY');
 
-  assert.equal(prompt.placeholder, '•••••••• (already configured)');
+  assert.equal(prompt.mask, '•');
+  assert.match(prompt.message, /•••••••• \(already configured\)/);
   assert.equal(Object.hasOwn(prompt, 'initialValue'), false);
+  assert.equal(Object.hasOwn(prompt, 'placeholder'), false);
 });
 
-test('leaves the API key prompt blank for new configs', () => {
+test('does not show a configured-key marker for new configs', () => {
   const prompt = buildApiKeyPrompt('', 'OPENAI_API_KEY');
 
-  assert.equal(prompt.placeholder, '');
+  assert.equal(prompt.mask, '•');
+  assert.doesNotMatch(prompt.message, /already configured/);
   assert.equal(Object.hasOwn(prompt, 'initialValue'), false);
+  assert.equal(Object.hasOwn(prompt, 'placeholder'), false);
 });
 
 test('reuses a trimmed stored API key only for the same provider', () => {
