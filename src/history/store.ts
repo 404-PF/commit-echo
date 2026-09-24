@@ -98,6 +98,7 @@ function isCommitEntry(value: unknown): value is CommitEntry {
   const entry = value as Record<string, unknown>;
   return (
     typeof entry.timestamp === 'string' &&
+    !Number.isNaN(Date.parse(entry.timestamp)) &&
     typeof entry.message === 'string' &&
     typeof entry.diff === 'string' &&
     typeof entry.model === 'string' &&
