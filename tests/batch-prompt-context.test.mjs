@@ -8,7 +8,7 @@ import test from 'node:test';
 
 import { batchCommand } from '../dist/commands/batch.js';
 import { generateSuggestionsStream } from '../dist/llm/client.js';
-import { invalidateConfigCache } from '../dist/config/store.js';
+import { getConfigPath, getHistoryPath, invalidateConfigCache } from '../dist/config/store.js';
 
 function createTempDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -34,11 +34,12 @@ function initRepo(root, name, branch, message) {
   return repoDir;
 }
 
-function initConfig(configHome, baseUrl) {
-  const configDir = join(configHome, 'commit-echo');
-  mkdirSync(configDir, { recursive: true });
+function initConfig(baseUrl) {
+  const configPath = getConfigPath();
+  const historyPath = getHistoryPath();
+  mkdirSync(join(configPath, '..'), { recursive: true });
   writeFileSync(
-    join(configDir, 'config.json'),
+    configPath,
     JSON.stringify({
       provider: '__custom__',
       model: 'fixture-model',
@@ -51,7 +52,7 @@ function initConfig(configHome, baseUrl) {
     }),
     'utf-8',
   );
-  writeFileSync(join(configDir, 'history.jsonl'), '', 'utf-8');
+  writeFileSync(historyPath, '', 'utf-8');
 }
 
 async function startFixtureServer(requests) {
@@ -94,6 +95,8 @@ test('batch resolves branch and previous message from each repository', async ()
   const configHome = createTempDir('commit-echo-config-');
   const previousCwd = process.cwd();
   const previousXdg = process.env.XDG_CONFIG_HOME;
+  const previousHome = process.env.HOME;
+  const previousAppData = process.env.APPDATA;
   const requests = [];
   const { server, baseUrl } = await startFixtureServer(requests);
 
@@ -106,8 +109,10 @@ test('batch resolves branch and previous message from each repository', async ()
     git(['commit', '--allow-empty', '-m', 'caller commit'], callerRepo);
     git(['switch', '-c', 'caller-feature'], callerRepo);
 
-    initConfig(configHome, baseUrl);
     process.env.XDG_CONFIG_HOME = configHome;
+    process.env.HOME = configHome;
+    process.env.APPDATA = configHome;
+    initConfig(baseUrl);
     process.chdir(callerRepo);
 
     const result = await batchCommand({ directory: parent, recursive: false, yes: true });
@@ -135,6 +140,10 @@ test('batch resolves branch and previous message from each repository', async ()
     process.chdir(previousCwd);
     if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = previousXdg;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousAppData === undefined) delete process.env.APPDATA;
+    else process.env.APPDATA = previousAppData;
     invalidateConfigCache();
     await stopServer(server);
     rmSync(parent, { recursive: true, force: true });
