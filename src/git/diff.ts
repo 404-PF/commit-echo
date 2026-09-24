@@ -1,14 +1,5 @@
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
-import {
-  accessSync,
-  copyFileSync,
-  existsSync,
-  constants,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-} from 'node:fs';
+import { accessSync, copyFileSync, existsSync, constants, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, isAbsolute, join, normalize, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -193,9 +184,7 @@ function hasStoredHeadRef(ref: string): boolean {
 
     return readFileSync(packedRefsPath, 'utf-8')
       .split('\n')
-      .some(
-        (line) => line.length > 41 && line.slice(41) === ref && /^[0-9a-f]{40} /.test(line),
-      );
+      .some((line) => line.length > 41 && line.slice(41) === ref && /^[0-9a-f]{40} /.test(line));
   } catch {
     // If the ref layout cannot be inspected, do not classify the failure as an empty repository.
     return true;
@@ -232,9 +221,7 @@ export function hasCommits(): boolean {
 
     const nodeErr = err as NodeJS.ErrnoException & { stderr?: string };
     const stderr = nodeErr.stderr?.trim();
-    throw new Error(stderr || nodeErr.message || 'Failed to inspect git history', {
-      cause: err,
-    });
+    throw new Error(stderr || nodeErr.message || 'Failed to inspect git history');
   }
 }
 
