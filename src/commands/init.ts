@@ -203,12 +203,31 @@ async function promptApiKey(
   return keyResult || existingKey || '';
 }
 
-async function promptModel(
+interface PromptModelDependencies {
+  spinner: typeof spinner;
+  text: typeof text;
+  select: typeof select;
+}
+
+async function promptModelManually(existingConfig: Config | null, promptText: typeof text): Promise<string | null> {
+  const manualResult = await promptText({
+    message: 'Enter model name manually:',
+    placeholder: existingConfig?.model ?? 'gpt-4o',
+    validate: (value) => {
+      if (!value.trim()) return 'Model name is required';
+    },
+  });
+  if (isCancel(manualResult)) return null;
+  return manualResult.trim();
+}
+
+export async function promptModel(
   provider: ProviderSetup,
   apiKey: string | undefined,
   existingConfig: Config | null,
+  dependencies: PromptModelDependencies = { spinner, text, select },
 ): Promise<string | null> {
-  const modelSpinner = spinner();
+  const modelSpinner = dependencies.spinner();
   modelSpinner.start('Fetching available models...');
 
   let models: string[];
@@ -218,21 +237,22 @@ async function promptModel(
       provider.providerKey === CUSTOM_PROVIDER_KEY ? provider.baseUrl : undefined,
       apiKey ?? '',
     );
-    modelSpinner.stop('Models fetched successfully.');
+    if (models.length === 0) {
+      modelSpinner.stop(pc.yellow('No models found automatically.'));
+      const manualModel = await promptModelManually(existingConfig, dependencies.text);
+      if (manualModel === null) return null;
+      models = [manualModel];
+    } else {
+      modelSpinner.stop('Models fetched successfully.');
+    }
   } catch {
     modelSpinner.stop(pc.yellow('Could not fetch models automatically.'));
-    const manualResult = await text({
-      message: 'Enter model name manually:',
-      placeholder: existingConfig?.model ?? 'gpt-4o',
-      validate: (value) => {
-        if (!value) return 'Model name is required';
-      },
-    });
-    if (isCancel(manualResult)) return null;
-    models = [manualResult];
+    const manualModel = await promptModelManually(existingConfig, dependencies.text);
+    if (manualModel === null) return null;
+    models = [manualModel];
   }
 
-  const selectedModel = await select({
+  const selectedModel = await dependencies.select({
     message: 'Select a model:',
     options: models.map((model) => ({ value: model, label: model })),
     initialValue: existingConfig?.model,
