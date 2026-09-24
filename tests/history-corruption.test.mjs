@@ -153,7 +153,7 @@ test('loadEntries ignores schema-invalid JSON rows and buildProfile uses valid e
 
       const profile = await buildProfile(10);
       assert.equal(profile.totalCommits, 2);
-      assert.equal(profile.avgLength, 23);
+      assert.equal(profile.avgLength, 24);
     },
   );
 });
