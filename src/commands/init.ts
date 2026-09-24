@@ -1,4 +1,4 @@
-import { intro, outro, select, text, confirm, spinner, isCancel, note } from '@clack/prompts';
+import { intro, outro, select, text, confirm, password, spinner, isCancel, note } from '@clack/prompts';
 import { existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import pc from 'picocolors';
@@ -25,8 +25,10 @@ export function resolveBaseUrl(providerKey: string, existingBaseUrl?: string): s
 
 export function buildApiKeyPrompt(existingKey: string, apiKeyEnv: string) {
   return {
-    message: `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:`,
-    placeholder: existingKey ? '•••••••• (already configured)' : '',
+    message:
+      `Enter your API key (will be stored in config), or leave blank to use ${pc.cyan(`$${apiKeyEnv}`)} env var:` +
+      (existingKey ? ` ${pc.dim('•••••••• (already configured)')}` : ''),
+    mask: '•',
   };
 }
 
@@ -196,7 +198,7 @@ async function promptApiKey(
     storedConfig,
     provider.apiKeyEnv,
   );
-  const keyResult = await text(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
+  const keyResult = await password(buildApiKeyPrompt(existingKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
   return keyResult || existingKey || '';
 }
@@ -275,7 +277,7 @@ interface PromptTemplates {
 }
 
 async function promptCustomTemplates(existingConfig: Config | null): Promise<PromptTemplates | null> {
-  note(`\nAvailable variables:\n${getAvailableTemplateVars()}\n` + `Leave empty to use the built-in prompt.\n`);
+  note(\`\\nAvailable variables:\\n${getAvailableTemplateVars()}\\n\` + \`Leave empty to use the built-in prompt.\\n\`);
   const sysResult = await text({
     message: 'Custom system prompt template (optional):',
     placeholder: 'You are a commit assistant...',
@@ -285,7 +287,7 @@ async function promptCustomTemplates(existingConfig: Config | null): Promise<Pro
 
   const userResult = await text({
     message: 'Custom user prompt template (optional):',
-    placeholder: 'Generate commit messages for:\n{{diff}}',
+    placeholder: 'Generate commit messages for:\\n{{diff}}',
     initialValue: existingConfig?.userPromptTemplate,
   });
   if (isCancel(userResult)) return null;
@@ -301,9 +303,9 @@ async function promptTemplates(existingConfig: Config | null): Promise<PromptTem
 
   if (useTemplateFile) {
     note(
-      `\nAvailable variables:\n${getAvailableTemplateVars()}\n` +
-        `Use --- on its own line to separate system prompt (above) from user prompt (below).\n` +
-        `Without a separator, the entire file is used as the system prompt.\n`,
+      `\\nAvailable variables:\\n${getAvailableTemplateVars()}\\n` +
+        `Use --- on its own line to separate system prompt (above) from user prompt (below).\\n` +
+        `Without a separator, the entire file is used as the system prompt.\\n`,
     );
     const pathResult = await text({
       message: 'Path to prompt template file:',
@@ -370,13 +372,13 @@ async function testConfiguration(config: Config, provider: ProviderSetup): Promi
 }
 
 function buildTemplateInfo(config: Config): string {
-  if (config.templatePath) return `\n  Template file: ${pc.dim(config.templatePath)}`;
+  if (config.templatePath) return `\\n  Template file: ${pc.dim(config.templatePath)}`;
   if (!config.systemPromptTemplate && !config.userPromptTemplate) return '';
 
   const parts: string[] = [];
   if (config.systemPromptTemplate) parts.push(pc.dim('system ✓'));
   if (config.userPromptTemplate) parts.push(pc.dim('user ✓'));
-  return `\n  Custom prompts: ${parts.join(', ')}`;
+  return `\\n  Custom prompts: ${parts.join(', ')}`;
 }
 
 interface CollectedSetup {
@@ -451,7 +453,7 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
   if (provider.needsApiKey && !config.apiKey && !process.env[provider.apiKeyEnv]) {
     await persistSetup(config, options);
     const apiKeyEnv = pc.cyan(`$${provider.apiKeyEnv}`);
-    const warn = pc.yellow(`\n⚠  No API key provided. Make sure to set ${apiKeyEnv} before running suggestions.`);
+    const warn = pc.yellow(`\\n⚠  No API key provided. Make sure to set ${apiKeyEnv} before running suggestions.`);
     outro(warn);
     return;
   }
@@ -468,13 +470,13 @@ async function runInteractiveSetup(options: { installHook?: boolean; uninstallHo
     provider.providerKey === CUSTOM_PROVIDER_KEY ? provider.baseUrl : getProviderInfo(provider.providerKey)?.baseUrl;
 
   outro(
-    `${pc.green('✓')} Configuration saved.\n` +
-      `  Provider: ${pc.cyan(provider.providerKey)}\n` +
-      `  Model: ${pc.cyan(config.model)}\n` +
-      `  Endpoint: ${pc.dim(displayUrl ?? '')}\n` +
+    `${pc.green('✓')} Configuration saved.\\n` +
+      `  Provider: ${pc.cyan(provider.providerKey)}\\n` +
+      `  Model: ${pc.cyan(config.model)}\\n` +
+      `  Endpoint: ${pc.dim(displayUrl ?? '')}\\n` +
       `  API key: ${pc.dim(displayKey)}` +
       buildTemplateInfo(config) +
-      `\n\nRun ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`,
+      `\\n\\nRun ${pc.bold('commit-echo')} after staging changes to get commit suggestions.`,
   );
 }
 
