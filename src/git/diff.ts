@@ -232,7 +232,9 @@ export function hasCommits(): boolean {
 
     const nodeErr = err as NodeJS.ErrnoException & { stderr?: string };
     const stderr = nodeErr.stderr?.trim();
-    throw new Error(stderr || nodeErr.message || 'Failed to inspect git history', { cause: err });
+    throw new Error(stderr || nodeErr.message || 'Failed to inspect git history', {
+      cause: err,
+    });
   }
 }
 
