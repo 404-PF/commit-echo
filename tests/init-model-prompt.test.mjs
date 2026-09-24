@@ -38,8 +38,10 @@ test('promptModel falls back to manual entry when model discovery returns no mod
       }),
       text: async (options) => {
         assert.equal(options.message, 'Enter model name manually:');
+        assert.equal(options.validate?.('   '), 'Model name is required');
+        assert.equal(options.validate?.(' custom-model '), undefined);
         manualPrompted = true;
-        return 'custom-model';
+        return ' custom-model ';
       },
       select: async (options) => {
         assert.equal(options.message, 'Select a model:');
@@ -52,5 +54,8 @@ test('promptModel falls back to manual entry when model discovery returns no mod
   assert.equal(result, 'custom-model');
   assert.equal(manualPrompted, true);
   assert.deepEqual(selectedOptions, [{ value: 'custom-model', label: 'custom-model' }]);
-  assert.deepEqual(spinnerMessages, ['Fetching available models...', 'No models found automatically.']);
+  assert.deepEqual(
+    spinnerMessages.map((message) => message.replace(/\u001b\[[0-9;]*m/g, '')),
+    ['Fetching available models...', 'No models found automatically.'],
+  );
 });
