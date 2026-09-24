@@ -184,7 +184,7 @@ export function parseAnthropicSseLine(
         return { kind: 'model', model: parsed.message.model };
       }
     } catch {
-      // Skip malformed JSON
+      throw new Error('Malformed Anthropic SSE data: invalid JSON');
     }
     return null;
   }
@@ -196,7 +196,7 @@ export function parseAnthropicSseLine(
         return { kind: 'text', text: parsed.delta.text };
       }
     } catch {
-      // Skip malformed JSON
+      throw new Error('Malformed Anthropic SSE data: invalid JSON');
     }
     return null;
   }
