@@ -186,27 +186,45 @@ async function promptProvider(existingConfig: Config | null): Promise<ProviderSe
   return { providerKey, baseUrl: info.baseUrl, apiKeyEnv: info.apiKeyEnv, needsApiKey: info.needsApiKey };
 }
 
+export interface ApiKeySelection {
+  effectiveKey: string;
+  persistKey: string | undefined;
+}
+
+/**
+ * Decide which API key is used for this run (`effectiveKey`) and which key, if
+ * any, may be written back to config.json (`persistKey`).
+ *
+ * Provenance comes from the raw config file read, never from comparing values:
+ * `storedKey` is set only when config.json explicitly holds a key for the
+ * selected provider. Environment variables therefore cannot smuggle a key onto
+ * disk, and a stored key that happens to equal an env var is still preserved.
+ */
+export function resolveApiKeySelection(
+  userInput: string,
+  storedKey: string | undefined,
+  envKey: string,
+): ApiKeySelection {
+  return {
+    effectiveKey: userInput || envKey || storedKey || '',
+    persistKey: userInput || storedKey,
+  };
+}
+
 async function promptApiKey(
   provider: ProviderSetup,
   storedConfig: Pick<Partial<Config>, 'provider' | 'apiKey' | 'baseUrl'> | null,
-): Promise<{ effectiveKey: string; persistKey: string | undefined } | null> {
+): Promise<ApiKeySelection | null> {
   if (!provider.needsApiKey) return { effectiveKey: '', persistKey: undefined };
 
-  const rawConfiguredKey = getStoredApiKeyForProvider(provider.providerKey, provider.baseUrl, storedConfig) || '';
+  const storedKey = getStoredApiKeyForProvider(provider.providerKey, provider.baseUrl, storedConfig);
   const envKey = process.env['COMMIT_ECHO_API_KEY']?.trim() || process.env[provider.apiKeyEnv]?.trim() || '';
-  const promptKey = rawConfiguredKey || envKey || '';
+  const promptKey = storedKey || envKey || '';
 
   const keyResult = await password(buildApiKeyPrompt(promptKey, provider.apiKeyEnv));
   if (isCancel(keyResult)) return null;
 
-  const effectiveKey = keyResult || envKey || rawConfiguredKey || '';
-  const persistKey = keyResult
-    ? keyResult
-    : rawConfiguredKey !== process.env['COMMIT_ECHO_API_KEY']
-      ? rawConfiguredKey
-      : undefined;
-
-  return { effectiveKey, persistKey };
+  return resolveApiKeySelection(keyResult, storedKey, envKey);
 }
 
 interface PromptModelDependencies {
@@ -377,11 +395,7 @@ async function persistSetup(
   }
 }
 
-async function testConfiguration(
-  config: Config,
-  provider: ProviderSetup,
-  effectiveKey?: string,
-): Promise<boolean> {
+async function testConfiguration(config: Config, provider: ProviderSetup, effectiveKey?: string): Promise<boolean> {
   const testSpinner = spinner();
   testSpinner.start('Testing connection...');
   try {
